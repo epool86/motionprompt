@@ -1,1 +1,26 @@
-[]
+[
+  {
+    "slug": "kinetic-type",
+    "name": "Kinetic typography",
+    "summary": "Big bold words that punch in on the beat, then stack into one line.",
+    "library": "GSAP",
+    "ratios": ["9:16", "1:1", "16:9"],
+    "tags": ["text", "social"]
+  },
+  {
+    "slug": "particle-field",
+    "name": "Particle field",
+    "summary": "Thousands of glowing dots drifting along soft currents, like smoke or wind.",
+    "library": "Canvas",
+    "ratios": ["9:16", "1:1", "16:9"],
+    "tags": ["background", "ambient"]
+  },
+  {
+    "slug": "logo-spin-3d",
+    "name": "3D logo spin",
+    "summary": "A shiny 3D logo that spins, settles and floats, ready for an intro or outro.",
+    "library": "Three.js",
+    "ratios": ["9:16", "1:1", "16:9"],
+    "tags": ["3d", "logo", "intro"]
+  }
+]
