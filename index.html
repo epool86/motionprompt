@@ -24,52 +24,59 @@
     </div>
   </header>
 
-  <main class="stage">
+  <main class="stage" id="stage">
     <div class="backdrop" aria-hidden="true"><span class="orb a"></span><span class="orb b"></span><span class="orb c"></span></div>
-    <div class="wrap">
-      <div class="intro">
-        <h1>Pick a style. <span class="serif shine">Copy the prompt.</span></h1>
-        <p>Paste it into Claude, open the page it makes, and screen-record it as a video.</p>
-      </div>
 
-      <div class="toolbar">
-        <label class="search">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="9" r="6"/><path d="M13.5 13.5 17 17"/></svg>
-          <span class="visually-hidden">Search styles</span>
-          <input type="search" id="search" placeholder="Search styles" autocomplete="off">
-        </label>
-        <div class="filters" id="filters" role="group" aria-label="Filter by tag"></div>
-      </div>
+    <div class="view" id="list-view">
+      <div class="wrap">
+        <div class="intro">
+          <h1>Pick a style. <span class="serif shine">Copy the prompt.</span></h1>
+          <p>Paste it into Claude, open the page it makes, and screen-record it as a video.</p>
+        </div>
 
-      <p class="count" id="count" aria-live="polite"></p>
+        <div class="toolbar">
+          <label class="search">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="9" r="6"/><path d="M13.5 13.5 17 17"/></svg>
+            <span class="visually-hidden">Search styles</span>
+            <input type="search" id="search" placeholder="Search styles" autocomplete="off">
+          </label>
+          <div class="filters" id="filters" role="group" aria-label="Filter by tag"></div>
+        </div>
 
-      <div class="grid" id="gallery">
-        <p class="empty">Loading styles...</p>
+        <p class="count" id="count" aria-live="polite"></p>
+
+        <div class="grid" id="gallery">
+          <p class="empty">Loading styles...</p>
+        </div>
       </div>
     </div>
-  </main>
 
-  <dialog class="sheet" id="sheet" aria-labelledby="sheet-title">
-    <div class="sheet-inner">
-      <div class="sheet-preview" id="sheet-preview"></div>
-      <div class="sheet-info">
-        <div class="sheet-head">
-          <h2 id="sheet-title"></h2>
-          <button class="icon-button" type="button" id="sheet-close" aria-label="Close">
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 5l10 10M15 5 5 15"/></svg>
+    <section class="view detail" id="detail-view" aria-labelledby="detail-title" hidden>
+      <div class="detail-bar">
+        <div class="wrap">
+          <button class="back" type="button" id="detail-back">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4 6 10l6 6"/></svg>
+            All styles
           </button>
         </div>
-        <p id="sheet-summary"></p>
-        <ul class="chips" id="sheet-chips" aria-label="Details"></ul>
-        <div class="sheet-actions">
-          <button class="button" type="button" id="sheet-copy">Copy prompt</button>
-          <a class="button secondary" id="sheet-open" target="_blank" rel="noopener">Full screen</a>
-        </div>
-        <p class="status" id="sheet-status" role="status" aria-live="polite"></p>
-        <pre class="prompt-text" id="sheet-prompt" tabindex="0" aria-label="Prompt"></pre>
       </div>
-    </div>
-  </dialog>
+      <div class="wrap detail-body">
+        <div class="detail-preview" id="detail-preview"></div>
+        <div class="detail-info">
+          <h2 id="detail-title" tabindex="-1"></h2>
+          <p id="detail-summary"></p>
+          <ul class="chips" id="detail-chips" aria-label="Details"></ul>
+          <div class="detail-actions">
+            <button class="button" type="button" id="detail-copy">Copy prompt</button>
+            <a class="button secondary" id="detail-open" target="_blank" rel="noopener">Full screen</a>
+          </div>
+          <p class="status" id="detail-status" role="status" aria-live="polite"></p>
+          <h3 class="prompt-label">The prompt</h3>
+          <pre class="prompt-text" id="detail-prompt" tabindex="0" aria-label="Prompt"></pre>
+        </div>
+      </div>
+    </section>
+  </main>
 
   <footer class="site-footer">
     <div class="wrap">

@@ -27,8 +27,9 @@ without a one-line explanation.
 ## Layout
 
 ```
-index.html              home = the style directory: search, tag filters, grid of live tiles,
-                        and a detail sheet (preview, prompt, copy). Each style links as #slug
+index.html              home = the style directory: search, tag filters, grid of live tiles.
+                        Tapping a tile slides the list out and a full detail view in (preview,
+                        prompt, copy); Back slides it back. Each style links as #slug
 gallery.html            old address, redirects to index.html
 builder.html            prompt builder form, copy-to-clipboard output
 guide.html              prompting tips + export to MP4
