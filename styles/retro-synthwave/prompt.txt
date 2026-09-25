@@ -1,0 +1,18 @@
+Make my video in this style: Retro synthwave.
+
+Look and motion
+- An 80s outrun night scene. A glowing neon grid floor scrolls steadily towards the viewer, fading into a hazy horizon.
+- A big setting sun sits on the horizon, yellow at the top and hot pink at the bottom, with horizontal stripes cut through its lower half that slowly slide down.
+- Dark wireframe mountains line the horizon on both sides, low in the middle so the sun stays visible. A starfield twinkles softly in the sky above.
+- My message or brand name sits above the sun as a big chrome headline: bright sky blue on top, a dark line through the middle, warm pink below, with a thin white edge, a deep shadow and a soft pink glow. It stays still and easy to read.
+- Add subtle CRT scanlines and a slight VHS colour bleed (a red and cyan fringe on the headline). Once per loop, a faint tape tracking band rolls down the screen and makes the headline wobble for a moment.
+- Keep the motion smooth and steady so it loops cleanly.
+
+Type and colour
+- A wide, heavy, futuristic font in capitals (like Orbitron Black), leaning forward like an 80s logo.
+- Use my brand colours if I give them. Otherwise use deep purple night #12042b, hot magenta #ff2bd6 for the grid and glow, electric cyan #2de2ff for the mountain lines, and a sun from yellow #fff36b to pink #ff4f8b.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML canvas animation and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

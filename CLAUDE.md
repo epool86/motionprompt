@@ -1,12 +1,13 @@
 # MotionPrompt
 
-A free static site that helps people make short animated "videos" with Claude. Claude writes
-an HTML page that animates (Motion, GSAP, Three.js, WebGL, Canvas), and the user records it
-for Reels, TikTok or YouTube. The site gives them:
+A free static site that helps people make short animated videos with Claude. The visitor picks a
+style, chooses video settings (format, size, length), copies the style and pastes it under their
+own video request in Claude on the web or Claude Code. Claude sends back a finished MP4.
+The site gives them:
 
-1. **Style gallery**: live demos of animation styles, each with a ready prompt.
-2. **Prompt builder**: pick style, library, aspect ratio, duration, colours and text, get a prompt to copy.
-3. **Guide**: how to prompt, how to iterate, how to export the animation to MP4.
+1. **Style gallery** (the home page): live demos of animation styles. Each style page has video
+   settings (format, size, length), the style prompt to copy, and a one-line tip.
+2. **Guide** (not built yet): how to prompt, iterate, and what to do if a render times out.
 
 Audience: friends and followers, not developers. Plain English, short sentences, no jargon
 without a one-line explanation.
@@ -27,19 +28,25 @@ without a one-line explanation.
 ## Layout
 
 ```
-index.html              home: what this is, links to gallery, builder, guide
-gallery.html            grid of styles; each card lazy-loads its demo in an iframe
-builder.html            prompt builder form, copy-to-clipboard output
+index.html              home = the style directory: search, tag filters, grid of live tiles.
+                        Tapping a tile slides the list out and a full detail view in (preview,
+                        prompt, copy); Back slides it back. Each style links as #slug
+gallery.html            old address, redirects to index.html
 guide.html              prompting tips + export to MP4
 assets/css/site.css     shared styles (design tokens on :root, light and dark)
-assets/js/*.js          shared scripts (ES modules)
-styles/styles.json      list of styles (the single source of truth for the gallery and builder)
+assets/js/*.js          shared scripts (ES modules): gallery.js (directory and views),
+                        settings.js (video settings), prompt.js (load, fill, copy)
+assets/img/logo.svg     logo mark and favicon
+styles/styles.json      list of styles (the single source of truth for the gallery)
 styles/<slug>/demo.html self-contained animation, loads its own library from a CDN
 styles/<slug>/prompt.txt prompt template for that style, with {placeholders}
 scripts/check.mjs       validation, run before every commit
 ```
 
 Pages that are listed above but missing are not built yet.
+
+Design: mobile first and compact. The home page is the app itself (no marketing sections).
+Dark "film studio" look with a light variant; tokens live on `:root` in `site.css`.
 
 ### `styles/styles.json` entry
 
@@ -49,17 +56,35 @@ Pages that are listed above but missing are not built yet.
   "name": "Kinetic typography",
   "summary": "Words that punch in on the beat.",
   "library": "GSAP",
-  "ratios": ["9:16", "1:1", "16:9"],
   "tags": ["text", "social"]
 }
 ```
 
+
 `slug` must match a folder in `styles/` that has both `demo.html` and `prompt.txt`.
 
-### Prompt template placeholders
+Tags become the filter chips, so reuse the existing ones: text, 3d, product, explainer,
+background, promo, retro, photos, data, social, brand, handmade. The list order in
+`styles.json` is the gallery order; mix looks so neighbouring tiles differ.
 
-`{ratio}`, `{duration}`, `{colors}`, `{text}`, `{library}`. The builder fills these in.
-A template must still read well if a placeholder is left at its default.
+### Style prompts
+
+A style prompt is general: the visitor writes their own video request in Claude and pastes the
+style underneath. So a prompt never contains the visitor's content. It describes the look, the
+motion, type and colour (with default colours, "use my brand colours if I give them"), and how
+to fit any message. It asks for the final MP4 only.
+
+Placeholders, filled from the page's video settings by `assets/js/prompt.js`:
+`{size}` (for example "1080 x 1920 pixels (vertical 9:16)") and `{duration}` ("8 seconds").
+
+Keep prompts in plain language with a one-line build hint. Claude knows how to render video, so
+do not spell out the technical steps.
+
+### Demos
+
+Each `demo.html` must fit any window shape, because the preview is reshaped to the chosen format
+(9:16, 4:5, 1:1, 16:9). Demos also accept `?text=` and colours `?bg= &ink= &accent= &accent2=`
+(hex, no `#`) in the URL; the site does not use these at the moment.
 
 ## Verify
 

@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Paper cut-out demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/fredoka@5.3.0/600.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=f7e4c6&ink=3a2b24&accent=f6a534&accent2=ec6b4f */
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #f7e4c6;
+    }
+
+    svg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .label-text {
+      font-family: "Fredoka", "Trebuchet MS", system-ui, sans-serif;
+      font-weight: 600;
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+  </style>
+</head>
+<body>
+  <svg id="scene" role="img" xmlns="http://www.w3.org/2000/svg"></svg>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => "#" + (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const C = {
+      sky: hex("bg", "f7e4c6"),
+      ink: hex("ink", "3a2b24"),
+      sun: hex("accent", "f6a534"),
+      leaf: hex("accent2", "ec6b4f"),
+      cloud: "#fffaf1",
+      label: "#fffdf7",
+      tape: "#e9d3a0",
+      hills: ["#c3d88f", "#86b86b", "#3f8f63"],
+      trunk: "#8a5a3b",
+      stem: "#2c6448",
+      bird: "#4f7fa3",
+    };
+    document.body.style.background = C.sky;
+    const text = (params.get("text") || "Make it move").trim().slice(0, 60);
+    // Long headlines go on two lines, split where the longer line is shortest.
+    const words = text.split(/\s+/);
+    let lines = [text];
+    if (text.length > 18 && words.length > 1) {
+      for (let i = 1; i < words.length; i++) {
+        const pair = [words.slice(0, i).join(" "), words.slice(i).join(" ")];
+        if (lines.length === 1 || Math.max(...pair.map((x) => x.length)) < Math.max(...lines.map((x) => x.length))) lines = pair;
+      }
+    }
+
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.getElementById("scene");
+    svg.setAttribute("aria-label", `A paper cut-out scene that builds itself: ${text}`);
+
+    function el(name, attrs, parent) {
+      const node = document.createElementNS(NS, name);
+      for (const k in attrs) node.setAttribute(k, attrs[k]);
+      if (parent) parent.append(node);
+      return node;
+    }
+
+    // A small grain texture, made once on a canvas and tiled over every paper piece.
+    const grain = (() => {
+      const size = 160, c = document.createElement("canvas");
+      c.width = c.height = size;
+      const g = c.getContext("2d"), img = g.createImageData(size, size);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const v = Math.random();
+        const light = v > 0.5;
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = light ? 255 : 70;
+        img.data[i + 3] = Math.abs(v - 0.5) * 70;
+      }
+      g.putImageData(img, 0, 0);
+      // A few soft fibres
+      g.globalAlpha = 0.08;
+      g.strokeStyle = "#5a4630";
+      for (let i = 0; i < 18; i++) {
+        const x = Math.random() * size, y = Math.random() * size, a = Math.random() * Math.PI;
+        g.beginPath();
+        g.moveTo(x, y);
+        g.quadraticCurveTo(x + Math.cos(a) * 8, y + Math.sin(a) * 8 + 3, x + Math.cos(a) * 16, y + Math.sin(a) * 16);
+        g.stroke();
+      }
+      return c.toDataURL();
+    })();
+
+    // Seeded random, so shapes are the same after a resize.
+    let seed = 1;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+    // Jitter for one piece on one frame, the same every loop.
+    const noise = (a, b) => {
+      const x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
+      return x - Math.floor(x) - 0.5;
+    };
+
+    const f = (p) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`;
+    function smooth(pts, close) {
+      const n = pts.length, at = (i) => pts[close ? (i + n) % n : Math.max(0, Math.min(n - 1, i))];
+      let d = `M${f(pts[0])}`;
+      for (let i = 0; i < (close ? n : n - 1); i++) {
+        const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
+        d += ` C${f([p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6])} ${f([p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6])} ${f(p2)}`;
+      }
+      return d + (close ? "Z" : "");
+    }
+
+    // One paper piece: a coloured shape with grain on top and a soft shadow under it.
+    function paper(parent, d, fill, extra = {}) {
+      const g = el("g", { filter: "url(#pc-shadow)" }, parent);
+      const shape = el("path", { d, fill, ...extra }, g);
+      if (fill !== "none") el("path", { d, fill: "url(#pc-grain)" }, g);
+      return { g, shape };
+    }
+
+    // Easing helpers
+    const clamp = (v) => Math.max(0, Math.min(1, v));
+    const backOut = (p, s = 1.6) => 1 + (s + 1) * (p - 1) ** 3 + s * (p - 1) ** 2;
+    const backIn = (p, s = 1.6) => (s + 1) * p ** 3 - s * p ** 2;
+    // How "in place" a piece is: 0 before it enters, 1 when settled, back to 0 after it leaves.
+    const inOut = (t, a, da, b, db) => backOut(clamp((t - a) / da)) - backIn(clamp((t - b) / db));
+
+    const LOOP = 10, FPS = 12;
+    let W, H, u, pieces = [];
+
+    function build() {
+      W = innerWidth;
+      H = innerHeight;
+      u = Math.min(W, H);
+      seed = 11;
+      pieces = [];
+      svg.replaceChildren();
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+
+      const defs = el("defs", {}, svg);
+      const shadow = el("filter", { id: "pc-shadow", x: "-20%", y: "-20%", width: "140%", height: "150%" }, defs);
+      el("feDropShadow", { dx: 0, dy: u * 0.008, stdDeviation: u * 0.007, "flood-color": "#4a2e18", "flood-opacity": 0.3 }, shadow);
+      const pat = el("pattern", { id: "pc-grain", width: 160, height: 160, patternUnits: "userSpaceOnUse" }, defs);
+      el("image", { href: grain, width: 160, height: 160 }, pat);
+
+      // Background sheet
+      el("rect", { width: W, height: H, fill: C.sky }, svg);
+      el("rect", { width: W, height: H, fill: "url(#pc-grain)" }, svg);
+
+      // A piece is a group with a pivot point; pose(t) says how it moves at time t.
+      const add = (x, y, pose, wiggle = 1) => {
+        const g = el("g", {}, svg);
+        const p = { g, x, y, pose, wiggle, i: pieces.length };
+        pieces.push(p);
+        return p;
+      };
+
+      // Hills: a wavy top edge across the full width.
+      const hillY = (k, x) => {
+        const base = [0.6, 0.71, 0.83][k] * H, amp = [0.07, 0.06, 0.05][k] * u;
+        return base - amp * (Math.sin((x / W) * [5.2, 6.8, 4.4][k] + [0.6, 2.4, 4.1][k]) * 0.7 + Math.sin((x / W) * 11 + k) * 0.3);
+      };
+      const hillShape = (k) => {
+        const pts = [];
+        for (let i = -1; i <= 13; i++) {
+          const x = (i / 12) * W;
+          pts.push([x, hillY(k, x) + (rand() - 0.5) * u * 0.008]);
+        }
+        pts.push([W * 1.1, H + u * 0.4], [-W * 0.1, H + u * 0.4]);
+        return smooth(pts.slice(0, -2)) + ` L${f(pts.at(-2))} L${f(pts.at(-1))}Z`;
+      };
+
+      // Sun with paper rays, behind the hills so it can rise.
+      const sx = W - u * 0.26, sy = u * 0.25, sr = u * 0.11;
+      const sunPose = (t) => ({ dy: (1 - inOut(t, 0.7, 0.8, 8.8, 0.7)) * H * 0.75 });
+      const rays = add(sx, sy, (t) => ({ ...sunPose(t), rot: t * 15 }), 0.5);
+      let rayD = "";
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2, w = Math.PI / 16;
+        const p = (r, ang) => f([Math.cos(ang) * r, Math.sin(ang) * r]);
+        rayD += `M${p(sr * 1.12, a - w)} L${p(sr * 1.6, a)} L${p(sr * 1.12, a + w)}Z`;
+      }
+      paper(rays.g, rayD, C.sun);
+      const sun = add(sx, sy, sunPose);
+      paper(sun.g, `M${-sr} 0a${sr} ${sr} 0 1 0 ${sr * 2} 0a${sr} ${sr} 0 1 0 ${-sr * 2} 0`, C.sun);
+
+      // Headline position, used to keep the bird clear of the label.
+      const labelY = H * (W > H * 0.9 ? 0.36 : 0.42);
+
+      // A little paper bird that flaps across the sky.
+      const bird = add(0, 0, (t) => {
+        const p = clamp((t - 3.4) / 5);
+        return { dx: -u * 0.2 + p * (W + u * 0.4), dy: Math.sin(p * 12) * u * 0.02, hide: p <= 0 || p >= 1 };
+      });
+      bird.baseY = Math.max(u * 0.1, labelY - u * 0.26);
+      const bs = u * 0.05;
+      paper(bird.g, `M${-bs} 0 L${bs * 0.9} ${-bs * 0.25} L${bs * 1.3} ${-bs * 0.5} L${bs * 1.1} ${bs * 0.1} L${-bs * 0.2} ${bs * 0.45}Z`, C.bird);
+      bird.wing = el("g", {}, bird.g);
+      paper(bird.wing, `M${-bs * 0.3} 0 L${bs * 0.5} 0 L${-bs * 0.1} ${-bs * 0.9}Z`, "#6e9dc0");
+
+      // Clouds: a few circles cut as one piece.
+      const cloud = (cx, cy, s, from, t0) => {
+        const piece = add(cx, cy, (t) => {
+          const k = inOut(t, t0, 0.7, 8.4, 0.6);
+          return { dx: (1 - k) * from + Math.sin(t * 0.63 * Math.PI) * u * 0.015 * k };
+        });
+        const c = (x, y, r) => `M${x - r} ${y}a${r} ${r} 0 1 0 ${r * 2} 0a${r} ${r} 0 1 0 ${-r * 2} 0`;
+        paper(piece.g, [c(-s * 0.55, s * 0.1, s * 0.42), c(0, -s * 0.12, s * 0.55), c(s * 0.6, s * 0.12, s * 0.38),
+          `M${-s} ${s * 0.12} v${s * 0.4} h${s * 2} v${s * -0.4}Z`].join(" "), C.cloud);
+        return piece;
+      };
+      cloud(W * 0.2, Math.min(H * 0.18, labelY - u * 0.2), u * 0.1, -W * 0.6, 1.1);
+
+      // Back hill, then the tree on the middle hill, then the front hills.
+      const hills = [0, 1, 2].map((k) => {
+        if (k === 1) {
+          // Lollipop tree: trunk grows, then the round top pops on.
+          const tx = W * 0.16, ty = hillY(1, W * 0.16) + u * 0.03, th = u * 0.2, cr = u * 0.085;
+          const trunk = add(tx, ty, (t) => ({ sy: Math.max(0.001, inOut(t, 1.5, 0.5, 8.5, 0.4)) }), 0.6);
+          paper(trunk.g, `M${-u * 0.014} 0 L${-u * 0.009} ${-th} L${u * 0.009} ${-th} L${u * 0.014} 0Z`, C.trunk);
+          const top = add(tx, ty - th, (t) => { const k = inOut(t, 1.8, 0.5, 8.4, 0.4); return { s: Math.max(0.001, k), hide: k <= 0 }; });
+          const blob = [];
+          for (let i = 0; i < 12; i++) {
+            const a = (i / 12) * Math.PI * 2, r = cr * (0.92 + rand() * 0.16);
+            blob.push([Math.cos(a) * r, Math.sin(a) * r * 0.95]);
+          }
+          paper(top.g, smooth(blob, true), C.hills[2]);
+        }
+        const hill = add(0, 0, (t) => ({ dy: (1 - inOut(t, k * 0.25, 0.6, 9 + (2 - k) * 0.15, 0.5)) * H * 0.7 }), 0.4);
+        paper(hill.g, hillShape(k), C.hills[k]);
+        return hill;
+      });
+
+      // Second cloud, in front of the sun.
+      cloud(sx - u * 0.1, sy + u * 0.09, u * 0.085, W * 0.7, 1.3);
+
+      // A plant in the corner: the stem grows, then leaves flip open one by one.
+      const px = W - u * 0.16, py = H + u * 0.02, ph = u * 0.34;
+      const stemPt = (k) => [px - Math.sin(k * 2.2) * u * 0.04, py - k * ph];
+      const stem = add(px, py, (t) => ({ sy: Math.max(0.001, inOut(t, 1.9, 0.5, 8.3, 0.4)) }), 0.6);
+      const stemPts = [0, 0.25, 0.5, 0.75, 1].map((k) => { const [x, y] = stemPt(k); return [x - px, y - py]; });
+      paper(stem.g, smooth(stemPts), "none", { stroke: C.stem, "stroke-width": u * 0.018, "stroke-linecap": "round" });
+      [0.4, 0.58, 0.76, 0.96].forEach((k, i) => {
+        const [lx, ly] = stemPt(k), side = i % 2 ? 1 : -1, L = u * (0.1 - i * 0.012);
+        const leaf = add(lx, ly, (t) => {
+          const e = inOut(t, 2.2 + i * 0.18, 0.4, 8.2 - i * 0.05, 0.3);
+          return { rot: (i === 3 ? -75 : -30 * side) + Math.sin(t * 1.2 * Math.PI + i) * 3, sx: Math.cos((1 - e) * Math.PI), sy: Math.max(0.001, e), hide: e <= 0.01, flip: true };
+        });
+        const g = el("g", { transform: `scale(${side} 1)` }, leaf.g);
+        leaf.part = paper(g, `M0 0 C${L * 0.3} ${-L * 0.35} ${L * 0.8} ${-L * 0.3} ${L} 0 C${L * 0.8} ${L * 0.3} ${L * 0.3} ${L * 0.3} 0 0Z`, C.leaf);
+        el("path", { d: `M${L * 0.08} 0 L${L * 0.8} 0`, stroke: "rgba(0,0,0,0.18)", "stroke-width": u * 0.004, fill: "none" }, g);
+      });
+
+      // Headline on a paper label that drops in, flips over and gets taped down.
+      const fontSize = u * 0.12, maxW = W * (W > H * 0.9 && W < H * 1.4 ? 0.58 : 0.7);
+      const probe = el("text", { class: "label-text", "font-size": fontSize }, svg);
+      const widest = Math.max(...lines.map((line) => { probe.textContent = line; return probe.getComputedTextLength(); }));
+      probe.remove();
+      const fs = Math.min(fontSize, (fontSize * maxW) / widest);
+      const label = add(W / 2, labelY, (t) => {
+        const e = inOut(t, 2.4, 0.9, 8.2, 0.5);
+        return { dy: (1 - e) * -H * 0.8, rot: -3 - (1 - e) * 25, sx: Math.cos((1 - clamp(e)) * Math.PI), hide: e <= 0.001, flip: true };
+      }, 0.5);
+      const textNode = el("text", { class: "label-text", "font-size": fs, fill: C.ink }, svg);
+      lines.forEach((line, i) => {
+        const span = el("tspan", { x: 0, y: fs * (0.04 + (i - (lines.length - 1) / 2) * 1.1) }, textNode);
+        span.textContent = line;
+      });
+      const bw = (widest * fs) / fontSize + fs * 1.1, bh = fs * (1.7 + (lines.length - 1) * 1.1);
+      const j = () => (rand() - 0.5) * fs * 0.12;
+      label.part = paper(label.g, `M${-bw / 2 + j()} ${-bh / 2 + j()} L${bw / 2 + j()} ${-bh / 2 + j()} L${bw / 2 + j()} ${bh / 2 + j()} L${-bw / 2 + j()} ${bh / 2 + j()}Z`, C.label);
+      label.g.append(textNode);
+      label.text = textNode;
+      const tape = add(W / 2 + bw * 0.28, labelY - bh / 2, (t) => {
+        const e = clamp((t - 3.3) / 0.25) - clamp((t - 8.1) / 0.1);
+        return { rot: 32, s: 1 + (1 - e) * 0.4, hide: e <= 0.01 };
+      }, 0.5);
+      el("path", { d: `M${-fs * 0.7} ${-fs * 0.22} L${fs * 0.7} ${-fs * 0.2} L${fs * 0.68} ${fs * 0.22} L${-fs * 0.72} ${fs * 0.2}Z`, fill: C.tape, opacity: 0.85 }, tape.g);
+    }
+
+    // Draw one frame. Time is rounded to 12 frames a second, with a tiny jitter per frame.
+    function render(t, still = false) {
+      const frame = Math.floor(t * FPS);
+      const tq = still ? t : frame / FPS;
+      for (const p of pieces) {
+        const s = p.pose(tq);
+        if (s.hide) { p.g.style.display = "none"; continue; }
+        p.g.style.display = "";
+        const jit = still ? 0 : p.wiggle;
+        const x = p.x + (s.dx || 0) + noise(frame, p.i) * u * 0.005 * jit;
+        const y = (p.baseY || 0) + p.y + (s.dy || 0) + noise(frame, p.i + 50) * u * 0.005 * jit;
+        const rot = (s.rot || 0) + noise(frame, p.i + 100) * 1.2 * jit;
+        const sx = (s.sx ?? s.s ?? 1), sy = (s.sy ?? s.s ?? 1);
+        p.g.setAttribute("transform", `translate(${x.toFixed(2)} ${y.toFixed(2)}) rotate(${rot.toFixed(2)}) scale(${sx.toFixed(3)} ${sy.toFixed(3)})`);
+        // A piece seen from the back is plain and a little darker.
+        if (s.flip && p.part) p.part.shape.style.filter = sx < 0 ? "brightness(0.85)" : "";
+        if (p.text) p.text.style.display = sx < 0.15 ? "none" : "";
+        if (p.wing) p.wing.setAttribute("transform", `scale(1 ${frame % 4 < 2 ? 1 : -0.7})`);
+      }
+    }
+
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    let raf = 0, start = performance.now(), last = -1;
+    function tick(now) {
+      const t = ((now - start) / 1000) % LOOP;
+      const frame = Math.floor(t * FPS);
+      if (frame !== last) {
+        last = frame;
+        render(t);
+      }
+      raf = requestAnimationFrame(tick);
+    }
+    // Reduced motion: one still frame with everything in place.
+    function apply() {
+      cancelAnimationFrame(raf);
+      raf = 0;
+      last = -1;
+      if (reduce.matches) render(5, true);
+      else raf = requestAnimationFrame(tick);
+    }
+    reduce.addEventListener("change", apply);
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => { build(); last = -1; if (reduce.matches) render(5, true); }, 150);
+    });
+
+    // Wait briefly for the font so the label is measured in the right face.
+    Promise.race([
+      document.fonts.load("600 1em Fredoka"),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(() => { build(); apply(); });
+  </script>
+</body>
+</html>

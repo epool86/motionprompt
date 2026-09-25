@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sale countdown demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/anton@5.3.0/index.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=ff2e4d&ink=fff7e6&accent=ffd400&accent2=17121c */
+    :root {
+      --bg: #ff2e4d;
+      --ink: #fff7e6;
+      --accent: #ffd400;
+      --accent2: #17121c;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    .stage {
+      --s1: var(--bg);
+      --s2: var(--bg);
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      background: var(--s1);
+      font-family: "Anton", "Arial Narrow", Impact, sans-serif;
+      text-transform: uppercase;
+      color: var(--ink);
+    }
+
+    /* Diagonal stripes: a wide band inside a rotated frame, slid sideways forever. */
+    .stripes {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%) rotate(-24deg);
+    }
+    .band {
+      height: 100%;
+      background: repeating-linear-gradient(90deg, var(--s1) 0 50%, var(--s2) 50% 100%);
+    }
+
+    .num {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      line-height: 1;
+      visibility: hidden;
+    }
+    .ring {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      border-radius: 50%;
+      border: solid currentColor;
+      visibility: hidden;
+    }
+
+    .block {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      white-space: nowrap;
+    }
+    .head { line-height: 1; }
+    .deal {
+      display: flex;
+      align-items: baseline;
+      line-height: 0.9;
+      margin: 0.02em 0 0.1em;
+    }
+    .deal.stacked { flex-direction: column; align-items: inherit; line-height: 0.86; }
+    .pct { color: var(--accent); }
+    .pct, .off { text-shadow: 0.05em 0.05em 0 var(--accent2); }
+    .deal:not(.stacked) .off { margin-left: 0.14em; }
+    .pill {
+      background: var(--accent2);
+      color: var(--ink);
+      padding: 0.18em 0.7em 0.2em;
+      border-radius: 999px;
+      letter-spacing: 0.08em;
+      line-height: 1.1;
+    }
+
+    .hanger {
+      position: absolute;
+      top: 0;
+      width: 0;
+      height: 0;
+      visibility: hidden;
+    }
+    .string {
+      position: absolute;
+      left: -1px;
+      top: 0;
+      width: 2px;
+      background: var(--accent2);
+    }
+    .tag {
+      position: absolute;
+      display: block;
+      filter: drop-shadow(0.4em 0.5em 0 rgba(0, 0, 0, 0.22));
+    }
+
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .wipe {
+      position: absolute;
+      top: -10%;
+      left: -20%;
+      width: 140%;
+      height: 120%;
+      background: var(--accent);
+      transform: translateX(-120%);
+    }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage" role="img">
+    <div class="stripes" id="stripes"><div class="band" id="band"></div></div>
+    <div class="num" id="n3">3</div>
+    <div class="num" id="n2">2</div>
+    <div class="num" id="n1">1</div>
+
+    <div class="block" id="block">
+      <div class="head" id="head"></div>
+      <div class="deal" id="deal"><span class="pct" id="pct">50%</span><span class="off" id="off">off</span></div>
+      <div><span class="pill" id="pill">Limited time</span></div>
+    </div>
+
+    <div class="hanger" id="hanger">
+      <div class="string" id="string"></div>
+      <svg class="tag" id="tag" viewBox="0 0 100 140" aria-hidden="true">
+        <path d="M50 2 L93 29 Q98 32 98 38 V131 Q98 138 91 138 H9 Q2 138 2 131 V38 Q2 32 7 29 Z" fill="var(--ink)" />
+        <path d="M50 10 L87 33 Q90 35 90 39 V127 Q90 130 87 130 H13 Q10 130 10 127 V39 Q10 35 13 33 Z" fill="none" stroke="var(--accent2)" stroke-opacity="0.25" stroke-width="1.2" stroke-dasharray="4 3" />
+        <circle cx="50" cy="24" r="6" fill="var(--accent2)" />
+        <text x="50" y="57" text-anchor="middle" font-size="15" letter-spacing="2" fill="var(--accent2)">NOW</text>
+        <text x="50" y="102" text-anchor="middle" font-size="44" fill="var(--bg)">$29</text>
+        <text x="50" y="123" text-anchor="middle" font-size="16" fill="var(--accent2)" fill-opacity="0.6">$59</text>
+        <line x1="36" y1="117" x2="64" y2="117" stroke="var(--accent2)" stroke-width="2" />
+      </svg>
+    </div>
+
+    <canvas id="confetti"></canvas>
+    <div class="wipe" id="wipe"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const root = document.documentElement;
+    for (const key of ["bg", "ink", "accent", "accent2"]) {
+      const value = params.get(key);
+      if (/^[0-9a-f]{6}$/i.test(value ?? "")) root.style.setProperty(`--${key}`, `#${value}`);
+    }
+    const css = getComputedStyle(root);
+    const color = (name) => css.getPropertyValue(name).trim();
+    const bg = color("--bg"), ink = color("--ink"), accent = color("--accent"), accent2 = color("--accent2");
+    const mix = (a, b, t) => "#" + [1, 3, 5].map((i) => {
+      const v = Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - t) + parseInt(b.slice(i, i + 2), 16) * t);
+      return v.toString(16).padStart(2, "0");
+    }).join("");
+
+    const headline = (params.get("text") || "Big sale").trim().slice(0, 40);
+    const $ = (id) => document.getElementById(id);
+    const stage = $("stage"), band = $("band"), stripes = $("stripes");
+    const nums = [$("n3"), $("n2"), $("n1")];
+    // One ring per number, bursting out behind it.
+    const rings = nums.map(() => {
+      const ring = document.createElement("div");
+      ring.className = "ring";
+      stage.insertBefore(ring, nums[0]);
+      return ring;
+    });
+    const block = $("block"), head = $("head"), deal = $("deal"), pct = $("pct"), off = $("off"), pill = $("pill");
+    const hanger = $("hanger"), string = $("string"), tag = $("tag");
+    const canvas = $("confetti"), ctx = canvas.getContext("2d");
+    const wipe = $("wipe");
+    head.textContent = headline;
+    stage.setAttribute("aria-label", `Sale promo: a 3, 2, 1 countdown, then ${headline}, 50% off, a swinging price tag and confetti`);
+
+    // Stripe colours for each scene: the countdown cuts between three looks.
+    const looks = [
+      { "--s1": bg, "--s2": mix(bg, "#000000", 0.12), color: ink },
+      { "--s1": accent2, "--s2": mix(accent2, "#ffffff", 0.07), color: accent },
+      { "--s1": accent, "--s2": mix(accent, "#ffffff", 0.35), color: accent2 },
+    ];
+
+    let W = 0, H = 0, U = 0, burstAt = { x: 0, y: 0 };
+
+    // Measure how wide a node is at a 100px font size.
+    function widthAt100(node) {
+      node.style.fontSize = "100px";
+      return node.getBoundingClientRect().width;
+    }
+
+    function layout() {
+      W = innerWidth; H = innerHeight; U = Math.min(W, H);
+      const dpr = Math.min(devicePixelRatio || 1, 1.5);
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // Stripes cover the frame at any angle.
+      const diag = Math.hypot(W, H) * 1.1;
+      const period = Math.max(24, U * 0.16);
+      stripes.style.width = `${diag}px`;
+      stripes.style.height = `${diag}px`;
+      band.style.width = `${diag + period * 2}px`;
+      band.style.backgroundSize = `${period}px 100%`;
+      band.dataset.period = period;
+
+      // Countdown numbers fill most of the frame.
+      const numSize = Math.min(H * 0.78, W * 1.25);
+      for (const n of nums) n.style.fontSize = `${numSize}px`;
+      const ringSize = Math.min(W, H) * 0.8;
+      rings.forEach((ring, i) => Object.assign(ring.style, {
+        width: `${ringSize}px`, height: `${ringSize}px`, marginLeft: `${-ringSize / 2}px`, marginTop: `${-ringSize / 2}px`,
+        borderWidth: `${Math.max(2, U * 0.02)}px`, color: looks[i].color,
+      }));
+
+      // Stacked (tall or square frames) or side by side (wide frames).
+      const wide = W / H > 1.15;
+      const pad = U * 0.07;
+      const box = wide
+        ? { x: pad, y: pad, w: W * 0.6 - pad, h: H - pad * 2 }
+        : { x: pad, y: H * 0.42, w: W - pad * 2, h: H * 0.58 - pad };
+      Object.assign(block.style, { left: `${box.x}px`, top: `${box.y}px`, width: `${box.w}px`, height: `${box.h}px`, alignItems: wide ? "flex-start" : "center", textAlign: wide ? "left" : "center" });
+
+      // Try the deal on one line and stacked, keep whichever is bigger.
+      deal.classList.remove("stacked");
+      const pctW = widthAt100(pct), offW = widthAt100(off);
+      const inline = box.w / ((pctW + offW) / 100 + 0.14);
+      const stackedSize = Math.min(box.w / (Math.max(pctW, offW) / 100), (box.h * 0.62) / 1.72);
+      const useStack = stackedSize > inline * 1.25;
+      deal.classList.toggle("stacked", useStack);
+      let dealSize = Math.min(useStack ? stackedSize : inline, box.h * 0.5);
+      const headW = widthAt100(head) / 100;
+      const pillW = widthAt100(pill) / 100;
+      // Shrink everything together until the whole block fits the box.
+      for (let i = 0; i < 40; i++) {
+        const headSize = Math.min(dealSize * 0.46, box.w / headW);
+        const pillSize = Math.min(dealSize * 0.13, box.w / pillW);
+        const total = headSize + dealSize * (useStack ? 1.74 : 0.92) + pillSize * 2.2;
+        if (total <= box.h || dealSize < 10) {
+          head.style.fontSize = `${headSize}px`;
+          pill.style.fontSize = `${pillSize}px`;
+          break;
+        }
+        dealSize *= 0.95;
+      }
+      deal.style.fontSize = `${dealSize}px`;
+      pct.style.fontSize = off.style.fontSize = "";
+
+      // The price tag hangs from the top edge.
+      const tagH = wide ? Math.min(H * 0.6, W * 0.3 * 1.4) : Math.min(H * 0.3, W * 0.4 * 1.4);
+      const tagW = tagH / 1.4;
+      const pivotX = wide ? W * 0.8 : W * 0.5;
+      const hangTo = wide ? H * 0.5 + tagH * 0.45 : H * 0.39;
+      const holeY = hangTo - tagH * (1 - 24 / 140);
+      hanger.style.left = `${pivotX}px`;
+      string.style.height = `${holeY}px`;
+      Object.assign(tag.style, { width: `${tagW}px`, height: `${tagH}px`, left: `${-tagW / 2}px`, top: `${holeY - tagH * (24 / 140)}px`, fontSize: `${tagW / 10}px` });
+
+      const r = deal.getBoundingClientRect();
+      burstAt = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }
+
+    // Confetti: seeded so every loop (and the still frame) looks the same.
+    function seeded(seed) {
+      return () => {
+        seed = (seed + 0x6d2b79f5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    const rand = seeded(7);
+    const confettiColors = [accent, ink, accent2, mix(accent, bg, 0.5), "#3fc8ff"];
+    const pieces = Array.from({ length: 120 }, () => ({
+      angle: -Math.PI / 2 + (rand() - 0.5) * Math.PI * 1.3,
+      speed: 1.6 + rand() * 2.6,
+      size: 0.022 + rand() * 0.018,
+      spin: (rand() - 0.5) * 14,
+      flip: 6 + rand() * 8,
+      phase: rand() * 6.28,
+      color: confettiColors[Math.floor(rand() * confettiColors.length)],
+    }));
+    const BURST = 6.6, FALL = 2.7;
+
+    function drawConfetti(t) {
+      ctx.clearRect(0, 0, W, H);
+      const s = t - BURST;
+      if (s <= 0 || s >= FALL) return;
+      const k = 1.8, g = 2.4; // drag and gravity, in frame units per second
+      const e = (1 - Math.exp(-k * s)) / k;
+      ctx.globalAlpha = Math.min(1, (FALL - s) / 0.5);
+      for (const p of pieces) {
+        const vx = Math.cos(p.angle) * p.speed, vy = Math.sin(p.angle) * p.speed;
+        const x = burstAt.x + U * (vx * e + Math.sin(s * 5 + p.phase) * 0.012);
+        const y = burstAt.y + U * ((vy - g / k) * e + (g / k) * s);
+        const size = p.size * U;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(p.phase + p.spin * s);
+        ctx.scale(1, Math.cos(p.phase + p.flip * s));
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-size / 2, -size / 4, size, size / 2);
+        ctx.restore();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    let tl = null, slide = null;
+
+    function build() {
+      const saved = tl ? tl.time() : 0;
+      if (tl) tl.kill();
+      if (slide) slide.kill();
+      gsap.set([head, deal, pct, off, pill, hanger, wipe], { clearProps: "transform" });
+      gsap.set(wipe, { x: 0, xPercent: -120, skewX: -14 });
+      layout();
+
+      const period = Number(band.dataset.period);
+      slide = gsap.fromTo(band, { x: 0 }, { x: -period, duration: 0.7, ease: "none", repeat: -1 });
+
+      tl = gsap.timeline({ repeat: -1, defaults: { ease: "expo.out" }, onUpdate: () => drawConfetti(tl.time()) });
+
+      // 3, 2, 1: each number punches in on its own look, with a ring bursting out.
+      nums.forEach((n, i) => {
+        const at = i * 0.8;
+        const look = looks[i];
+        tl.set(stage, { "--s1": look["--s1"], "--s2": look["--s2"] }, at)
+          .set(n, { autoAlpha: 1, color: look.color }, at)
+          .fromTo(n, { scale: 2.4, rotation: i % 2 ? 10 : -10 }, { scale: 1, rotation: 0, duration: 0.4 }, at)
+          .fromTo(n, { x: 0 }, { x: U * 0.015, duration: 0.05, repeat: 3, yoyo: true, ease: "none" }, at + 0.12)
+          .set(rings[i], { visibility: "visible" }, at + 0.05)
+          .fromTo(rings[i], { opacity: 1, scale: 0.3 }, { opacity: 0, scale: 1.5, duration: 0.6, ease: "power2.out" }, at + 0.05)
+          .set(n, { autoAlpha: 0 }, at + 0.8);
+      });
+
+      // The offer slams in over red stripes.
+      tl.set(stage, { "--s1": looks[0]["--s1"], "--s2": looks[0]["--s2"] }, 2.4)
+        .fromTo(block, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.01 }, 2.4)
+        .fromTo(head, { scale: 2.6, rotation: -8, autoAlpha: 0 }, { scale: 1, rotation: -2, autoAlpha: 1, duration: 0.4 }, 2.4)
+        .fromTo(pct, { xPercent: -140, autoAlpha: 0 }, { xPercent: 0, autoAlpha: 1, duration: 0.5, ease: "back.out(1.8)" }, 2.7)
+        .fromTo(off, { yPercent: -120, autoAlpha: 0 }, { yPercent: 0, autoAlpha: 1, duration: 0.5, ease: "back.out(2.2)" }, 2.85)
+        .fromTo(pill, { scale: 0, rotation: 6 }, { scale: 1, rotation: -2, duration: 0.5, ease: "back.out(3)" }, 3.2);
+
+      // The price tag swings in on its string and keeps swaying.
+      tl.set(hanger, { autoAlpha: 0 }, 0)
+        .set(hanger, { autoAlpha: 1 }, 3.0)
+        .fromTo(hanger, { rotation: -105 }, { rotation: 0, duration: 2.2, ease: "elastic.out(0.8, 0.34)" }, 3.0)
+        .to(hanger, { rotation: 3, duration: 0.9, ease: "sine.inOut", yoyo: true, repeat: 3 }, 5.2);
+
+      // A heartbeat on the discount, then confetti.
+      tl.to(deal, { scale: 1.1, duration: 0.15, ease: "power2.out", yoyo: true, repeat: 1, transformOrigin: "50% 60%" }, BURST - 0.25)
+        .to(deal, { scale: 1.1, duration: 0.15, ease: "power2.out", yoyo: true, repeat: 1 }, BURST + 0.15);
+
+      // A diagonal wipe clears the frame for the next countdown.
+      tl.fromTo(wipe, { xPercent: -120 }, { xPercent: 0, duration: 0.35, ease: "power3.in" }, 9.3)
+        .set([block, hanger], { autoAlpha: 0 }, 9.66)
+        .to(wipe, { xPercent: 120, duration: 0.34, ease: "power3.out" }, 9.66)
+        .set({}, {}, 10);
+
+      tl.time(saved);
+      apply();
+    }
+
+    // Reduced motion: hold the finished offer with confetti in the air.
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    function apply() {
+      if (reduce.matches) {
+        tl.pause().time(BURST + 0.55, false);
+        slide.pause();
+      } else {
+        tl.play();
+        slide.play();
+      }
+    }
+    reduce.addEventListener("change", apply);
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(build, 120);
+    });
+
+    // Wait briefly for the font so the text is measured in the right face.
+    Promise.race([
+      document.fonts.load("1em Anton"),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(build);
+  </script>
+</body>
+</html>

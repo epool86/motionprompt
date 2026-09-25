@@ -1,0 +1,18 @@
+Make my video in this style: Sale countdown.
+
+Look and motion
+- Loud promo energy. Bold diagonal stripes slide across the background the whole time.
+- Open with a fast 3, 2, 1 countdown: each number punches in huge with a little shake and a ring bursting out behind it, and the background cuts to a new colour on every number.
+- Then my offer slams in: a short headline, the deal as huge text (like a big "% OFF" or the new price), and a small pill with the urgency line (like the end date).
+- A price tag swings in on a string from the top of the frame, bounces, and keeps gently swaying. Put my price on it, with the old price crossed out if I give one.
+- The deal gives a quick double pulse, then a burst of confetti goes off. A diagonal colour wipe clears the screen at the end.
+- Use the offer, price and date from my request. Keep every line short and easy to read in a second.
+
+Type and colour
+- A heavy, condensed font (like Anton), all capitals, with a hard offset shadow on the deal.
+- Use my brand colours if I give them. Otherwise use hot red #ff2e4d, sunny yellow #ffd400, near black #17121c and cream #fff7e6.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

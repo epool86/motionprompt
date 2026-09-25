@@ -2,23 +2,115 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>MotionPrompt</title>
-  <meta name="description" content="Make short animated videos with Claude: live style demos, a prompt builder, and an export guide.">
+  <meta name="description" content="Animated video styles for Claude. Copy a style, paste it under your video idea, and get back an MP4.">
+  <meta name="theme-color" content="#07070c">
+  <link rel="icon" href="assets/img/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource-variable/geist@5.3.0/index.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource-variable/geist-mono@5.3.0/index.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/instrument-serif@5.3.0/400-italic.css">
   <link rel="stylesheet" href="assets/css/site.css">
+  <script type="module" src="assets/js/gallery.js"></script>
 </head>
 <body>
   <header class="site-header">
-    <a class="brand" href="index.html">MotionPrompt</a>
-    <nav class="site-nav" aria-label="Main">
-      <a href="gallery.html">Gallery</a>
-    </nav>
+    <div class="wrap">
+      <a class="brand" href="index.html" aria-current="page"><img src="assets/img/logo.svg" alt="" width="26" height="26">MotionPrompt</a>
+      <nav class="site-nav" aria-label="Main">
+        <span class="soon" title="Coming soon">Guide</span>
+      </nav>
+    </div>
   </header>
-  <main>
-    <h1>MotionPrompt</h1>
-    <p>Make short animated videos with Claude. Pick a style, build your prompt, paste it into Claude, and record the result for Reels, TikTok or YouTube.</p>
-    <p><a class="button" href="gallery.html">Browse the style gallery</a></p>
-    <p class="note">The prompt builder and the export guide are on the way.</p>
+
+  <main class="stage" id="stage">
+    <div class="backdrop" aria-hidden="true"><span class="orb a"></span><span class="orb b"></span><span class="orb c"></span></div>
+
+    <div class="view" id="list-view">
+      <div class="wrap">
+        <div class="intro">
+          <h1>Pick a style. <span class="serif shine">Make it move.</span></h1>
+          <p>Copy a style, paste it under your video idea in Claude, and get back an MP4.</p>
+        </div>
+
+        <div class="toolbar">
+          <label class="search">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="9" r="6"/><path d="M13.5 13.5 17 17"/></svg>
+            <span class="visually-hidden">Search styles</span>
+            <input type="search" id="search" placeholder="Search styles" autocomplete="off">
+          </label>
+          <div class="filters" id="filters" role="group" aria-label="Filter by tag"></div>
+        </div>
+
+        <p class="count" id="count" aria-live="polite"></p>
+
+        <div class="grid" id="gallery">
+          <p class="empty">Loading styles...</p>
+        </div>
+      </div>
+    </div>
+
+    <section class="view detail" id="detail-view" aria-labelledby="detail-title" hidden>
+      <div class="detail-bar">
+        <div class="wrap">
+          <button class="back" type="button" id="detail-back">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4 6 10l6 6"/></svg>
+            All styles
+          </button>
+        </div>
+      </div>
+      <div class="wrap detail-body">
+        <div class="preview-dock">
+          <div class="detail-preview" id="detail-preview"></div>
+        </div>
+        <div class="detail-info">
+          <h2 id="detail-title" tabindex="-1"></h2>
+          <p id="detail-summary"></p>
+
+          <div class="settings" role="group" aria-labelledby="settings-title">
+            <h3 class="settings-title" id="settings-title">Video settings</h3>
+            <div class="setting">
+              <span class="setting-label" id="formats-label">Format</span>
+              <div class="segmented" id="formats" role="group" aria-labelledby="formats-label"></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting">
+                <span class="setting-label" id="qualities-label">Size</span>
+                <div class="segmented" id="qualities" role="group" aria-labelledby="qualities-label"></div>
+              </div>
+              <div class="setting">
+                <span class="setting-label" id="durations-label">Length</span>
+                <div class="segmented" id="durations" role="group" aria-labelledby="durations-label"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-actions">
+            <button class="button" type="button" id="detail-copy">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/></svg>
+              Copy style
+            </button>
+          </div>
+          <p class="status" id="detail-status" role="status" aria-live="polite"></p>
+
+          <pre class="prompt-text" id="detail-prompt" tabindex="0" aria-label="Style prompt"></pre>
+          <p class="paste-tip">Add this below your video request in Claude, or paste it at the end of your prompt.</p>
+        </div>
+      </div>
+    </section>
   </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <a class="author" href="https://www.facebook.com/asbahri" target="_blank" rel="noopener">
+        <img src="assets/img/avatar.jpg" alt="" width="36" height="36" loading="lazy">
+        <span><small>Made by</small>Ahmad Saiful Bahri</span>
+      </a>
+      <a class="github" href="https://github.com/epool86/motionprompt" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </footer>
 </body>
 </html>

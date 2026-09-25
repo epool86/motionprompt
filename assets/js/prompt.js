@@ -1,19 +1,5 @@
-// Fills a style's prompt template. Shared by the gallery and (later) the builder.
-
-// Defaults are written so a template still reads well when nobody changes them.
-export const DEFAULTS = {
-  ratio: "9:16",
-  duration: "8 seconds",
-  colors: "a deep navy background with a bright coral accent and warm white text",
-  text: "Make it move",
-};
-
-const PLACEHOLDER = /\{(ratio|duration|colors|text|library)\}/g;
-
-export function fillPrompt(template, values = {}) {
-  const all = { ...DEFAULTS, ...values };
-  return template.replace(PLACEHOLDER, (match, key) => all[key] ?? match).trim();
-}
+// Loads the style list and each style's prompt, and copies text to the clipboard.
+// Shared by the directory and any later page.
 
 export async function loadStyles() {
   const res = await fetch("styles/styles.json");
@@ -21,10 +7,46 @@ export async function loadStyles() {
   return res.json();
 }
 
-export async function loadTemplate(slug) {
+// A style prompt is general: the visitor pastes it under their own video request.
+// Only the video settings (size and length) are filled in, never the visitor's content.
+export async function loadPrompt(slug) {
   const res = await fetch(`styles/${slug}/prompt.txt`);
   if (!res.ok) throw new Error(`${slug}/prompt.txt: ${res.status}`);
-  return res.text();
+  return (await res.text()).trim();
+}
+
+export const FORMATS = [
+  { value: "9:16", label: "9:16", hint: "Reels, TikTok", name: "vertical 9:16" },
+  { value: "4:5", label: "4:5", hint: "Feed", name: "portrait 4:5" },
+  { value: "1:1", label: "1:1", hint: "Square", name: "square 1:1" },
+  { value: "16:9", label: "16:9", hint: "YouTube", name: "widescreen 16:9" },
+];
+
+// The short side of the video, in pixels.
+export const QUALITIES = [
+  { value: 480, label: "480p" },
+  { value: 720, label: "720p" },
+  { value: 1080, label: "1080p" },
+];
+
+export const DURATIONS = [6, 8, 10, 15, 30];
+
+export const DEFAULT_SETTINGS = { ratio: "9:16", quality: 1080, duration: 8 };
+
+// For example 9:16 at 1080p is 1080 x 1920 pixels.
+export function videoSize({ ratio, quality }) {
+  const [w, h] = ratio.split(":").map(Number);
+  const short = quality;
+  const long = Math.round((short * Math.max(w, h)) / Math.min(w, h) / 2) * 2;
+  const [width, height] = w >= h ? [long, short] : [short, long];
+  const name = FORMATS.find((f) => f.value === ratio)?.name ?? ratio;
+  return `${width} x ${height} pixels (${name})`;
+}
+
+export function fillPrompt(template, settings) {
+  return template
+    .replace("{size}", videoSize(settings))
+    .replace("{duration}", `${settings.duration} seconds`);
 }
 
 // Clipboard API needs a secure context; fall back to a hidden textarea.

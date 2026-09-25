@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Retro synthwave demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/orbitron@5.3.0/900.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=12042b&ink=e9fbff&accent=ff2bd6&accent2=2de2ff */
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #12042b;
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Fine scanlines and dark corners, like an old CRT */
+    .crt {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px),
+        radial-gradient(ellipse 80% 75% at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="scene" role="img"></canvas>
+  <div class="crt"></div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => "#" + (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const colors = { bg: hex("bg", "12042b"), ink: hex("ink", "e9fbff"), accent: hex("accent", "ff2bd6"), accent2: hex("accent2", "2de2ff") };
+    const text = (params.get("text") || "Night drive").trim().slice(0, 40).toUpperCase();
+    const words = text.split(/\s+/).filter(Boolean);
+
+    const canvas = document.getElementById("scene");
+    canvas.setAttribute("aria-label", `An 80s synthwave scene with a neon grid, a setting sun and the words: ${text}`);
+    const ctx = canvas.getContext("2d");
+
+    const LOOP = 10; // seconds
+    const FONT = '900 100px Orbitron, "Arial Black", sans-serif';
+
+    function rand(seed) {
+      let s = seed;
+      return () => ((s = (s * 16807) % 2147483647) / 2147483647);
+    }
+
+    // Mix a hex colour with another, t from 0 to 1.
+    function mix(a, b, t) {
+      const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
+      const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
+      return `rgb(${pa.map((v, i) => Math.round(v + (pb[i] - v) * t)).join(",")})`;
+    }
+
+    let w = 0, h = 0, dpr = 1, horizon = 0, sun = null, layers = null, stars = [], head = null;
+
+    function makeCanvas(cw, ch) {
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(cw * dpr));
+      c.height = Math.max(1, Math.round(ch * dpr));
+      const g = c.getContext("2d");
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return [c, g];
+    }
+
+    // ---- Layout and the parts that never change, drawn once per size ----
+    function build() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = innerWidth;
+      h = innerHeight;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      const m = Math.min(w, h);
+      horizon = h * 0.62;
+      const r = Math.min(w * 0.36, h * 0.27);
+      sun = { x: w / 2, y: horizon - r * 0.28, r };
+
+      // Sky with a haze near the horizon and a big soft sun glow.
+      const [sky, gs] = makeCanvas(w, h);
+      const skyGrad = gs.createLinearGradient(0, 0, 0, horizon);
+      skyGrad.addColorStop(0, mix(colors.bg, "#000000", 0.45));
+      skyGrad.addColorStop(0.55, colors.bg);
+      skyGrad.addColorStop(1, mix(colors.bg, colors.accent, 0.45));
+      gs.fillStyle = skyGrad;
+      gs.fillRect(0, 0, w, horizon + 1);
+      const glow = gs.createRadialGradient(sun.x, sun.y, r * 0.6, sun.x, sun.y, r * 2.2);
+      glow.addColorStop(0, "rgba(255, 110, 90, 0.35)");
+      glow.addColorStop(1, "rgba(255, 60, 140, 0)");
+      gs.fillStyle = glow;
+      gs.fillRect(0, 0, w, horizon);
+
+      // The sun: yellow at the top, hot pink at the bottom.
+      const [sunC, gsun] = makeCanvas(w, h);
+      const sg = gsun.createLinearGradient(0, sun.y - r, 0, sun.y + r);
+      sg.addColorStop(0, "#fff36b");
+      sg.addColorStop(0.35, "#ffab3d");
+      sg.addColorStop(0.75, "#ff4f8b");
+      sg.addColorStop(1, colors.accent);
+      gsun.fillStyle = sg;
+      gsun.beginPath();
+      gsun.arc(sun.x, sun.y, r, 0, Math.PI * 2);
+      gsun.fill();
+
+      // Wireframe mountains on both sides of the sun, a far row and a near row.
+      const [mtn, gm] = makeCanvas(w, h);
+      drawMountains(gm, m, 11, 0.16, 0.55, mix(colors.bg, "#000000", 0.2), colors.accent, 0.55);
+      drawMountains(gm, m, 23, 0.1, 1, mix(colors.bg, "#000000", 0.5), colors.accent2, 0.85);
+
+      // Stars in the upper sky.
+      const rs = rand(5);
+      const count = Math.round(Math.min(160, (w * horizon) / 1800));
+      stars = Array.from({ length: count }, () => ({
+        x: rs() * w,
+        y: rs() * horizon * 0.85,
+        s: (rs() < 0.15 ? 1.6 : 1) * Math.max(0.8, m / 400),
+        speed: 1 + Math.floor(rs() * 4), // whole twinkles per loop, so it loops cleanly
+        phase: rs() * Math.PI * 2,
+      }));
+
+      layers = { sky, skyGrad, sunC, mtn };
+      head = buildHeadline(m);
+    }
+
+    function drawMountains(g, m, seed, height, spread, fill, line, alpha) {
+      const r = rand(seed);
+      const pts = [];
+      const step = m * 0.07;
+      const n = Math.ceil(w / step) + 2;
+      for (let i = 0; i <= n; i++) {
+        const x = i * step - step / 2;
+        // Low near the middle so the sun shows, higher towards the edges.
+        const edge = Math.min(1, Math.abs(x - w / 2) / (w * 0.5));
+        const lift = Math.pow(edge, 1.3) * spread + 0.08;
+        const peak = (i % 2 ? 0.55 + r() * 0.45 : 0.15 + r() * 0.3) * lift;
+        pts.push([x, horizon - peak * m * height * 3]);
+      }
+      g.beginPath();
+      g.moveTo(pts[0][0], horizon);
+      for (const [x, y] of pts) g.lineTo(x, y);
+      g.lineTo(pts[pts.length - 1][0], horizon);
+      g.closePath();
+      const fg = g.createLinearGradient(0, horizon - m * height * 2, 0, horizon);
+      fg.addColorStop(0, fill);
+      fg.addColorStop(1, mix(colors.bg, "#000000", 0.7));
+      g.fillStyle = fg;
+      g.fill();
+      // Triangle wireframe: ridge line plus struts down to the base.
+      g.lineWidth = Math.max(0.7, m / 700);
+      g.strokeStyle = line;
+      g.globalAlpha = alpha * 0.35;
+      g.beginPath();
+      pts.forEach(([x, y], i) => {
+        const bx = x + (i % 2 ? step / 2 : -step / 2);
+        g.moveTo(x, y);
+        g.lineTo(bx, horizon);
+        g.moveTo(x, y);
+        g.lineTo((x + bx) / 2, (y + horizon) / 2);
+      });
+      g.stroke();
+      g.globalAlpha = alpha;
+      g.beginPath();
+      pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+      g.stroke();
+      g.globalAlpha = 1;
+    }
+
+    // ---- The chrome headline, drawn once into its own canvas ----
+    function buildHeadline(m) {
+      ctx.font = FONT;
+      const widthOf = (s) => ctx.measureText(s).width / 100;
+      // One, two or three lines: keep whichever lets the words be biggest.
+      const options = [[words.join(" ")]];
+      for (let a = 1; a < words.length; a++) {
+        options.push([words.slice(0, a).join(" "), words.slice(a).join(" ")]);
+        for (let b = a + 1; b < words.length; b++) {
+          options.push([words.slice(0, a).join(" "), words.slice(a, b).join(" "), words.slice(b).join(" ")]);
+        }
+      }
+      const maxH = sun.y - sun.r * 0.35 - h * 0.06; // from near the top down to the upper sun
+      let best = null;
+      for (const lines of options) {
+        const ew = Math.max(...lines.map(widthOf)) * 1.12 + 0.3;
+        const size = Math.min((w * 0.86) / ew, maxH / (lines.length * 1.1), m * 0.17);
+        if (!best || size > best.size * 1.05) best = { lines, size };
+      }
+      const { lines, size } = best;
+      const lh = size * 1.1;
+      const pad = size * 0.5;
+      const bw = Math.max(...lines.map(widthOf)) * size * 1.12 + pad * 2;
+      const bh = lines.length * lh + pad * 2;
+      const [c, g] = makeCanvas(bw, bh);
+      g.font = FONT.replace("100px", `${size}px`);
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      const skew = -0.2; // lean forward like 80s chrome logos
+      const eachLine = (fn) => lines.forEach((line, i) => {
+        g.save();
+        g.translate(bw / 2, pad + lh * (i + 0.5));
+        g.transform(1, 0, skew, 1, 0, 0);
+        fn(line, i);
+        g.restore();
+      });
+      // Soft pink outer glow, then a deep extruded shadow.
+      const depth = Math.max(2, Math.round(size * 0.08));
+      eachLine((line) => {
+        g.shadowColor = colors.accent;
+        g.shadowBlur = size * 0.3;
+        g.globalAlpha = 0.6;
+        g.fillStyle = mix(colors.accent, "#000000", 0.4);
+        g.fillText(line, depth * 0.3, depth * 0.5);
+        g.shadowBlur = 0;
+        g.globalAlpha = 1;
+        g.fillStyle = mix(colors.accent, "#000000", 0.6);
+        for (let d = depth; d > 0; d--) g.fillText(line, d * 0.6, d);
+      });
+      // Chrome: bright sky on top, a dark horizon line through the middle, warm light below.
+      eachLine((line) => {
+        const cg = g.createLinearGradient(0, -size * 0.42, 0, size * 0.42);
+        cg.addColorStop(0, colors.ink);
+        cg.addColorStop(0.46, mix(colors.accent2, "#3a6bff", 0.35));
+        cg.addColorStop(0.5, mix(colors.bg, "#000000", 0.3));
+        cg.addColorStop(0.56, "#6a2c8a");
+        cg.addColorStop(0.8, "#ff9ad5");
+        cg.addColorStop(1, "#fff2e0");
+        g.fillStyle = cg;
+        g.fillText(line, 0, 0);
+        g.lineWidth = Math.max(1, size * 0.025);
+        g.strokeStyle = "rgba(255, 255, 255, 0.85)";
+        g.strokeText(line, 0, 0);
+      });
+      // Tinted copies for the VHS colour bleed.
+      const tint = (color) => {
+        const [tc, tg] = makeCanvas(bw, bh);
+        tg.setTransform(1, 0, 0, 1, 0, 0);
+        tg.drawImage(c, 0, 0);
+        tg.globalCompositeOperation = "source-in";
+        tg.fillStyle = color;
+        tg.fillRect(0, 0, tc.width, tc.height);
+        return tc;
+      };
+      // Sit the words just over the top of the sun, but never too close to the top edge.
+      const textH = lines.length * lh;
+      const y = Math.max(h * 0.06 + textH / 2, sun.y - sun.r * 0.7 - textH / 2);
+      return { c, red: tint("#ff2a55"), cyan: tint(colors.accent2), w: bw, h: bh, x: w / 2 - bw / 2, y: y - bh / 2, size };
+    }
+
+    // ---- One frame at time t (seconds) ----
+    function draw(t, calm) {
+      const m = Math.min(w, h);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(layers.sky, 0, 0);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // Stars twinkle a whole number of times per loop.
+      ctx.fillStyle = colors.ink;
+      for (const s of stars) {
+        ctx.globalAlpha = calm ? 0.7 : 0.35 + 0.65 * (0.5 + 0.5 * Math.sin((t / LOOP) * Math.PI * 2 * s.speed + s.phase));
+        ctx.fillRect(s.x, s.y, s.s, s.s);
+      }
+      ctx.globalAlpha = 1;
+
+      // Sun, with stripes that slide down and grow thicker towards the bottom.
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(layers.sunC, 0, 0);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(sun.x, sun.y, sun.r + 1, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.fillStyle = layers.skyGrad;
+      const bands = 8;
+      const drift = (t / LOOP) % 1;
+      for (let i = -1; i < bands; i++) {
+        const k = (i + drift) / bands; // 0 at the sun middle, 1 at the bottom
+        if (k < 0) continue;
+        const y = sun.y - sun.r * 0.4 + k * sun.r * 1.4;
+        const thick = sun.r * (0.012 + 0.1 * k);
+        ctx.fillRect(sun.x - sun.r - 1, y, sun.r * 2 + 2, thick);
+      }
+      ctx.restore();
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(layers.mtn, 0, 0);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      drawFloor(t, m);
+      drawHeadline(t, calm);
+      if (!calm) drawTracking(t, m);
+    }
+
+    function drawFloor(t, m) {
+      const floorH = h - horizon;
+      const fg = ctx.createLinearGradient(0, horizon, 0, h);
+      fg.addColorStop(0, mix(colors.bg, colors.accent, 0.2));
+      fg.addColorStop(0.3, mix(colors.bg, "#000000", 0.4));
+      fg.addColorStop(1, mix(colors.bg, "#000000", 0.75));
+      ctx.fillStyle = fg;
+      ctx.fillRect(0, horizon, w, floorH);
+
+      // Rows come towards us: depth z maps to y = horizon + floorH / z.
+      const phase = ((t / LOOP) * 20) % 1; // 20 rows pass per loop
+      const spacing = 0.35;
+      ctx.beginPath();
+      for (let k = 0; k < 60; k++) {
+        const z = 0.9 + (k + 1 - phase) * spacing;
+        const y = horizon + floorH / z;
+        if (y - horizon < 1.5) break;
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+      }
+      // Columns fan out from the vanishing point.
+      const gap = m * 0.16;
+      const reach = Math.ceil(w / 2 / (gap * 0.12));
+      for (let i = -reach; i <= reach; i++) {
+        ctx.moveTo(w / 2, horizon);
+        ctx.lineTo(w / 2 + i * gap * 1.6, h + floorH * 0.6);
+      }
+      const lw = Math.max(0.8, m / 420);
+      ctx.strokeStyle = colors.accent;
+      ctx.globalAlpha = 0.25;
+      ctx.lineWidth = lw * 3.5;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = lw;
+      ctx.strokeStyle = mix(colors.accent, "#ffffff", 0.35);
+      ctx.stroke();
+
+      // Haze over the far grid so it melts into the horizon.
+      const haze = ctx.createLinearGradient(0, horizon, 0, horizon + floorH * 0.45);
+      haze.addColorStop(0, mix(colors.bg, colors.accent, 0.35));
+      haze.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = haze;
+      ctx.fillRect(0, horizon, w, floorH * 0.45);
+      // A bright line where the floor meets the sky.
+      ctx.fillStyle = mix(colors.accent, "#ffffff", 0.5);
+      ctx.fillRect(0, horizon - lw / 2, w, lw);
+    }
+
+    function drawHeadline(t, calm) {
+      const { c, red, cyan, x, y, w: bw, h: bh, size } = head;
+      // Slight VHS colour bleed: red to the left, cyan to the right.
+      let bleed = size * 0.035;
+      let jitter = 0;
+      if (!calm) {
+        const band = trackingY(t);
+        if (band !== null && Math.abs(band - (y + bh / 2)) < bh * 0.7) {
+          jitter = size * 0.05 * Math.sin(t * 90);
+          bleed *= 2;
+        }
+      }
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = 0.45;
+      ctx.drawImage(red, x - bleed + jitter, y, bw, bh);
+      ctx.drawImage(cyan, x + bleed + jitter, y, bw, bh);
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = 1;
+      ctx.drawImage(c, x + jitter, y, bw, bh);
+    }
+
+    // A tape tracking band rolls down the frame once per loop.
+    function trackingY(t) {
+      const start = 6.2, length = 1.6;
+      if (t < start || t > start + length) return null;
+      return ((t - start) / length) * (h * 1.2) - h * 0.1;
+    }
+
+    function drawTracking(t, m) {
+      const y = trackingY(t);
+      if (y === null) return;
+      const bandH = Math.max(6, m * 0.05);
+      const r = rand(Math.floor(t * 30) + 1);
+      ctx.globalAlpha = 0.12;
+      ctx.fillStyle = colors.ink;
+      ctx.fillRect(0, y, w, bandH);
+      ctx.globalAlpha = 0.35;
+      for (let i = 0; i < 14; i++) {
+        ctx.fillRect(r() * w, y + r() * bandH, r() * w * 0.25, 1);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // ---- Run ----
+    let frame = 0, start = 0;
+    function loop(now) {
+      if (!start) start = now;
+      draw(((now - start) / 1000) % LOOP, false);
+      frame = requestAnimationFrame(loop);
+    }
+
+    // Reduced motion: one still frame, no tape wobble.
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    function apply() {
+      cancelAnimationFrame(frame);
+      frame = 0;
+      if (reduce.matches) draw(2, true);
+      else {
+        start = 0;
+        frame = requestAnimationFrame(loop);
+      }
+    }
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        build();
+        if (reduce.matches) draw(2, true);
+      }, 100);
+    });
+    reduce.addEventListener("change", apply);
+
+    // Wait briefly for the font so the headline is drawn in the right face.
+    Promise.race([
+      document.fonts.load(FONT),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(() => {
+      build();
+      apply();
+    });
+  </script>
+</body>
+</html>

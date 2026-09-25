@@ -1,0 +1,17 @@
+Make my video in this style: Paper cut-out.
+
+Look and motion
+- A handmade scene built from layers of cut paper, like a craft table animation. Every piece has visible paper grain and a soft shadow under it, so the layers feel stacked.
+- Build a simple scene that fits my topic from flat paper shapes (for example hills, a sun, clouds, leaves, a house or a few props). Keep the shapes chunky and friendly.
+- Pieces slide, pop and flip into place one after another, with a little bounce when they land.
+- Make it feel like stop motion: move things at about 12 frames per second, and give each piece a tiny random wobble on every frame, as if it was nudged by hand.
+- Put my headline on a paper label that drops in, flips over and gets stuck down with a strip of tape. At the end, pieces slide back out and the scene clears.
+
+Type and colour
+- A rounded, friendly bold font (like Fredoka), dark on a light paper label.
+- Use my brand colours if I give them. Otherwise use a warm cream background #f7e4c6, sunny orange #f6a534, coral #ec6b4f, greens #c3d88f, #86b86b and #3f8f63, and dark brown text #3a2b24.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with SVG and JavaScript) and render it to MP4 frame by frame so the timing is exact. Give me the final MP4.

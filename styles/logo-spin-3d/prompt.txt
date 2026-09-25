@@ -1,20 +1,16 @@
-Make me a single HTML file with a shiny 3D logo that spins and floats. I will screen-record it and use it as an intro or outro for a short video.
+Make my video in this style: 3D logo spin.
 
-Size and timing
-- Aspect ratio: {ratio}. Put the animation on a stage with exactly this shape, centred and scaled to fit the browser window.
-- One loop lasts about {duration}. It must loop smoothly with no jump.
+Look and motion
+- A shiny 3D logo in the centre. If I attach my logo, turn it into a 3D badge with real depth. If not, make a rounded square badge with softly bevelled edges and the first letter of my brand name pressed into its face.
+- It looks like polished, slightly metallic plastic, with a bright key light from the front, a coloured rim light from behind and a soft fill light.
+- It does one full turn with a smooth ease in and out, pauses to float and gently tilt, then spins again.
+- My brand name or message sits still under the logo, so it stays easy to read.
 
-The logo
-- Build a simple logo in 3D: a rounded square badge with a bold capital letter cut out of the middle (the first letter of the text below), given real depth and softly bevelled edges. Build the letter from straight lines and curves so no font file is needed. (If I add a description of my own logo at the end of this message, build that shape instead.)
-- Make it look like polished, slightly metallic plastic, lit by a bright key light from the front, a coloured rim light from behind, and a soft fill light.
-- Motion: one full turn with smooth ease-in and ease-out, then a short pause where it floats and gently tilts, then spin again.
+Type and colour
+- A bold, clean sans serif font in capitals with wide letter spacing.
+- Use my brand colours if I give them: the logo in the main brand colour, over a soft radial glow of a darker background colour. Otherwise use a warm gold #ffb547 logo, a cool blue #6bd5ff rim light and a deep indigo #120e2b background.
 
-Look and feel
-- Colours: {colors}. Use the accent colour for the logo, and a soft radial gradient of the background colour behind it.
-- Show the text "{text}" under the logo, in a bold, clean font with wide letter spacing. Keep the text flat and still.
-
-Technical
-- Use {library} loaded from a CDN with an exact version number (no "latest"). Use only the core library so nothing else needs to load.
-- Fit the logo to the screen on both tall and wide windows, and handle resizing and high-resolution screens.
-- Keep everything in one file. No buttons, controls or orbit dragging, so the recording is clean.
-- If the viewer has "reduce motion" turned on in their system settings, show one still frame of the logo at a slight angle instead of animating.
+Output
+- Size: {size}
+- Length: about {duration}, so it works as an intro or outro
+- Build it as a 3D scene in HTML (for example with Three.js) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

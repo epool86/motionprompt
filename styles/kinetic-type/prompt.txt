@@ -1,18 +1,16 @@
-Make me a single HTML file that plays a kinetic typography animation. I will screen-record it and post it as a short video.
+Make my video in this style: Kinetic typography.
 
-Size and timing
-- Aspect ratio: {ratio}. Put the animation on a stage with exactly this shape, centred and scaled to fit the browser window. Fill the space around it with the same background colour.
-- Length: about {duration}, then loop back to the start with no visible jump.
+Look and motion
+- Break my message into short, punchy phrases of one to three words. Each phrase punches onto the screen on a steady beat (about 130 bpm): it starts big and slightly rotated, then snaps into place.
+- Vary the entrances: some letters spin in one by one, some drop from above, some slide in from the side.
+- On some beats, hard cut the background to another colour from the palette, like a music video. Keep the text easy to read on every background.
+- End on the key line stacked in the centre, hold it for about a second, then clear the screen with a quick colour wipe.
 
-Look and feel
-- Colours: {colors}.
-- The words: "{text}". Show them one or two words at a time, each one punching in on a steady beat (about 130 beats per minute). Words start big and slightly rotated, then snap into place.
-- On some beats, cut the background to a different colour from the palette, like a music video.
-- Let a few letters move on their own: spin in, drop from above, or slide in from the side.
-- End on the full line stacked in the centre. Hold it for about a second, then clear the screen with a quick colour wipe so the loop restarts cleanly.
-- Use a heavy, condensed font (for example Anton from a CDN), all capitals, very large.
+Type and colour
+- A heavy, condensed font (like Anton), all capitals, filling most of the frame.
+- Use my brand colours if I give them. Otherwise use deep navy #10131f, warm white #f6f3ea, coral #ff5a4e and sunny yellow #ffd23f.
 
-Technical
-- Use {library} for the animation, loaded from a CDN with an exact version number (no "latest").
-- Keep everything in one file. No buttons, menus or extra text, so the recording is clean.
-- If the viewer has "reduce motion" turned on in their system settings, show the final stacked line as a still frame instead of animating.
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

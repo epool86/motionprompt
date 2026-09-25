@@ -1,0 +1,17 @@
+Make my video in this style: Liquid gradient.
+
+Look and motion
+- A full screen of soft colour blobs that slowly drift, stretch and melt into each other, like a mesh gradient on a product launch page.
+- The movement is calm and continuous, with no sharp edges and nothing that pulls focus from the words.
+- Add a fine film grain over everything and a gentle darkening at the corners, so it feels rich, not flat.
+- Show my message as one big, clean headline in the centre. It fades in from a soft blur, holds for a few seconds, then blurs away and gives way to the next line. Keep it to two or three short lines in total.
+- Leave plenty of space around the text so it stays easy to read.
+
+Type and colour
+- A clean modern sans serif font (like Inter Tight), semibold, with tight letter spacing and sentence case.
+- Use my brand colours if I give them: the darkest for the base, the others for the blobs, and a light one for the text. Otherwise use a deep indigo base #120d33, violet #6c4bff, pink #ff5fa2, apricot #ff9a62 and sky blue #3fc8ff blobs, and warm white #fff8f0 text.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with a small WebGL shader) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

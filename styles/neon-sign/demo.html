@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Neon sign demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/yellowtail@5.3.0/index.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=2a1512&ink=fff4f8&accent=ff4f9a&accent2=ffb13b */
+    :root {
+      --bg: #2a1512;
+      --ink: #fff4f8;
+      --accent: #ff4f9a;
+      --accent2: #ffb13b;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #0d0707;
+    }
+
+    .stage {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    #wall {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Light from the tubes spilling onto the bricks */
+    .spill {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      mix-blend-mode: screen;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* Dark edges, like a wall lit only by the sign */
+    .vignette {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 35%, rgba(5, 2, 2, 0.8) 100%);
+      pointer-events: none;
+    }
+
+    .sign {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transform: translate(-50%, -50%) rotate(-4deg);
+      font-family: "Yellowtail", "Brush Script MT", cursive;
+      line-height: 1.12;
+      white-space: nowrap;
+    }
+
+    .icon {
+      position: relative;
+      width: 0.95em;
+      height: 0.95em;
+      margin-bottom: 0.08em;
+    }
+
+    .icon svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      fill: none;
+      stroke-width: 5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* Unlit glass tube, with a small shadow on the wall */
+    .icon .off {
+      stroke: color-mix(in srgb, var(--accent2) 30%, #3a2a2a);
+      filter: drop-shadow(0.02em 0.03em 0.02em rgba(0, 0, 0, 0.6));
+    }
+
+    .icon .on {
+      stroke: color-mix(in srgb, var(--accent2) 45%, white);
+      filter:
+        drop-shadow(0 0 0.02em var(--accent2))
+        drop-shadow(0 0 0.06em var(--accent2))
+        drop-shadow(0 0 0.16em var(--accent2));
+      opacity: 0;
+    }
+
+    .line { padding: 0 0.12em; }
+
+    .ch {
+      position: relative;
+      display: inline-block;
+    }
+
+    .ch .tube {
+      color: color-mix(in srgb, var(--accent) 28%, #3b2b2e);
+      text-shadow: 0.03em 0.05em 0.03em rgba(0, 0, 0, 0.55);
+    }
+
+    .ch .lit {
+      position: absolute;
+      left: 0;
+      top: 0;
+      color: var(--ink);
+      text-shadow:
+        0 0 0.02em var(--ink),
+        0 0 0.05em var(--accent),
+        0 0 0.1em var(--accent),
+        0 0 0.22em var(--accent),
+        0 0 0.45em color-mix(in srgb, var(--accent) 60%, transparent);
+      opacity: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage" role="img">
+    <canvas id="wall"></canvas>
+    <canvas class="spill" id="spillText"></canvas>
+    <canvas class="spill" id="spillIcon"></canvas>
+    <div class="vignette"></div>
+    <div class="sign" id="sign">
+      <div class="icon" id="icon">
+        <!-- A coffee cup with steam, drawn as one neon tube -->
+        <svg class="off" viewBox="0 0 100 100" aria-hidden="true"><use href="#cup"></use></svg>
+        <svg class="on" id="iconOn" viewBox="0 0 100 100" aria-hidden="true"><use href="#cup"></use></svg>
+      </div>
+    </div>
+  </div>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="cup" viewBox="0 0 100 100">
+      <path d="M20 46 H72 V62 C72 78 62 88 46 88 C30 88 20 78 20 62 Z" />
+      <path d="M72 52 C86 50 88 68 72 72" />
+      <path d="M36 36 C30 28 42 22 36 12 M50 36 C44 28 56 22 50 12 M64 36 C58 28 70 22 64 12" />
+    </symbol>
+  </svg>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const root = document.documentElement;
+    for (const key of ["bg", "ink", "accent", "accent2"]) {
+      const value = params.get(key);
+      if (/^[0-9a-f]{6}$/i.test(value ?? "")) root.style.setProperty(`--${key}`, `#${value}`);
+    }
+    const text = (params.get("text") || "Open late").trim().slice(0, 40);
+    const words = text.split(/\s+/).filter(Boolean);
+
+    const stage = document.getElementById("stage");
+    const sign = document.getElementById("sign");
+    const iconOn = document.getElementById("iconOn");
+    const spillText = document.getElementById("spillText");
+    const spillIcon = document.getElementById("spillIcon");
+    stage.setAttribute("aria-label", `A neon sign on a brick wall that reads: ${text}`);
+
+    const LOOP = 10; // seconds
+
+    // Small seeded random numbers, so every loop flickers the same way.
+    function rand(seed) {
+      let s = seed * 9301 + 49297;
+      return () => ((s = (s * 9301 + 49297) % 233280) / 233280);
+    }
+
+    // ---- Brick wall, drawn once per size ----
+    const wall = document.getElementById("wall");
+    function drawWall(w, h) {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      wall.width = Math.round(w * dpr);
+      wall.height = Math.round(h * dpr);
+      const g = wall.getContext("2d");
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const base = getComputedStyle(root).getPropertyValue("--bg").trim();
+      g.fillStyle = "#120a09"; // mortar
+      g.fillRect(0, 0, w, h);
+      const bh = Math.max(7, Math.min(w, h) / 13);
+      const bw = bh * 2.6;
+      const gap = Math.max(1, bh * 0.11);
+      const r = rand(7);
+      for (let row = 0, y = -bh * 0.3; y < h; row++, y += bh) {
+        const shift = row % 2 ? -bw / 2 : 0;
+        for (let x = shift - bw * r(); x < w; x += bw) {
+          // Each brick gets a slightly different shade of the wall colour.
+          const shade = 0.7 + r() * 0.45;
+          g.fillStyle = base;
+          g.globalAlpha = 1;
+          g.fillRect(x + gap / 2, y + gap / 2, bw - gap, bh - gap);
+          g.fillStyle = shade > 1 ? "#ffffff" : "#000000";
+          g.globalAlpha = Math.abs(1 - shade) * 0.5;
+          g.fillRect(x + gap / 2, y + gap / 2, bw - gap, bh - gap);
+          // Worn speckles and a soft top edge catch a little light.
+          g.globalAlpha = 0.08;
+          g.fillStyle = "#ffffff";
+          g.fillRect(x + gap / 2, y + gap / 2, bw - gap, Math.max(1, gap * 0.6));
+          g.fillStyle = "#000000";
+          for (let i = 0; i < 6; i++) {
+            const s = 0.6 + r() * bh * 0.08;
+            g.globalAlpha = 0.15 + r() * 0.2;
+            g.fillRect(x + gap + r() * (bw - gap * 3), y + gap + r() * (bh - gap * 3), s * 2, s);
+          }
+        }
+      }
+      g.globalAlpha = 1;
+    }
+
+    // ---- Sign text: one span per letter, with a dark tube and a lit copy on top ----
+    const letters = [];
+    let lineEls = [];
+    function buildLines(lines) {
+      lineEls.forEach((el) => el.remove());
+      letters.length = 0;
+      lineEls = lines.map((line) => {
+        const el = document.createElement("div");
+        el.className = "line";
+        for (const ch of line) {
+          const span = document.createElement("span");
+          span.className = "ch";
+          const tube = document.createElement("span");
+          tube.className = "tube";
+          tube.textContent = ch === " " ? " " : ch;
+          span.append(tube);
+          if (ch !== " ") {
+            const lit = document.createElement("span");
+            lit.className = "lit";
+            lit.textContent = ch;
+            span.append(lit);
+            letters.push(lit);
+          }
+          el.append(span);
+        }
+        sign.append(el);
+        return el;
+      });
+      makeTimings();
+    }
+
+    // Try one, two or three lines and keep whichever lets the sign be biggest.
+    const probe = document.createElement("span");
+    probe.style.cssText = "position:absolute;visibility:hidden;white-space:nowrap;font:100px Yellowtail, cursive";
+    document.body.append(probe);
+    const widthOf = (s) => ((probe.textContent = s), probe.getBoundingClientRect().width / 100 + 0.24);
+
+    function layouts() {
+      const out = [[words.join(" ")]];
+      for (let a = 1; a < words.length; a++) {
+        out.push([words.slice(0, a).join(" "), words.slice(a).join(" ")]);
+        for (let b = a + 1; b < words.length; b++) {
+          out.push([words.slice(0, a).join(" "), words.slice(a, b).join(" "), words.slice(b).join(" ")]);
+        }
+      }
+      return out;
+    }
+
+    let current = "";
+    function fit() {
+      const w = innerWidth, h = innerHeight;
+      drawWall(w, h);
+      let best = null;
+      for (const lines of layouts()) {
+        const ew = Math.max(0.95, ...lines.map(widthOf));
+        const eh = 0.95 + 0.08 + lines.length * 1.12;
+        // The sign is tilted a little, so leave room at the corners.
+        const size = Math.min((w * 0.8) / ew, (h * 0.78) / eh);
+        if (!best || size > best.size * 1.04) best = { lines, size, eh };
+      }
+      const key = best.lines.join("|");
+      if (key !== current) {
+        current = key;
+        buildLines(best.lines);
+      }
+      sign.style.fontSize = `${best.size}px`;
+      // Aim each light spill at its tube.
+      const top = h / 2 - (best.eh * best.size) / 2;
+      const tw = Math.max(...best.lines.map(widthOf)) * best.size;
+      const css = getComputedStyle(root);
+      drawSpill(spillText, w, h, top + best.size * (1.03 + best.lines.length * 0.56),
+        tw * 0.75, best.size * (0.6 + best.lines.length * 0.7), css.getPropertyValue("--accent").trim(), [0.6, 0.22]);
+      drawSpill(spillIcon, w, h, top + best.size * 0.5, best.size * 1.1, best.size * 1.1,
+        css.getPropertyValue("--accent2").trim(), [0.5, 0.15]);
+    }
+
+    // A soft oval of coloured light, drawn at low resolution (it is blurry anyway).
+    function drawSpill(canvas, w, h, cy, rx, ry, color, [a0, a1]) {
+      const k = 0.25;
+      canvas.width = Math.max(1, Math.round(w * k));
+      canvas.height = Math.max(1, Math.round(h * k));
+      const g = canvas.getContext("2d");
+      g.setTransform(k, 0, 0, k * (ry / rx), 0, 0);
+      const y = cy * (rx / ry);
+      // Paint the fade as alpha first, then tint it: strong in the middle, gone at the edge.
+      const fade = g.createRadialGradient(w / 2, y, 0, w / 2, y, rx);
+      fade.addColorStop(0, `rgba(0,0,0,${a0})`);
+      fade.addColorStop(0.5, `rgba(0,0,0,${a1})`);
+      fade.addColorStop(1, "rgba(0,0,0,0)");
+      g.fillStyle = fade;
+      g.fillRect(0, 0, w, h * (rx / ry));
+      g.globalCompositeOperation = "source-in";
+      g.fillStyle = color;
+      g.fillRect(0, 0, w, h * (rx / ry));
+    }
+
+    // ---- Flicker timings ----
+    // Each tube gets a short stutter: a list of [time, level] steps. Levels hold until the next step.
+    let timings = [];
+    let iconSteps = [];
+    function stutter(start, seed, kick = 1) {
+      const r = rand(seed);
+      const steps = [[0, 0], [start, 0.55 + r() * 0.3]];
+      let t = start + 0.06 + r() * 0.05;
+      const blinks = 2 + Math.floor(r() * 2);
+      for (let i = 0; i < blinks; i++) {
+        steps.push([t, 0.08 * kick]);
+        t += 0.07 + r() * 0.1;
+        steps.push([t, 0.5 + r() * 0.4]);
+        t += 0.08 + r() * 0.12;
+      }
+      steps.push([t, 1]);
+      return steps;
+    }
+
+    function makeTimings() {
+      const n = letters.length;
+      const span = Math.min(2.6, 0.28 * n); // the whole word lights up in under 3 seconds
+      timings = letters.map((_, i) => stutter(0.5 + (i / Math.max(1, n - 1)) * span, i * 13 + 5));
+      // One tube briefly drops out mid loop.
+      const weak = timings[Math.max(0, n - 2)];
+      weak.push([6.6, 0.1], [6.68, 0.9], [6.76, 0.15], [6.95, 1]);
+      iconSteps = stutter(0.7 + span + 0.4, 99, 0);
+      iconSteps.push([8.1, 0.35], [8.2, 1]);
+    }
+
+    function levelAt(steps, t) {
+      let v = 0;
+      for (const [at, level] of steps) {
+        if (t >= at) v = level;
+        else break;
+      }
+      // Soft fade out at the end of the loop, so it starts again from dark.
+      if (t > 9.2) v *= Math.max(0, 1 - (t - 9.2) / 0.35);
+      return v;
+    }
+
+    // ---- Render ----
+    let frame = 0, start = 0, glowText = 0, glowIcon = 0, last = 0;
+    const shown = new Map();
+    function set(el, value) {
+      const v = Math.round(value * 100) / 100;
+      if (shown.get(el) !== v) {
+        shown.set(el, v);
+        el.style.opacity = v;
+      }
+    }
+
+    function render(t, dt) {
+      let sum = 0;
+      letters.forEach((el, i) => {
+        // A faint steady hum once the tube is lit.
+        const hum = 0.96 + 0.04 * Math.sin(t * 2 * Math.PI * 1.1 + i);
+        const v = levelAt(timings[i], t) * hum;
+        sum += v;
+        set(el, v);
+      });
+      const vi = levelAt(iconSteps, t);
+      set(iconOn, vi);
+      // The wall light follows the tubes slowly, so it never flashes.
+      const ease = dt ? 1 - Math.exp(-dt / 0.3) : 1;
+      glowText += (sum / Math.max(1, letters.length) - glowText) * ease;
+      glowIcon += (vi - glowIcon) * ease;
+      set(spillText, glowText * 0.85);
+      set(spillIcon, glowIcon * 0.7);
+    }
+
+    function loop(now) {
+      if (!start) start = now;
+      const t = ((now - start) / 1000) % LOOP;
+      render(t, last ? Math.min(0.1, (now - last) / 1000) : 0);
+      last = now;
+      frame = requestAnimationFrame(loop);
+    }
+
+    // Reduced motion: every tube fully lit, no flicker, no hum.
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    function still() {
+      cancelAnimationFrame(frame);
+      frame = 0;
+      letters.forEach((el) => set(el, 1));
+      set(iconOn, 1);
+      set(spillText, 0.85);
+      set(spillIcon, 0.7);
+    }
+    function apply() {
+      if (reduce.matches) still();
+      else if (!frame) {
+        start = 0;
+        last = 0;
+        frame = requestAnimationFrame(loop);
+      }
+    }
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        fit();
+        if (reduce.matches) still();
+      }, 100);
+    });
+    reduce.addEventListener("change", apply);
+
+    // Wait briefly for the font so the letters are measured in the right face.
+    Promise.race([
+      document.fonts.load("100px Yellowtail"),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(() => {
+      fit();
+      apply();
+    });
+  </script>
+</body>
+</html>

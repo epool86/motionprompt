@@ -1,0 +1,740 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Photo slideshow demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/playfair-display@5.3.0/700.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/inter@5.3.0/600.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=10141c&ink=fbf7ef&accent=f2c14e&accent2=10141c
+       Several captions can be given with a bar: ?text=First|Second|Third|Fourth */
+    :root {
+      --bg: #10141c;
+      --ink: #fbf7ef;
+      --accent: #f2c14e;
+      --accent2: #10141c;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    .stage {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--ink);
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      visibility: hidden;
+    }
+    .slide:first-child { visibility: visible; }
+    /* The last photo is revealed by three panels rising one after another */
+    .slide.split {
+      --a: 100%;
+      --b: 100%;
+      --c: 100%;
+      clip-path: polygon(0% 100%, 0% var(--a), 33.34% var(--a), 33.34% var(--b), 66.67% var(--b), 66.67% var(--c), 100% var(--c), 100% 100%);
+    }
+
+    /* The photo is a square that covers the frame; Ken Burns moves this layer */
+    .photo {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+    }
+    .photo canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Darken the bottom so captions stay readable */
+    .scrim {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(to top, rgb(0 0 0 / 0.62), rgb(0 0 0 / 0.18) 38%, transparent 60%),
+        linear-gradient(to bottom, rgb(0 0 0 / 0.28), transparent 18%);
+      pointer-events: none;
+    }
+    .grain {
+      position: absolute;
+      inset: 0;
+      opacity: 0.07;
+      mix-blend-mode: overlay;
+      pointer-events: none;
+    }
+
+    .caption {
+      position: absolute;
+      left: var(--pad);
+      right: var(--pad);
+      bottom: calc(var(--pad) * 1.15);
+    }
+    .kicker {
+      display: flex;
+      align-items: center;
+      gap: 0.9em;
+      font: 600 var(--small) / 1 "Inter", system-ui, sans-serif;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      margin-bottom: 0.9em;
+    }
+    .kicker .rule {
+      width: 2.6em;
+      height: 2px;
+      background: var(--accent);
+      transform-origin: 0 50%;
+    }
+    .kicker span { display: inline-block; }
+    .title {
+      margin: 0;
+      font: 700 var(--big) / 1.02 "Playfair Display", Georgia, serif;
+      letter-spacing: -0.01em;
+      text-shadow: 0 2px 24px rgb(0 0 0 / 0.25);
+      overflow-wrap: anywhere;
+    }
+    /* Each word slides up inside its own mask */
+    .mask {
+      display: inline-block;
+      overflow: hidden;
+      vertical-align: top;
+      padding: 0.02em 0.04em 0.16em;
+      margin: -0.02em -0.04em -0.16em;
+    }
+    .mask > span { display: inline-block; }
+
+    .progress {
+      position: absolute;
+      left: var(--pad);
+      right: var(--pad);
+      top: calc(var(--pad) * 0.8);
+      display: flex;
+      gap: 6px;
+    }
+    .progress span {
+      flex: 1;
+      height: 3px;
+      border-radius: 3px;
+      background: rgb(255 255 255 / 0.3);
+      overflow: hidden;
+    }
+    .progress i {
+      display: block;
+      height: 100%;
+      background: var(--ink);
+      transform: scaleX(0);
+      transform-origin: 0 50%;
+    }
+
+    /* Colour panel that sweeps across between the last and first photo */
+    .curtain {
+      position: absolute;
+      inset: -2px -10%;
+      background: var(--accent2);
+      border-left: calc(var(--pad) * 0.35) solid var(--accent);
+      border-right: calc(var(--pad) * 0.35) solid var(--accent);
+      visibility: hidden;
+    }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage" role="img">
+    <div id="slides"></div>
+    <div class="scrim"></div>
+    <div class="grain" id="grain"></div>
+    <div id="captions"></div>
+    <div class="curtain" id="curtain"></div>
+    <div class="progress" id="progress"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const root = document.documentElement;
+    for (const key of ["bg", "ink", "accent", "accent2"]) {
+      const value = params.get(key);
+      if (/^[0-9a-f]{6}$/i.test(value ?? "")) root.style.setProperty(`--${key}`, `#${value}`);
+    }
+    const captions = ["Coastal retreat", "Golden hour", "City nights", "Stay a while"];
+    (params.get("text") || "").split("|").map((s) => s.trim().slice(0, 40)).forEach((s, i) => {
+      if (s && i < captions.length) captions[i] = s;
+    });
+    const $ = (id) => document.getElementById(id);
+    const stage = $("stage");
+    stage.setAttribute("aria-label", `A slideshow of four photos with captions: ${captions.join(", ")}`);
+
+    // Seeded random numbers, so every photo looks the same on each load.
+    function rng(seed) {
+      return () => {
+        seed = (seed + 0x6d2b79f5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    // Helpers. Scenes are drawn in units: the photo is 1 by 1.
+    function grad(g, y0, y1, stops) {
+      const lg = g.createLinearGradient(0, y0, 0, y1);
+      stops.forEach(([at, c]) => lg.addColorStop(at, c));
+      return lg;
+    }
+    function glow(g, x, y, r, stops) {
+      const rg = g.createRadialGradient(x, y, 0, x, y, r);
+      stops.forEach(([at, c]) => rg.addColorStop(at, c));
+      g.fillStyle = rg;
+      g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    function blurred(g, S, px, draw) {
+      g.save();
+      g.filter = `blur(${px * S}px)`;
+      draw();
+      g.restore();
+    }
+    // A hill line made from a few sine waves.
+    function ridge(rand, base, amp, bumps) {
+      const waves = [...Array(4)].map((_, k) => ({ f: (bumps * (k + 1) * (0.7 + rand() * 0.6)) * Math.PI * 2, p: rand() * 7, a: amp / (k + 1.3) }));
+      return (x) => base - waves.reduce((sum, w) => sum + Math.sin(x * w.f + w.p) * w.a, 0);
+    }
+    function fillRidge(g, fn, fill) {
+      g.beginPath();
+      g.moveTo(-0.01, 1.01);
+      for (let x = -0.01; x <= 1.01; x += 0.004) g.lineTo(x, fn(x));
+      g.lineTo(1.01, 1.01);
+      g.closePath();
+      g.fillStyle = fill;
+      g.fill();
+    }
+
+    // Photo 1: a beach with turquoise water.
+    function beach(g, S, rand) {
+      const H = 0.47;
+      g.fillStyle = grad(g, 0, H, [[0, "#3f8fd6"], [0.55, "#86c2ec"], [1, "#dcf0fa"]]);
+      g.fillRect(0, 0, 1, H + 0.01);
+      glow(g, 0.78, 0.12, 0.35, [[0, "rgb(255 255 245 / 0.9)"], [0.15, "rgb(255 255 240 / 0.4)"], [1, "rgb(255 255 255 / 0)"]]);
+      blurred(g, S, 0.012, () => {
+        g.fillStyle = "rgb(255 255 255 / 0.85)";
+        for (let i = 0; i < 14; i++) {
+          const x = rand(), y = 0.18 + rand() * 0.22, w = 0.06 + rand() * 0.12;
+          g.beginPath();
+          g.ellipse(x, y, w, w * 0.22, 0, 0, Math.PI * 2);
+          g.fill();
+        }
+      });
+      // Headland on the right, hazy with distance
+      fillRidge(g, (x) => (x < 0.6 ? 1 : H - Math.pow((x - 0.6) / 0.4, 0.6) * 0.07 + Math.sin(x * 60) * 0.003), "#6f9aa3");
+      fillRidge(g, (x) => (x < 0.74 ? 1 : H - Math.pow((x - 0.74) / 0.26, 0.7) * 0.045), "#4d7d7c");
+      // Sea
+      g.fillStyle = grad(g, H, 0.7, [[0, "#1b5f93"], [0.45, "#1f8fb0"], [0.85, "#35c5c4"], [1, "#7fe0d2"]]);
+      g.fillRect(0, H, 1, 0.26);
+      g.lineCap = "round";
+      for (let i = 0; i < 900; i++) {
+        const t = Math.pow(rand(), 1.8), y = H + 0.004 + t * 0.21, w = 0.004 + t * 0.03;
+        g.strokeStyle = `rgb(255 255 255 / ${0.08 + rand() * 0.22})`;
+        g.lineWidth = 0.0008 + t * 0.002;
+        const x = rand();
+        g.beginPath();
+        g.moveTo(x, y);
+        g.lineTo(x + w, y);
+        g.stroke();
+      }
+      // Wet sand and foam lines
+      const shore = (x) => 0.69 + Math.sin(x * 9 + 1) * 0.012 + Math.sin(x * 23) * 0.004;
+      fillRidge(g, (x) => shore(x) + 0.03, grad(g, 0.68, 1, [[0, "#d8c7a4"], [0.4, "#e8d6b2"], [1, "#d6ba8c"]]));
+      fillRidge(g, (x) => shore(x) + 0.028, "rgb(160 200 200 / 0.35)");
+      blurred(g, S, 0.002, () => {
+        for (let k = 0; k < 3; k++) {
+          g.strokeStyle = `rgb(255 255 255 / ${0.9 - k * 0.25})`;
+          g.lineWidth = 0.006 - k * 0.0015;
+          g.beginPath();
+          for (let x = -0.01; x <= 1.01; x += 0.005) g.lineTo(x, shore(x) - k * 0.018 + Math.sin(x * 40 + k) * 0.003);
+          g.stroke();
+        }
+      });
+      // Sand texture
+      for (let i = 0; i < 2500; i++) {
+        g.fillStyle = rand() > 0.5 ? "rgb(120 90 50 / 0.12)" : "rgb(255 255 255 / 0.18)";
+        g.fillRect(rand(), 0.72 + rand() * 0.28, 0.0015, 0.0015);
+      }
+      // A palm tree leaning in from the left
+      g.strokeStyle = "#3b2b1f";
+      g.lineCap = "round";
+      g.lineWidth = 0.016;
+      g.beginPath();
+      g.moveTo(0.16, 1.02);
+      g.quadraticCurveTo(0.2, 0.55, 0.33, 0.25);
+      g.stroke();
+      g.fillStyle = "#1f3b24";
+      for (let i = 0; i < 9; i++) {
+        const a = -Math.PI * 0.95 + (i / 8) * Math.PI * 1.25, len = 0.13 + rand() * 0.05;
+        g.save();
+        g.translate(0.33, 0.25);
+        g.rotate(a);
+        g.beginPath();
+        g.moveTo(0, 0);
+        g.quadraticCurveTo(len * 0.5, -0.035, len, 0.03);
+        g.quadraticCurveTo(len * 0.5, 0.01, 0, 0);
+        g.fill();
+        g.restore();
+      }
+    }
+
+    // Photo 2: sunset over rolling hills.
+    function hills(g, S, rand) {
+      g.fillStyle = grad(g, 0, 0.62, [[0, "#232554"], [0.35, "#6b4478"], [0.7, "#e0715b"], [1, "#ffcf7a"]]);
+      g.fillRect(0, 0, 1, 0.63);
+      glow(g, 0.55, 0.56, 0.55, [[0, "rgb(255 230 170 / 0.95)"], [0.12, "rgb(255 190 120 / 0.55)"], [0.5, "rgb(255 140 100 / 0.12)"], [1, "rgb(255 120 90 / 0)"]]);
+      g.fillStyle = "#fff6d8";
+      g.beginPath();
+      g.arc(0.55, 0.55, 0.045, 0, Math.PI * 2);
+      g.fill();
+      blurred(g, S, 0.004, () => {
+        for (let i = 0; i < 9; i++) {
+          const y = 0.18 + rand() * 0.3;
+          g.fillStyle = `rgb(255 ${150 + rand() * 60} 130 / ${0.25 + rand() * 0.3})`;
+          g.beginPath();
+          g.ellipse(rand(), y, 0.12 + rand() * 0.18, 0.006 + rand() * 0.008, 0, 0, Math.PI * 2);
+          g.fill();
+        }
+      });
+      const layers = [
+        [0.6, 0.02, "#c9727d"], [0.65, 0.03, "#9a566f"], [0.72, 0.04, "#6c3f5e"],
+        [0.8, 0.05, "#45294a"], [0.9, 0.05, "#26172d"],
+      ];
+      layers.forEach(([base, amp, color], i) => {
+        const fn = ridge(rand, base, amp, 1 + i * 0.4);
+        fillRidge(g, fn, color);
+        if (i === 3) {
+          // A lone tree on the middle ridge
+          const x = 0.64, y = fn(x);
+          g.fillStyle = color;
+          g.fillRect(x - 0.003, y - 0.05, 0.006, 0.052);
+          g.beginPath();
+          g.ellipse(x, y - 0.065, 0.028, 0.032, 0, 0, Math.PI * 2);
+          g.ellipse(x - 0.022, y - 0.05, 0.02, 0.022, 0, 0, Math.PI * 2);
+          g.ellipse(x + 0.022, y - 0.052, 0.02, 0.022, 0, 0, Math.PI * 2);
+          g.fill();
+        }
+        if (i < 4) {
+          // Mist settling in the valley
+          g.fillStyle = grad(g, base - 0.02, base + 0.08, [[0, "rgb(255 190 150 / 0)"], [0.6, "rgb(255 180 150 / 0.22)"], [1, "rgb(255 170 140 / 0)"]]);
+          g.fillRect(0, base - 0.02, 1, 0.1);
+        }
+      });
+      g.strokeStyle = "rgb(30 20 30 / 0.8)";
+      g.lineWidth = 0.002;
+      for (let i = 0; i < 4; i++) {
+        const x = 0.32 + i * 0.03 + rand() * 0.02, y = 0.3 + rand() * 0.05, w = 0.008;
+        g.beginPath();
+        g.moveTo(x - w, y - w * 0.4);
+        g.quadraticCurveTo(x - w * 0.4, y - w * 0.6, x, y);
+        g.quadraticCurveTo(x + w * 0.4, y - w * 0.6, x + w, y - w * 0.4);
+        g.stroke();
+      }
+    }
+
+    // Photo 3: a city skyline at dusk over the water.
+    function city(g, S, rand) {
+      const W = 0.7;
+      g.fillStyle = grad(g, 0, W, [[0, "#0d1330"], [0.4, "#35285c"], [0.75, "#b0557a"], [1, "#f2976a"]]);
+      g.fillRect(0, 0, 1, W);
+      for (let i = 0; i < 120; i++) {
+        g.fillStyle = `rgb(255 255 255 / ${rand() * 0.7})`;
+        g.fillRect(rand(), rand() * 0.3, 0.0018, 0.0018);
+      }
+      glow(g, 0.5, W, 0.5, [[0, "rgb(255 170 120 / 0.5)"], [1, "rgb(255 150 120 / 0)"]]);
+
+      // Draw the skyline on its own layer so it can be mirrored in the water.
+      const layer = document.createElement("canvas");
+      layer.width = layer.height = g.canvas.width;
+      const c = layer.getContext("2d");
+      c.setTransform(S, 0, 0, S, 0, 0);
+      let x = -0.02;
+      while (x < 1.02) {
+        const w = 0.03 + rand() * 0.05, h = 0.06 + rand() * 0.14;
+        c.fillStyle = "#4a3563";
+        c.fillRect(x, W - h, w, h);
+        x += w * 0.85;
+      }
+      x = -0.02;
+      while (x < 1.02) {
+        const center = 1 - Math.abs(x - 0.5) * 1.6;
+        const w = 0.04 + rand() * 0.06, h = 0.08 + rand() * 0.2 + center * 0.14;
+        const top = W - h;
+        c.fillStyle = grad(c, top, W, [[0, "#1d1a38"], [1, "#130f26"]]);
+        c.fillRect(x, top, w, h);
+        c.fillStyle = "rgb(255 150 120 / 0.14)";
+        c.fillRect(x + w * 0.7, top, w * 0.3, h);
+        if (rand() > 0.7) {
+          c.fillStyle = "#1d1a38";
+          c.fillRect(x + w * 0.45, top - 0.04, 0.003, 0.04);
+          c.fillStyle = "#ff6a5a";
+          c.fillRect(x + w * 0.45 - 0.001, top - 0.042, 0.005, 0.005);
+        }
+        for (let wy = top + 0.012; wy < W - 0.01; wy += 0.011) {
+          for (let wx = x + 0.006; wx < x + w - 0.008; wx += 0.009) {
+            if (rand() > 0.62) {
+              c.fillStyle = rand() > 0.3 ? `rgb(255 ${200 + rand() * 40} ${120 + rand() * 60} / 0.9)` : "rgb(190 220 255 / 0.8)";
+              c.fillRect(wx, wy, 0.004, 0.005);
+            }
+          }
+        }
+        x += w + 0.002;
+      }
+      g.save();
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.drawImage(layer, 0, 0);
+      g.restore();
+
+      // Water with a rippled reflection
+      g.fillStyle = grad(g, W, 1, [[0, "#2a2244"], [1, "#0b0c1c"]]);
+      g.fillRect(0, W, 1, 1 - W);
+      const px = layer.width, row = Math.max(1, Math.round(px * 0.004));
+      g.save();
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.globalAlpha = 0.45;
+      for (let y = 0; y < px * (1 - W); y += row) {
+        const shift = (rand() - 0.5) * px * 0.012;
+        const srcY = W * px - y - row;
+        if (srcY < 0) break;
+        g.drawImage(layer, 0, srcY, px, row, shift, W * px + y, px, row);
+      }
+      g.restore();
+      g.fillStyle = grad(g, W, 1, [[0, "rgb(20 15 40 / 0)"], [1, "rgb(8 8 20 / 0.7)"]]);
+      g.fillRect(0, W, 1, 1 - W);
+      for (let i = 0; i < 160; i++) {
+        const y = W + 0.01 + rand() * 0.25;
+        g.fillStyle = `rgb(255 ${180 + rand() * 60} 140 / ${rand() * 0.35})`;
+        g.fillRect(rand(), y, 0.01 + rand() * 0.04, 0.0016);
+      }
+    }
+
+    // Photo 4: a bright living room.
+    function room(g, S, rand) {
+      const F = 0.7, vx = 0.5, vy = 0.45;
+      g.fillStyle = grad(g, 0, F, [[0, "#e7ddcd"], [1, "#d5c6ae"]]);
+      g.fillRect(0, 0, 1, F);
+      // Window with a view
+      const wx = 0.29, wy = 0.12, ww = 0.28, wh = 0.46;
+      g.fillStyle = grad(g, wy, wy + wh, [[0, "#8fc6ec"], [0.7, "#dff1fb"], [1, "#eef7f0"]]);
+      g.fillRect(wx, wy, ww, wh);
+      blurred(g, S, 0.006, () => {
+        g.fillStyle = "#7fa36d";
+        for (let i = 0; i < 12; i++) {
+          g.beginPath();
+          g.ellipse(wx + rand() * ww, wy + wh * 0.8 + rand() * 0.04, 0.03 + rand() * 0.04, 0.04 + rand() * 0.05, 0, 0, Math.PI * 2);
+          g.fill();
+        }
+      });
+      g.strokeStyle = "#f8f5ef";
+      g.lineWidth = 0.012;
+      g.strokeRect(wx, wy, ww, wh);
+      g.lineWidth = 0.007;
+      g.beginPath();
+      g.moveTo(wx + ww / 2, wy);
+      g.lineTo(wx + ww / 2, wy + wh);
+      g.moveTo(wx, wy + wh * 0.42);
+      g.lineTo(wx + ww, wy + wh * 0.42);
+      g.stroke();
+      // Wooden floor with planks running to the vanishing point
+      g.fillStyle = grad(g, F, 1, [[0, "#b98a5e"], [1, "#8c5d3a"]]);
+      g.fillRect(0, F, 1, 1 - F);
+      g.strokeStyle = "rgb(70 40 20 / 0.28)";
+      g.lineWidth = 0.0015;
+      for (let i = -14; i <= 14; i++) {
+        const bx = 0.5 + i * 0.09;
+        g.beginPath();
+        g.moveTo(vx + (bx - vx) * ((F - vy) / (1 - vy)), F);
+        g.lineTo(bx, 1);
+        g.stroke();
+      }
+      g.fillStyle = "#f3eee6";
+      g.fillRect(0, F - 0.012, 1, 0.014);
+      // Sunlight falling through the window onto the floor
+      blurred(g, S, 0.01, () => {
+        g.fillStyle = "rgb(255 244 215 / 0.35)";
+        g.beginPath();
+        g.moveTo(wx, wy + wh);
+        g.lineTo(wx + ww, wy + wh);
+        g.lineTo(wx + ww + 0.16, 1);
+        g.lineTo(wx + 0.1, 1);
+        g.closePath();
+        g.fill();
+      });
+      // Rug
+      g.fillStyle = "#ece2d2";
+      g.beginPath();
+      g.ellipse(0.54, 0.86, 0.3, 0.075, 0, 0, Math.PI * 2);
+      g.fill();
+      // Framed print on the wall
+      g.fillStyle = "#2b2622";
+      g.fillRect(0.63, 0.17, 0.15, 0.19);
+      g.fillStyle = grad(g, 0.18, 0.35, [[0, "#e9b28c"], [0.6, "#c8745a"], [1, "#6d7f6a"]]);
+      g.fillRect(0.64, 0.18, 0.13, 0.17);
+      g.fillStyle = "rgb(255 250 240 / 0.8)";
+      g.beginPath();
+      g.arc(0.705, 0.245, 0.03, 0, Math.PI * 2);
+      g.fill();
+      // Sofa in front of the window
+      const block = (x, y, w, h, r, fill) => {
+        g.fillStyle = fill;
+        g.beginPath();
+        g.roundRect(x, y, w, h, r);
+        g.fill();
+      };
+      const sx = 0.33, cushion = grad(g, 0.49, 0.61, [[0, "#9bb193"], [1, "#7f9679"]]);
+      g.save();
+      g.shadowColor = "rgb(60 40 20 / 0.4)";
+      g.shadowBlur = 0.03 * S;
+      g.shadowOffsetY = 0.012 * S;
+      block(sx, 0.53, 0.42, 0.18, 0.03, "#7f9679");
+      g.restore();
+      block(sx + 0.02, 0.49, 0.19, 0.12, 0.03, cushion);
+      block(sx + 0.21, 0.49, 0.19, 0.12, 0.03, cushion);
+      block(sx + 0.02, 0.6, 0.38, 0.07, 0.02, grad(g, 0.6, 0.67, [[0, "#aec3a6"], [1, "#86a07f"]]));
+      block(sx - 0.03, 0.55, 0.065, 0.16, 0.028, grad(g, 0.55, 0.71, [[0, "#96ad8e"], [1, "#7a9174"]]));
+      block(sx + 0.385, 0.55, 0.065, 0.16, 0.028, grad(g, 0.55, 0.71, [[0, "#96ad8e"], [1, "#7a9174"]]));
+      block(sx + 0.05, 0.525, 0.075, 0.075, 0.02, "#c8745a");
+      block(sx + 0.29, 0.525, 0.075, 0.075, 0.02, "#f1e6d4");
+      g.fillStyle = "#5b4a3a";
+      g.fillRect(sx, 0.71, 0.012, 0.025);
+      g.fillRect(sx + 0.41, 0.71, 0.012, 0.025);
+      // Round coffee table with a book
+      g.fillStyle = "#6e4a30";
+      g.fillRect(0.535, 0.8, 0.01, 0.065);
+      g.fillStyle = "#a4764e";
+      g.beginPath();
+      g.ellipse(0.54, 0.795, 0.09, 0.026, 0, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = "#f4efe6";
+      g.fillRect(0.51, 0.777, 0.035, 0.02);
+      // Plant in a pot
+      g.fillStyle = "#d9cbb5";
+      g.beginPath();
+      g.moveTo(0.16, 0.63);
+      g.lineTo(0.26, 0.63);
+      g.lineTo(0.245, 0.74);
+      g.lineTo(0.175, 0.74);
+      g.closePath();
+      g.fill();
+      for (let i = 0; i < 18; i++) {
+        const a = -Math.PI / 2 + (rand() - 0.5) * 2.4, len = 0.08 + rand() * 0.11;
+        g.save();
+        g.translate(0.21, 0.63);
+        g.rotate(a);
+        g.fillStyle = rand() > 0.5 ? "#2f5a35" : "#3f7345";
+        g.beginPath();
+        g.ellipse(len * 0.6, 0, len * 0.5, len * 0.18, 0, 0, Math.PI * 2);
+        g.fill();
+        g.restore();
+      }
+      // Pendant lamp with a warm glow
+      g.strokeStyle = "#3a332c";
+      g.lineWidth = 0.002;
+      g.beginPath();
+      g.moveTo(0.66, 0);
+      g.lineTo(0.66, 0.4);
+      g.stroke();
+      glow(g, 0.66, 0.44, 0.14, [[0, "rgb(255 220 160 / 0.7)"], [1, "rgb(255 210 150 / 0)"]]);
+      g.fillStyle = "#2f2a25";
+      g.beginPath();
+      g.arc(0.66, 0.44, 0.04, Math.PI, 0);
+      g.fill();
+      g.fillStyle = "#ffe9b8";
+      g.beginPath();
+      g.ellipse(0.66, 0.44, 0.03, 0.006, 0, 0, Math.PI * 2);
+      g.fill();
+      // Warm light over the whole room
+      glow(g, 0.35, 0.4, 0.8, [[0, "rgb(255 236 200 / 0.18)"], [1, "rgb(255 220 180 / 0)"]]);
+    }
+
+    const scenes = [beach, hills, city, room];
+
+    // Draw one photo, then add a soft vignette like a real lens.
+    function paint(canvas, scene, index, px) {
+      canvas.width = canvas.height = px;
+      const g = canvas.getContext("2d");
+      g.setTransform(px, 0, 0, px, 0, 0);
+      scene(g, px, rng(11 + index * 101));
+      g.setTransform(px, 0, 0, px, 0, 0);
+      glow(g, 0.5, 0.5, 0.75, [[0.5, "rgb(0 0 0 / 0)"], [1, "rgb(0 0 0 / 0.45)"]]);
+    }
+
+    // Build the slides, captions and progress segments.
+    const slides = [], photos = [], canvases = [], caps = [], fills = [];
+    captions.forEach((text, i) => {
+      const slide = document.createElement("div");
+      slide.className = "slide";
+      const photo = document.createElement("div");
+      photo.className = "photo";
+      const canvas = document.createElement("canvas");
+      photo.append(canvas);
+      slide.append(photo);
+      $("slides").append(slide);
+      slides.push(slide);
+      photos.push(photo);
+      canvases.push(canvas);
+
+      const cap = document.createElement("div");
+      cap.className = "caption";
+      const kicker = `<div class="kicker"><i class="rule"></i><span>${String(i + 1).padStart(2, "0")} / ${String(captions.length).padStart(2, "0")}</span></div>`;
+      cap.innerHTML = kicker + `<h2 class="title"></h2>`;
+      const title = cap.querySelector(".title");
+      text.split(/\s+/).forEach((word, j) => {
+        const mask = document.createElement("span");
+        mask.className = "mask";
+        const inner = document.createElement("span");
+        inner.textContent = word;
+        mask.append(inner);
+        if (j) title.append(" ");
+        title.append(mask);
+      });
+      $("captions").append(cap);
+      caps.push(cap);
+
+      const seg = document.createElement("span");
+      const fill = document.createElement("i");
+      seg.append(fill);
+      $("progress").append(seg);
+      fills.push(fill);
+    });
+
+    // Film grain: a small noise tile, repeated.
+    (() => {
+      const c = document.createElement("canvas");
+      c.width = c.height = 128;
+      const g = c.getContext("2d"), img = g.createImageData(128, 128), rand = rng(7);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const v = rand() * 255;
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+        img.data[i + 3] = 255;
+      }
+      g.putImageData(img, 0, 0);
+      $("grain").style.backgroundImage = `url(${c.toDataURL()})`;
+    })();
+
+    // Size everything from the window. Photos are redrawn only when they need more pixels.
+    let painted = 0;
+    function layout() {
+      const W = innerWidth, H = innerHeight, m = Math.min(W, H);
+      const side = Math.max(W, H) * 1.02;
+      photos.forEach((p) => Object.assign(p.style, { width: `${side}px`, height: `${side}px`, margin: `${-side / 2}px 0 0 ${-side / 2}px` }));
+      root.style.setProperty("--pad", `${Math.max(10, m * 0.07)}px`);
+      root.style.setProperty("--big", `${Math.min(W * 0.115, H * 0.1)}px`);
+      root.style.setProperty("--small", `${Math.max(6, Math.min(W * 0.028, H * 0.024))}px`);
+      const px = Math.round(Math.min(1800, side * Math.min(devicePixelRatio || 1, 2)));
+      if (px > painted * 1.2) {
+        painted = px;
+        canvases.forEach((c, i) => paint(c, scenes[i], i, px));
+      }
+    }
+
+    function build() {
+      layout();
+      let timer;
+      addEventListener("resize", () => {
+        clearTimeout(timer);
+        timer = setTimeout(layout, 200);
+      });
+
+      const D = 3; // seconds per photo
+      const L = D * slides.length;
+      const T = 0.9; // transition length
+      const tl = gsap.timeline({ repeat: -1, defaults: { ease: "power3.inOut" } });
+      // Each step applies its start values only when it begins, not when it is created.
+      const fromTo = tl.fromTo.bind(tl);
+      tl.fromTo = (targets, from, to, at) => fromTo(targets, from, { ...to, immediateRender: false }, at);
+
+      // Ken Burns: each photo slowly zooms and drifts while on screen.
+      const moves = [
+        [{ scale: 1.05, xPercent: -1.5, yPercent: 1 }, { scale: 1.15, xPercent: 1.5, yPercent: -1 }],
+        [{ scale: 1.16, xPercent: 1.5, yPercent: -1 }, { scale: 1.05, xPercent: -1, yPercent: 1 }],
+        [{ scale: 1.06, xPercent: 1.5, yPercent: 0 }, { scale: 1.14, xPercent: -2, yPercent: -1 }],
+        [{ scale: 1.14, xPercent: -1, yPercent: -1.5 }, { scale: 1.05, xPercent: 1.5, yPercent: 1 }],
+      ];
+      gsap.set(photos, (i) => moves[i][0]);
+      gsap.set(slides.slice(1), { autoAlpha: 0 });
+      gsap.set("#curtain", { xPercent: -120, visibility: "visible" });
+      photos.forEach((p, i) => {
+        const start = i ? i * D - T : 0;
+        const end = (i + 1) * D;
+        tl.fromTo(p, moves[i][0], { ...moves[i][1], duration: end - start, ease: "none" }, start);
+      });
+
+      // Captions: the rule grows, the counter slides in, the words rise out of their masks.
+      caps.forEach((cap, i) => {
+        const at = i * D + 0.15;
+        const words = cap.querySelectorAll(".mask > span");
+        const rule = cap.querySelector(".rule"), count = cap.querySelector(".kicker span");
+        gsap.set(words, { yPercent: 115 });
+        gsap.set([rule], { scaleX: 0 });
+        gsap.set(count, { autoAlpha: 0 });
+        tl.fromTo(rule, { scaleX: 0 }, { scaleX: 1, duration: 0.6, ease: "power3.out" }, at)
+          .fromTo(count, { autoAlpha: 0, x: -12 }, { autoAlpha: 1, x: 0, duration: 0.5, ease: "power2.out" }, at + 0.15)
+          .fromTo(words, { yPercent: 115 }, { yPercent: 0, duration: 0.8, stagger: 0.09, ease: "power4.out" }, at + 0.1)
+          .to(words, { yPercent: -115, duration: 0.45, stagger: 0.05, ease: "power3.in" }, (i + 1) * D - T - 0.25)
+          .to([rule, count], { autoAlpha: 0, duration: 0.3 }, (i + 1) * D - T - 0.15)
+          .set(rule, { autoAlpha: 1, scaleX: 0 }, (i + 1) * D);
+      });
+
+      // Progress: one thin segment fills per photo.
+      fills.forEach((f, i) => tl.fromTo(f, { scaleX: 0 }, { scaleX: 1, duration: D, ease: "none" }, i * D));
+
+      const [s0, s1, s2, s3] = slides;
+      // 1 to 2: a clean wipe from the right while the old photo drifts left.
+      let at = D - T;
+      tl.set(s1, { autoAlpha: 1 }, at)
+        .fromTo(s1, { clipPath: "inset(0% 0% 0% 100%)" }, { clipPath: "inset(0% 0% 0% 0%)", duration: T }, at)
+        .fromTo(s0, { xPercent: 0 }, { xPercent: -12, duration: T }, at);
+
+      // 2 to 3: zoom through, the old photo rushes past as the new one settles.
+      at = 2 * D - T;
+      tl.set(s2, { autoAlpha: 1 }, at + 0.1)
+        .fromTo(s1, { scale: 1 }, { scale: 1.35, duration: T, ease: "power2.in" }, at)
+        .fromTo(s2, { opacity: 0, scale: 1.25 }, { opacity: 1, scale: 1, duration: T, ease: "power2.out" }, at + 0.1)
+        .set([s0, s1], { autoAlpha: 0 }, 2 * D);
+
+      // 3 to 4: split panels rise one after another.
+      at = 3 * D - T;
+      s3.classList.add("split");
+      tl.set(s3, { autoAlpha: 1 }, at)
+        .fromTo(s3, { "--a": "100%" }, { "--a": "0%", duration: T - 0.2 }, at)
+        .fromTo(s3, { "--b": "100%" }, { "--b": "0%", duration: T - 0.2 }, at + 0.1)
+        .fromTo(s3, { "--c": "100%" }, { "--c": "0%", duration: T - 0.2 }, at + 0.2)
+        .fromTo(s2, { yPercent: 0 }, { yPercent: -8, duration: T }, at)
+        .set(s2, { autoAlpha: 0 }, L - 0.45);
+
+      // 4 back to 1: a colour panel sweeps across and uncovers the first photo again.
+      at = L - T;
+      tl.fromTo("#curtain", { xPercent: -120 }, { xPercent: 0, duration: T / 2, ease: "power3.in" }, at)
+        .set(s0, { autoAlpha: 1, xPercent: 0 }, L - T / 2)
+        .set(photos[0], moves[0][0], L - T / 2)
+        .set(s3, { autoAlpha: 0 }, L - T / 2)
+        .to("#curtain", { xPercent: 120, duration: T / 2, ease: "power3.out" }, L - T / 2);
+
+      // Reduced motion: a still of the first photo with its caption.
+      const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+      const apply = () => (reduce.matches ? tl.pause(1.6) : tl.play());
+      apply();
+      reduce.addEventListener("change", apply);
+    }
+
+    // Wait briefly for the fonts so captions do not jump.
+    Promise.race([
+      Promise.all([document.fonts.load('700 1em "Playfair Display"'), document.fonts.load('600 1em "Inter"')]),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(build);
+  </script>
+</body>
+</html>

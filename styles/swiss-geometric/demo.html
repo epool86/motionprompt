@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Swiss geometric demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/archivo@5.3.0/800.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=efe9dc&ink=141414&accent=e23b2e&accent2=1f45c7 */
+    :root {
+      --bg: #efe9dc;
+      --ink: #141414;
+      --accent: #e23b2e;
+      --accent2: #1f45c7;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    .stage {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    /* The shape area: a strict 3 by 3 grid with hairlines */
+    .zone {
+      position: absolute;
+      --c: 100px;
+      background-image:
+        linear-gradient(to right, color-mix(in srgb, var(--ink) 14%, transparent) 1px, transparent 1px),
+        linear-gradient(to bottom, color-mix(in srgb, var(--ink) 14%, transparent) 1px, transparent 1px);
+      background-size: var(--c) var(--c);
+      outline: 1px solid color-mix(in srgb, var(--ink) 14%, transparent);
+      overflow: hidden;
+    }
+
+    .shape {
+      position: absolute;
+      left: 0;
+      top: 0;
+      will-change: transform;
+    }
+
+    .headline {
+      position: absolute;
+      margin: 0;
+      color: var(--ink);
+      font-family: "Archivo", "Helvetica Neue", Arial, sans-serif;
+      font-weight: 800;
+      letter-spacing: -0.045em;
+      line-height: 0.9;
+      white-space: nowrap;
+    }
+
+    /* Each line sits in a mask so it can slide up into view */
+    .line {
+      display: block;
+      overflow: hidden;
+      padding: 0.02em 0.1em 0.06em 0;
+      margin-bottom: -0.04em;
+    }
+
+    .line span { display: inline-block; }
+
+    .rule {
+      position: absolute;
+      height: 2px;
+      background: var(--ink);
+      transform-origin: 0 50%;
+    }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage" role="img">
+    <div class="zone" id="zone"></div>
+    <div class="rule" id="rule"></div>
+    <h1 class="headline" id="headline"></h1>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const root = document.documentElement;
+    for (const key of ["bg", "ink", "accent", "accent2"]) {
+      const value = params.get(key);
+      if (/^[0-9a-f]{6}$/i.test(value ?? "")) root.style.setProperty(`--${key}`, `#${value}`);
+    }
+    const text = (params.get("text") || "Make it move").trim().slice(0, 48);
+
+    const stage = document.getElementById("stage");
+    const zone = document.getElementById("zone");
+    const rule = document.getElementById("rule");
+    const headline = document.getElementById("headline");
+    stage.setAttribute("aria-label", `Bold geometric shapes moving on a grid, with the headline: ${text}`);
+
+    // Split words into n lines, keeping the longest line as short as possible.
+    const words = text.split(/\s+/).filter(Boolean);
+    function split(list, n) {
+      if (n === 1 || list.length === 1) return [list.join(" ")];
+      let best = null;
+      for (let i = 1; i <= list.length - n + 1; i++) {
+        const lines = [list.slice(0, i).join(" "), ...split(list.slice(i), n - 1)];
+        const longest = Math.max(...lines.map((l) => l.length));
+        if (!best || longest < best.longest) best = { lines, longest };
+      }
+      return best.lines;
+    }
+
+    // A hidden copy of the headline style, used to measure line widths.
+    const measure = document.createElement("div");
+    measure.className = "headline";
+    Object.assign(measure.style, { visibility: "hidden", fontSize: "100px", left: "0", top: "0" });
+    document.body.append(measure);
+    const widthAt100 = (line) => {
+      measure.textContent = line;
+      return measure.getBoundingClientRect().width;
+    };
+
+    let lines = [], spans = [];
+    function setLines(list) {
+      lines = list;
+      headline.replaceChildren();
+      spans = list.map((line) => {
+        const wrap = document.createElement("span");
+        wrap.className = "line";
+        const span = document.createElement("span");
+        span.textContent = line;
+        wrap.append(span);
+        headline.append(wrap);
+        return span;
+      });
+    }
+
+    // Shapes, sized in grid cells. Each has a style and a size.
+    const cell = (w, h, css) => ({ w, h, css });
+    const defs = {
+      circle: cell(2, 2, { background: "var(--accent)", borderRadius: "50%" }),
+      square: cell(1, 1, { background: "var(--accent2)" }),
+      quarter: cell(1, 1, { background: "var(--accent)", borderTopLeftRadius: "100%" }),
+      half: cell(2, 1, { background: "var(--ink)", borderRadius: "999px 999px 0 0" }),
+      bar: cell(3, 0.18, { background: "var(--ink)" }),
+      dot: cell(0.36, 0.36, { background: "var(--ink)", borderRadius: "50%" }),
+    };
+
+    // Three arrangements on the 3 by 3 grid: centre x, centre y (in cells) and rotation.
+    // The last one repeats the first, turned a full circle, so the loop is seamless.
+    const poses = {
+      circle: [[1, 1, 0], [2, 2, 0], [1, 2, 0], [1, 1, 0]],
+      square: [[2.5, 0.5, 0], [0.5, 0.5, 90], [2.5, 2.5, 180], [2.5, 0.5, 360]],
+      quarter: [[2.5, 1.5, 0], [1.5, 0.5, 90], [2.5, 1.5, 180], [2.5, 1.5, 360]],
+      half: [[1, 2.5, 0], [0.5, 2, -90], [2, 0.5, -180], [1, 2.5, -360]],
+      bar: [[1.5, 2, 0], [1, 1.5, 90], [1.5, 1, 180], [1.5, 2, 360]],
+      dot: [[2.5, 2.5, 0], [2.5, 0.5, 0], [0.5, 0.5, 0], [2.5, 2.5, 0]],
+    };
+
+    const shapes = Object.entries(defs).map(([name, d]) => {
+      const node = document.createElement("div");
+      node.className = "shape";
+      Object.assign(node.style, d.css);
+      zone.append(node);
+      const [x, y, r] = poses[name][0];
+      return { name, node, d, state: { x, y, r, s: 0 } };
+    });
+
+    let c = 100;
+    function render() {
+      for (const { node, d, state } of shapes) {
+        const w = d.w * c, h = d.h * c;
+        node.style.width = `${w}px`;
+        node.style.height = `${h}px`;
+        node.style.transform = `translate(${state.x * c - w / 2}px, ${state.y * c - h / 2}px) rotate(${state.r}deg) scale(${state.s})`;
+      }
+    }
+
+    // Place the grid and the headline for the current window shape.
+    function layout() {
+      const W = innerWidth, H = innerHeight, u = Math.min(W, H), m = u * 0.08, gap = u * 0.06;
+      let zx, zy, box;
+      if (W / H > 1.15) {
+        c = Math.min((H - 2 * m) / 3, (W * 0.5) / 3);
+        zx = W - m - 3 * c;
+        zy = (H - 3 * c) / 2;
+        box = { x: m, y: m, w: zx - m - gap, h: H - 2 * m, bottom: zy + 3 * c };
+      } else {
+        c = Math.min((W - 2 * m) / 3, (H * (W / H > 0.9 ? 0.52 : 0.6) - m) / 3);
+        zx = W - m - 3 * c;
+        zy = m;
+        box = { x: m, y: zy + 3 * c + gap, w: W - 2 * m, h: H - m - (zy + 3 * c + gap), bottom: H - m };
+      }
+      Object.assign(zone.style, { left: `${zx}px`, top: `${zy}px`, width: `${3 * c}px`, height: `${3 * c}px` });
+      zone.style.setProperty("--c", `${c}px`);
+
+      // Fit the headline: try three, two and one lines and keep the biggest type.
+      // Fewer lines must win clearly, so tall frames keep a stacked headline.
+      let pick = null;
+      for (let n = Math.min(3, words.length); n >= 1; n--) {
+        const list = split(words, n);
+        const widest = Math.max(...list.map(widthAt100)) || 1;
+        const size = Math.min((box.w * 100) / widest, box.h / (n * 0.96), u * 0.3);
+        if (!pick || size > pick.size * 1.12) pick = { list, size };
+      }
+      const changed = pick.list.join("|") !== lines.join("|");
+      if (changed) setLines(pick.list);
+      const size = pick.size;
+      headline.style.fontSize = `${size}px`;
+      const hh = headline.getBoundingClientRect().height;
+      headline.style.left = `${box.x - size * 0.04}px`;
+      headline.style.top = `${box.bottom - hh}px`;
+      Object.assign(rule.style, {
+        left: `${box.x}px`,
+        top: `${box.bottom - hh - size * 0.18}px`,
+        width: `${box.w}px`,
+        height: `${Math.max(2, u * 0.008)}px`,
+      });
+      render();
+      return changed;
+    }
+
+    let tl;
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    function makeTimeline(time = 0) {
+      if (tl) tl.kill();
+      tl = gsap.timeline({ repeat: -1, onUpdate: render });
+      const all = shapes.map((s) => s.state);
+      all.forEach((state) => { state.s = 0; });
+
+      // Build in: shapes pop on, the rule draws, the headline slides up line by line.
+      tl.to(all, { s: 1, duration: 0.6, ease: "expo.out", stagger: 0.07 }, 0.1)
+        .fromTo(rule, { scaleX: 0, transformOrigin: "0% 50%" }, { scaleX: 1, duration: 0.8, ease: "expo.inOut" }, 0)
+        .fromTo(spans, { yPercent: 110 }, { yPercent: 0, duration: 0.8, ease: "expo.out", stagger: 0.09 }, 0.25);
+
+      // Three moves between arrangements. Shapes slide along one axis at a time,
+      // across and turning first, then up or down, so they snap to the grid.
+      [2.1, 4.3, 6.5].forEach((at, step) => {
+        shapes.forEach(({ name, state }, i) => {
+          const [x, y, r] = poses[name][step + 1];
+          const t = at + i * 0.05;
+          tl.to(state, { x, r, duration: 0.5, ease: "power4.inOut" }, t)
+            .to(state, { y, duration: 0.5, ease: "power4.inOut" }, t + 0.45);
+        });
+      });
+
+      // Build out, then an empty beat before the loop starts again.
+      tl.to(all, { s: 0, duration: 0.45, ease: "expo.in", stagger: 0.05 }, 8.8)
+        .to(spans, { yPercent: -110, duration: 0.5, ease: "expo.in", stagger: 0.06 }, 8.9)
+        .to(rule, { scaleX: 0, transformOrigin: "100% 50%", duration: 0.5, ease: "expo.in" }, 9)
+        .set({}, {}, 10);
+
+      apply(time);
+    }
+
+    // Reduced motion: hold the first arrangement with the headline in place.
+    function apply(time = tl.time()) {
+      if (reduce.matches) {
+        tl.pause(1.6);
+        render(); // seeking does not fire onUpdate, so draw the frame here
+      } else tl.play(time);
+    }
+    reduce.addEventListener("change", () => apply());
+
+    function build() {
+      layout();
+      makeTimeline();
+      addEventListener("resize", () => {
+        if (layout()) makeTimeline(tl.time());
+      });
+    }
+
+    // Wait briefly for the font so the headline is measured in the right face.
+    Promise.race([
+      document.fonts.load("800 1em Archivo"),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(build);
+  </script>
+</body>
+</html>
