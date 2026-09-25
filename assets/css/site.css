@@ -31,6 +31,14 @@
   --chrome: #0a0a10;
   --stage: #110c26;
 
+  /* Text and controls that sit on the coloured stage: solid enough to read on any glow */
+  --on-stage: #dcd8ee;
+  --field: rgba(10, 8, 24, 0.6);
+  --field-line: rgba(255, 255, 255, 0.2);
+  --field-text: #ecebf7;
+  --field-hint: #a9a6c2;
+  --headline-shine: var(--gradient);
+
   /* Aurora glow strength (inside the main area) */
   --glow-a: rgba(124, 92, 255, 0.5);
   --glow-b: rgba(255, 79, 200, 0.32);
@@ -66,6 +74,12 @@
     --btn-fg: #ffffff;
     --chrome: #ffffff;
     --stage: #e6ddff;
+    --on-stage: #2b2840;
+    --field: rgba(255, 255, 255, 0.94);
+    --field-line: rgba(40, 20, 90, 0.2);
+    --field-text: #2b2840;
+    --field-hint: #6a6780;
+    --headline-shine: linear-gradient(100deg, #4a22e0 0%, #9c1470 100%);
     --glow-a: rgba(124, 92, 255, 0.6);
     --glow-b: rgba(255, 79, 200, 0.45);
     --glow-c: rgba(255, 170, 80, 0.5);
@@ -250,7 +264,9 @@ a { color: var(--accent); }
 
 .intro h1 { font-size: clamp(1.55rem, 5.2vw, 2.4rem); margin-bottom: 6px; }
 
-.intro p { font-size: 0.95rem; }
+.intro p { color: var(--on-stage); font-size: 0.95rem; }
+
+.intro .shine { background-image: var(--headline-shine); }
 
 /* Search and tag filters. Sticks under the header while scrolling. */
 .toolbar {
@@ -293,7 +309,7 @@ a { color: var(--accent); }
   left: 12px;
   width: 18px;
   height: 18px;
-  color: var(--faint);
+  color: var(--field-hint);
   pointer-events: none;
 }
 
@@ -301,15 +317,16 @@ a { color: var(--accent); }
   width: 100%;
   height: 40px;
   padding: 0 14px 0 38px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--field-line);
   border-radius: 999px;
-  background: var(--panel);
-  color: var(--fg);
+  background: var(--field);
+  color: var(--field-text);
+  box-shadow: 0 4px 14px -8px rgba(40, 20, 90, 0.35);
   font: inherit;
   font-size: 16px; /* 16px stops iOS from zooming in on focus */
 }
 
-.search input::placeholder { color: var(--faint); }
+.search input::placeholder { color: var(--field-hint); }
 
 .search input:focus {
   outline: none;
@@ -336,16 +353,16 @@ a { color: var(--accent); }
   flex: none;
   height: 32px;
   padding: 0 13px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field-line);
   border-radius: 999px;
-  background: transparent;
-  color: var(--muted);
+  background: var(--field);
+  color: var(--field-text);
   font: 500 0.82rem var(--font);
   text-transform: capitalize;
   cursor: pointer;
 }
 
-.filter:hover { color: var(--fg); border-color: var(--line-strong); }
+.filter:hover { border-color: var(--accent); }
 
 .filter[aria-pressed="true"] {
   border-color: transparent;
@@ -355,7 +372,7 @@ a { color: var(--accent); }
 
 .count {
   margin: 4px 0 10px;
-  color: var(--muted);
+  color: var(--on-stage);
   font: 500 0.72rem var(--font-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
