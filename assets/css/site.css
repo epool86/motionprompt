@@ -757,14 +757,6 @@ a { color: var(--accent); }
   font-size: 0.86rem !important;
 }
 
-.prompt-label {
-  margin: 8px 0 0;
-  color: var(--on-stage);
-  font: 500 0.72rem var(--font-mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .prompt-text {
   margin: 10px 0 0;
   padding: 14px;
