@@ -27,10 +27,14 @@
   --btn-bg: #f4f3fa;
   --btn-fg: #07070c;
 
-  /* Aurora glow strength */
-  --glow-a: rgba(124, 92, 255, 0.32);
-  --glow-b: rgba(255, 79, 200, 0.2);
-  --glow-c: rgba(255, 170, 80, 0.12);
+  /* Header and footer stay plain; the main area carries the colour */
+  --chrome: #0a0a10;
+  --stage: #110c26;
+
+  /* Aurora glow strength (inside the main area) */
+  --glow-a: rgba(124, 92, 255, 0.5);
+  --glow-b: rgba(255, 79, 200, 0.32);
+  --glow-c: rgba(255, 170, 80, 0.2);
   --grid-line: rgba(255, 255, 255, 0.035);
 
   --radius: 16px;
@@ -54,15 +58,17 @@
     --fg: #121120;
     --muted: #55536b;
     --faint: #85839a;
-    --violet: #6a47ff;
-    --pink: #e3389f;
-    --amber: #e8871a;
+    --violet: #5b3cf0;
+    --pink: #c21f7e;
+    --amber: #c85a0c;
     --accent: #5b3cf0;
     --btn-bg: #121120;
     --btn-fg: #ffffff;
-    --glow-a: rgba(124, 92, 255, 0.2);
-    --glow-b: rgba(255, 79, 200, 0.12);
-    --glow-c: rgba(255, 170, 80, 0.12);
+    --chrome: #ffffff;
+    --stage: #e6ddff;
+    --glow-a: rgba(124, 92, 255, 0.6);
+    --glow-b: rgba(255, 79, 200, 0.45);
+    --glow-c: rgba(255, 170, 80, 0.5);
     --grid-line: rgba(20, 16, 50, 0.045);
     --shadow: 0 30px 70px -35px rgba(40, 30, 90, 0.35);
     color-scheme: light;
@@ -78,18 +84,31 @@ html { scroll-behavior: smooth; }
 }
 
 body {
+  display: flex;
+  flex-direction: column;
   margin: 0;
   min-height: 100vh;
-  background: var(--bg);
+  min-height: 100dvh;
+  background: var(--chrome);
   color: var(--fg);
   font: 400 17px/1.6 var(--font);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
 
-/* Backdrop: aurora light, a faint grid and film grain. Fixed behind everything. */
+/* Main area: the coloured stage between the plain header and footer */
+.stage {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  overflow: clip; /* clip, not hidden, so the toolbar can still stick while scrolling */
+  background: var(--stage);
+  isolation: isolate;
+}
+
+/* Backdrop: aurora light, a faint grid and film grain, behind the main content */
 .backdrop {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: -1;
   pointer-events: none;
@@ -122,16 +141,19 @@ body {
   filter: blur(90px);
 }
 
-.orb.a { width: 520px; height: 520px; top: -300px; left: -160px; background: var(--glow-a); }
-.orb.b { width: 440px; height: 440px; top: -260px; right: -160px; background: var(--glow-b); }
+.orb.a { width: 560px; height: 560px; top: -220px; left: -200px; background: var(--glow-a); }
+.orb.b { width: 480px; height: 480px; top: -140px; right: -180px; background: var(--glow-b); }
+.orb.c { width: 520px; height: 520px; bottom: -260px; left: 30%; background: var(--glow-c); }
 
 @media (prefers-reduced-motion: no-preference) {
   .orb.a { animation: drift-a 22s ease-in-out infinite alternate; }
   .orb.b { animation: drift-b 26s ease-in-out infinite alternate; }
+  .orb.c { animation: drift-c 30s ease-in-out infinite alternate; }
 }
 
 @keyframes drift-a { to { transform: translate(140px, 90px) scale(1.1); } }
 @keyframes drift-b { to { transform: translate(-120px, 120px) scale(0.92); } }
+@keyframes drift-c { to { transform: translate(-160px, -40px) scale(1.12); } }
 
 /* Type */
 h1, h2 {
@@ -178,7 +200,7 @@ a { color: var(--accent); }
   top: 0;
   z-index: 20;
   border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  background: color-mix(in srgb, var(--chrome) 92%, transparent);
   backdrop-filter: blur(16px) saturate(1.4);
   -webkit-backdrop-filter: blur(16px) saturate(1.4);
 }
@@ -246,7 +268,7 @@ a { color: var(--accent); }
 /* Only once it is stuck under the header does it get a backing, so it never shows a band at rest */
 .toolbar.stuck {
   border-bottom-color: var(--line);
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  background: color-mix(in srgb, var(--stage) 86%, transparent);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
 }
@@ -333,7 +355,7 @@ a { color: var(--accent); }
 
 .count {
   margin: 4px 0 10px;
-  color: var(--faint);
+  color: var(--muted);
   font: 500 0.72rem var(--font-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -625,6 +647,7 @@ a { color: var(--accent); }
 /* Footer */
 .site-footer {
   border-top: 1px solid var(--line);
+  background: var(--chrome);
   color: var(--faint);
   font-size: 0.82rem;
 }

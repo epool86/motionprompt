@@ -14,8 +14,6 @@
   <script type="module" src="assets/js/gallery.js"></script>
 </head>
 <body>
-  <div class="backdrop" aria-hidden="true"><span class="orb a"></span><span class="orb b"></span></div>
-
   <header class="site-header">
     <div class="wrap">
       <a class="brand" href="index.html" aria-current="page"><img src="assets/img/logo.svg" alt="" width="26" height="26">MotionPrompt</a>
@@ -26,25 +24,28 @@
     </div>
   </header>
 
-  <main class="wrap">
-    <div class="intro">
-      <h1>Pick a style. <span class="serif shine">Copy the prompt.</span></h1>
-      <p>Paste it into Claude, open the page it makes, and screen-record it as a video.</p>
-    </div>
+  <main class="stage">
+    <div class="backdrop" aria-hidden="true"><span class="orb a"></span><span class="orb b"></span><span class="orb c"></span></div>
+    <div class="wrap">
+      <div class="intro">
+        <h1>Pick a style. <span class="serif shine">Copy the prompt.</span></h1>
+        <p>Paste it into Claude, open the page it makes, and screen-record it as a video.</p>
+      </div>
 
-    <div class="toolbar">
-      <label class="search">
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="9" r="6"/><path d="M13.5 13.5 17 17"/></svg>
-        <span class="visually-hidden">Search styles</span>
-        <input type="search" id="search" placeholder="Search styles" autocomplete="off">
-      </label>
-      <div class="filters" id="filters" role="group" aria-label="Filter by tag"></div>
-    </div>
+      <div class="toolbar">
+        <label class="search">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="9" r="6"/><path d="M13.5 13.5 17 17"/></svg>
+          <span class="visually-hidden">Search styles</span>
+          <input type="search" id="search" placeholder="Search styles" autocomplete="off">
+        </label>
+        <div class="filters" id="filters" role="group" aria-label="Filter by tag"></div>
+      </div>
 
-    <p class="count" id="count" aria-live="polite"></p>
+      <p class="count" id="count" aria-live="polite"></p>
 
-    <div class="grid" id="gallery">
-      <p class="empty">Loading styles...</p>
+      <div class="grid" id="gallery">
+        <p class="empty">Loading styles...</p>
+      </div>
     </div>
   </main>
 
