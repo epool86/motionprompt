@@ -1,72 +1,5 @@
-// Fills a style's prompt template from the visitor's choices, and builds the demo URL
-// that previews those choices. Shared by the directory and (later) any other page.
-
-// Colour palettes. Each has four colours: background, text, accent and a second accent.
-export const PALETTES = [
-  { id: "coral", name: "Coral", bg: "10131f", ink: "f6f3ea", accent: "ff5a4e", accent2: "ffd23f" },
-  { id: "neon", name: "Neon", bg: "0b0a1f", ink: "f4f2ff", accent: "8b6cff", accent2: "ff4fd8" },
-  { id: "sunset", name: "Sunset", bg: "2a0f2d", ink: "fff3e3", accent: "ff6b3d", accent2: "ffc23c" },
-  { id: "mint", name: "Mint", bg: "0c2621", ink: "eafff6", accent: "2fd6a0", accent2: "ffe066" },
-  { id: "ocean", name: "Ocean", bg: "071a2e", ink: "e9f4ff", accent: "2ea8ff", accent2: "7cf0e0" },
-  { id: "paper", name: "Paper", bg: "f3ede2", ink: "1b1a17", accent: "e4572e", accent2: "2e86ab" },
-  { id: "mono", name: "Mono", bg: "0d0d0d", ink: "ffffff", accent: "ffffff", accent2: "9a9a9a" },
-];
-
-export const COLOR_KEYS = [
-  { key: "bg", label: "Background" },
-  { key: "ink", label: "Text" },
-  { key: "accent", label: "Accent" },
-  { key: "accent2", label: "Second accent" },
-];
-
-// Video sizes Claude should render, by aspect ratio.
-export const FORMATS = {
-  "9:16": { label: "9:16", hint: "Reels, TikTok, Shorts", size: "1080 x 1920 pixels (vertical 9:16)" },
-  "1:1": { label: "1:1", hint: "Feed post", size: "1080 x 1080 pixels (square 1:1)" },
-  "16:9": { label: "16:9", hint: "YouTube", size: "1920 x 1080 pixels (widescreen 16:9)" },
-};
-
-export const DURATIONS = [6, 8, 10, 15];
-
-export const DEFAULTS = {
-  text: "Make it move",
-  palette: "coral",
-  colors: { bg: PALETTES[0].bg, ink: PALETTES[0].ink, accent: PALETTES[0].accent, accent2: PALETTES[0].accent2 },
-  ratio: "9:16",
-  duration: 8,
-  notes: "",
-};
-
-const PLACEHOLDER = /\{(ratio|duration|colors|text|library|notes)\}/g;
-
-function colorPhrase(c) {
-  return `background #${c.bg}, text #${c.ink}, accent #${c.accent}, second accent #${c.accent2}`;
-}
-
-// choices: { text, colors, ratio, duration, notes }; style gives the library hint.
-export function fillPrompt(template, choices = {}, style = {}) {
-  const all = { ...DEFAULTS, ...choices };
-  const values = {
-    text: all.text.trim() || DEFAULTS.text,
-    colors: colorPhrase(all.colors),
-    ratio: (FORMATS[all.ratio] ?? FORMATS["9:16"]).size,
-    duration: `${all.duration} seconds`,
-    library: style.library ?? "any animation library you like",
-    notes: all.notes.trim() ? `\nAlso: ${all.notes.trim()}` : "",
-  };
-  return template
-    .replace(PLACEHOLDER, (match, key) => values[key] ?? match)
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-// The demo page reads the same choices from its URL, so the preview matches the prompt.
-export function demoSrc(style, choices = {}) {
-  const all = { ...DEFAULTS, ...choices };
-  const params = new URLSearchParams({ text: all.text.trim() || DEFAULTS.text });
-  for (const { key } of COLOR_KEYS) params.set(key, all.colors[key]);
-  return `styles/${style.slug}/demo.html?${params}`;
-}
+// Loads the style list and each style's prompt, and copies text to the clipboard.
+// Shared by the directory and any later page.
 
 export async function loadStyles() {
   const res = await fetch("styles/styles.json");
@@ -74,10 +7,46 @@ export async function loadStyles() {
   return res.json();
 }
 
-export async function loadTemplate(slug) {
+// A style prompt is general: the visitor pastes it under their own video request.
+// Only the video settings (size and length) are filled in, never the visitor's content.
+export async function loadPrompt(slug) {
   const res = await fetch(`styles/${slug}/prompt.txt`);
   if (!res.ok) throw new Error(`${slug}/prompt.txt: ${res.status}`);
-  return res.text();
+  return (await res.text()).trim();
+}
+
+export const FORMATS = [
+  { value: "9:16", label: "9:16", hint: "Reels, TikTok", name: "vertical 9:16" },
+  { value: "4:5", label: "4:5", hint: "Feed", name: "portrait 4:5" },
+  { value: "1:1", label: "1:1", hint: "Square", name: "square 1:1" },
+  { value: "16:9", label: "16:9", hint: "YouTube", name: "widescreen 16:9" },
+];
+
+// The short side of the video, in pixels.
+export const QUALITIES = [
+  { value: 720, label: "720p" },
+  { value: 1080, label: "1080p" },
+  { value: 2160, label: "4K" },
+];
+
+export const DURATIONS = [6, 8, 10, 15, 30];
+
+export const DEFAULT_SETTINGS = { ratio: "9:16", quality: 1080, duration: 8 };
+
+// For example 9:16 at 1080p is 1080 x 1920 pixels.
+export function videoSize({ ratio, quality }) {
+  const [w, h] = ratio.split(":").map(Number);
+  const short = quality;
+  const long = Math.round((short * Math.max(w, h)) / Math.min(w, h) / 2) * 2;
+  const [width, height] = w >= h ? [long, short] : [short, long];
+  const name = FORMATS.find((f) => f.value === ratio)?.name ?? ratio;
+  return `${width} x ${height} pixels (${name})`;
+}
+
+export function fillPrompt(template, settings) {
+  return template
+    .replace("{size}", videoSize(settings))
+    .replace("{duration}", `${settings.duration} seconds`);
 }
 
 // Clipboard API needs a secure context; fall back to a hidden textarea.

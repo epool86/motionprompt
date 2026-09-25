@@ -1,11 +1,16 @@
-Make me a short animated video and give me the final MP4 file.
+Make my video in this style: Particle field.
 
-Style: a glowing particle field. A few thousand tiny dots drift along smooth, invisible currents, like smoke or wind, with a slight upward drift like warm air. They leave soft fading trails, and where they overlap they add up to a gentle glow. The currents slowly change, so it feels calm and endless. My text sits still in the lower third with a soft glow, so it stays easy to read.
+Look and motion
+- A few thousand tiny glowing dots drift along smooth, invisible currents, like smoke or wind, with a slight upward drift like warm air rising.
+- Each dot leaves a soft fading trail, and where dots overlap they add up to a gentle glow.
+- The currents change slowly, so the whole thing feels calm and endless, with no obvious start or end.
+- Show my message as still, clean text in the lower third with a soft glow, so it stays easy to read. If there are several lines, fade them in and out one at a time. If my request has no text, keep it as a clean background.
 
-- Text: "{text}"
-- Video size: {ratio}
+Type and colour
+- A clean sans serif font, medium weight, generous spacing.
+- Use my brand colours if I give them: the darkest for the background, the brighter ones for the particles. Otherwise use a deep night blue background #0a0d1a with coral #ff5a4e, amber #ffb35c and cool blue #4fb3ff particles, and warm white #f6f3ea text.
+
+Output
+- Size: {size}
 - Length: about {duration}
-- Colours: {colors}. The background colour fills the frame, the brighter colours are the particles.
-
-Hint: build it as an HTML canvas animation (for example with {library}) and render it to MP4 frame by frame so the motion is smooth.
-{notes}
+- Build it as an HTML canvas animation and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

@@ -4,26 +4,23 @@
     "name": "Kinetic typography",
     "summary": "Big bold words that punch in on the beat, then stack into one line.",
     "library": "GSAP",
-    "ratios": ["9:16", "1:1", "16:9"],
     "tags": ["text", "social"],
-    "text": {"label": "Your words", "hint": "Short and punchy works best: 2 to 6 words.", "max": 60}
+    "example": "Make a video for our bakery's grand opening. Text: Fresh bread. Warm coffee. Grand opening this Saturday."
   },
   {
     "slug": "particle-field",
     "name": "Particle field",
     "summary": "Thousands of glowing dots drifting along soft currents, like smoke or wind.",
     "library": "Canvas",
-    "ratios": ["9:16", "1:1", "16:9"],
     "tags": ["background", "ambient"],
-    "text": {"label": "Your text", "hint": "A headline or a short line, shown in the lower third.", "max": 60}
+    "example": "Make a calm background video for my yoga studio. Text: Breathe in. Slow down. New classes from 1 October."
   },
   {
     "slug": "logo-spin-3d",
     "name": "3D logo spin",
     "summary": "A shiny 3D logo that spins, settles and floats, ready for an intro or outro.",
     "library": "Three.js",
-    "ratios": ["9:16", "1:1", "16:9"],
     "tags": ["3d", "logo", "intro"],
-    "text": {"label": "Brand name", "hint": "Shown under the logo. Its first letter goes on the badge.", "max": 40}
+    "example": "Make an intro for my YouTube channel, Kopi Pagi. My logo is attached."
   }
 ]

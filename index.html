@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>MotionPrompt</title>
-  <meta name="description" content="Animated video styles you can make with Claude. Pick a style, add your words and colours, copy the prompt, and get back an MP4.">
+  <meta name="description" content="Animated video styles for Claude. Copy a style, paste it under your video idea, and get back an MP4.">
   <meta name="theme-color" content="#07070c">
   <link rel="icon" href="assets/img/logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource-variable/geist@5.3.0/index.css">
@@ -29,8 +29,8 @@
     <div class="view" id="list-view">
       <div class="wrap">
         <div class="intro">
-          <h1>Pick a style. <span class="serif shine">Copy the prompt.</span></h1>
-          <p>Make it yours, copy the prompt, and Claude sends back a finished MP4.</p>
+          <h1>Pick a style. <span class="serif shine">Make it move.</span></h1>
+          <p>Copy a style, paste it under your video idea in Claude, and get back an MP4.</p>
         </div>
 
         <div class="toolbar">
@@ -67,51 +67,41 @@
           <h2 id="detail-title" tabindex="-1"></h2>
           <p id="detail-summary"></p>
 
-          <form class="customize" id="customize" autocomplete="off">
-            <h3 class="panel-title">Make it yours</h3>
-            <div class="field">
-              <label for="f-text" id="f-text-label">Your words</label>
-              <input type="text" id="f-text" maxlength="60" aria-describedby="f-text-hint">
-              <p class="hint" id="f-text-hint"></p>
-            </div>
+          <ol class="how" aria-label="How to use this style">
+            <li><span class="step-num">1</span><div><strong>Tell Claude what your video is about.</strong> For example:<q id="detail-example"></q></div></li>
+            <li><span class="step-num">2</span><div><strong>Paste this style underneath.</strong> Claude applies the look and motion to your content.</div></li>
+            <li><span class="step-num">3</span><div><strong>Get your MP4.</strong> Use Claude on the web, or Claude Code on your computer for longer videos.</div></li>
+          </ol>
 
-            <fieldset class="field">
-              <legend>Colours</legend>
-              <div class="palettes" id="palettes"></div>
-              <div class="color-inputs" id="color-inputs" hidden></div>
-            </fieldset>
-
-            <div class="field-row">
-              <fieldset class="field">
-                <legend>Format</legend>
-                <div class="segmented" id="formats"></div>
-              </fieldset>
-              <fieldset class="field">
-                <legend>Length</legend>
-                <div class="segmented" id="durations"></div>
-              </fieldset>
+          <div class="settings" role="group" aria-labelledby="settings-title">
+            <h3 class="settings-title" id="settings-title">Video settings</h3>
+            <div class="setting">
+              <span class="setting-label" id="formats-label">Format</span>
+              <div class="segmented" id="formats" role="group" aria-labelledby="formats-label"></div>
             </div>
-
-            <div class="field">
-              <label for="f-notes">Anything else? <span class="optional">Optional</span></label>
-              <textarea id="f-notes" rows="2" maxlength="300" placeholder="For example: use my attached logo, add upbeat music, end with our website"></textarea>
+            <div class="setting-row">
+              <div class="setting">
+                <span class="setting-label" id="qualities-label">Size</span>
+                <div class="segmented" id="qualities" role="group" aria-labelledby="qualities-label"></div>
+              </div>
+              <div class="setting">
+                <span class="setting-label" id="durations-label">Length</span>
+                <div class="segmented" id="durations" role="group" aria-labelledby="durations-label"></div>
+              </div>
             </div>
-          </form>
+          </div>
 
           <div class="detail-actions">
             <button class="button" type="button" id="detail-copy">
               <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/></svg>
-              Copy prompt
+              Copy style
             </button>
             <a class="button secondary" id="detail-open" target="_blank" rel="noopener">Full screen</a>
           </div>
           <p class="status" id="detail-status" role="status" aria-live="polite"></p>
-          <p class="paste-tip">Paste it into <strong>Claude</strong> on the web, or into <strong>Claude Code</strong> on your computer for longer videos. Claude sends back the finished MP4.</p>
 
-          <details class="prompt-box">
-            <summary>See the full prompt</summary>
-            <pre class="prompt-text" id="detail-prompt" tabindex="0" aria-label="Prompt"></pre>
-          </details>
+          <h3 class="prompt-label">The style</h3>
+          <pre class="prompt-text" id="detail-prompt" tabindex="0" aria-label="Style prompt"></pre>
         </div>
       </div>
     </section>

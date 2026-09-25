@@ -1,12 +1,16 @@
-Make me a short animated video and give me the final MP4 file.
+Make my video in this style: Kinetic typography.
 
-Style: kinetic typography. Big, bold words punch in one or two at a time on a steady beat (about 130 bpm). Each word starts large and slightly rotated, then snaps into place. Some letters move on their own: spinning in, dropping from above, sliding in from the side. On some beats the background cuts to another colour from the palette, like a music video. It ends with the full line stacked in the centre, holds for a moment, then a quick colour wipe clears the screen.
+Look and motion
+- Break my message into short, punchy phrases of one to three words. Each phrase punches onto the screen on a steady beat (about 130 bpm): it starts big and slightly rotated, then snaps into place.
+- Vary the entrances: some letters spin in one by one, some drop from above, some slide in from the side.
+- On some beats, hard cut the background to another colour from the palette, like a music video. Keep the text easy to read on every background.
+- End on the key line stacked in the centre, hold it for about a second, then clear the screen with a quick colour wipe.
 
-- Words: "{text}"
-- Video size: {ratio}
+Type and colour
+- A heavy, condensed font (like Anton), all capitals, filling most of the frame.
+- Use my brand colours if I give them. Otherwise use deep navy #10131f, warm white #f6f3ea, coral #ff5a4e and sunny yellow #ffd23f.
+
+Output
+- Size: {size}
 - Length: about {duration}
-- Colours: {colors}
-- Font: heavy and condensed, like Anton, all capitals, very large
-
-Hint: build it as an HTML animation (for example with {library}) and render it to MP4 frame by frame so the motion is smooth.
-{notes}
+- Build it as an HTML animation (for example with GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

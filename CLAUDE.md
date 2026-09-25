@@ -1,12 +1,12 @@
 # MotionPrompt
 
 A free static site that helps people make short animated videos with Claude. The visitor picks a
-style, makes it theirs (words, colours, format, length), copies the prompt and pastes it into
-Claude on the web or Claude Code. Claude builds the animation and sends back a finished MP4.
+style, chooses video settings (format, size, length), copies the style and pastes it under their
+own video request in Claude on the web or Claude Code. Claude sends back a finished MP4.
 The site gives them:
 
-1. **Style gallery** (the home page): live demos of animation styles. Each style page has a
-   "Make it yours" panel with a live preview and a prompt to copy. This is also the prompt builder.
+1. **Style gallery** (the home page): live demos of animation styles. Each style page shows how
+   to use it, video settings (format, size, length) and the style prompt to copy.
 2. **Guide** (not built yet): how to prompt, iterate, and what to do if a render times out.
 
 Audience: friends and followers, not developers. Plain English, short sentences, no jargon
@@ -35,7 +35,7 @@ gallery.html            old address, redirects to index.html
 guide.html              prompting tips + export to MP4
 assets/css/site.css     shared styles (design tokens on :root, light and dark)
 assets/js/*.js          shared scripts (ES modules): gallery.js (directory and views),
-                        customize.js (Make it yours panel), prompt.js (palettes, formats, fill)
+                        settings.js (video settings), prompt.js (load, fill, copy)
 assets/img/logo.svg     logo mark and favicon
 styles/styles.json      list of styles (the single source of truth for the gallery)
 styles/<slug>/demo.html self-contained animation, loads its own library from a CDN
@@ -56,31 +56,33 @@ Dark "film studio" look with a light variant; tokens live on `:root` in `site.cs
   "name": "Kinetic typography",
   "summary": "Words that punch in on the beat.",
   "library": "GSAP",
-  "ratios": ["9:16", "1:1", "16:9"],
   "tags": ["text", "social"],
-  "text": {"label": "Your words", "hint": "Short and punchy works best.", "max": 60}
+  "example": "Make a video for our bakery's grand opening."
 }
 ```
 
-`text` sets the label, hint and length limit of the style's text field.
+`example` is a sample video request shown in "How to use" (the visitor writes their own).
 
 `slug` must match a folder in `styles/` that has both `demo.html` and `prompt.txt`.
 
-### Prompt template placeholders
+### Style prompts
 
-`{text}`, `{ratio}` (becomes a pixel size such as "1080 x 1920 pixels (vertical 9:16)"),
-`{duration}`, `{colors}` (four hex colours), `{library}` and `{notes}` (the visitor's extra
-notes, or nothing). `assets/js/prompt.js` fills them in.
+A style prompt is general: the visitor writes their own video request in Claude and pastes the
+style underneath. So a prompt never contains the visitor's content. It describes the look, the
+motion, type and colour (with default colours, "use my brand colours if I give them"), and how
+to fit any message. It asks for the final MP4 only.
 
-Prompts ask Claude for the final MP4 only (visitors want the video, not the source). Keep them in plain
-language: describe the look and motion, list the visitor's choices, and give a one-line build
-hint. Claude knows how to render video, so do not spell out the technical steps.
+Placeholders, filled from the page's video settings by `assets/js/prompt.js`:
+`{size}` (for example "1080 x 1920 pixels (vertical 9:16)") and `{duration}` ("8 seconds").
 
-### Demo parameters
+Keep prompts in plain language with a one-line build hint. Claude knows how to render video, so
+do not spell out the technical steps.
 
-Every `demo.html` reads `?text=` and the colours `?bg= &ink= &accent= &accent2=` (hex, no `#`)
-from its URL, so the live preview shows the visitor's own content. It must fit any window shape,
-because the preview is reshaped to 9:16, 1:1 or 16:9.
+### Demos
+
+Each `demo.html` must fit any window shape, because the preview is reshaped to the chosen format
+(9:16, 4:5, 1:1, 16:9). Demos also accept `?text=` and colours `?bg= &ink= &accent= &accent2=`
+(hex, no `#`) in the URL; the site does not use these at the moment.
 
 ## Verify
 
