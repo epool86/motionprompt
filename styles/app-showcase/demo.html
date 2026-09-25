@@ -1,0 +1,850 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>App showcase demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/plus-jakarta-sans@5.3.0/500.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/plus-jakarta-sans@5.3.0/700.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/plus-jakarta-sans@5.3.0/800.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=f3f1ff&ink=151632&accent=5b5bf6&accent2=ff8a65 */
+    :root {
+      --bg: #f3f1ff;
+      --ink: #151632;
+      --accent: #5b5bf6;
+      --accent2: #ff8a65;
+      --muted: color-mix(in srgb, var(--ink) 50%, white);
+      --soft: color-mix(in srgb, var(--accent) 10%, white);
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    /* Soft gradient backdrop with two coloured glows */
+    .stage {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      font-family: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(60% 50% at 85% 20%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%),
+        radial-gradient(55% 45% at 10% 90%, color-mix(in srgb, var(--accent2) 28%, transparent), transparent 70%),
+        linear-gradient(160deg, color-mix(in srgb, var(--bg) 70%, white), var(--bg));
+    }
+
+    /* Headline block */
+    .copy {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0.35em;
+    }
+    .pill {
+      align-self: var(--align, center);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5em;
+      padding: 0.45em 0.9em 0.45em 0.5em;
+      border-radius: 99em;
+      background: rgb(255 255 255 / 0.75);
+      box-shadow: 0 0.3em 1em rgb(40 30 90 / 0.08);
+      font-size: 0.3em;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .pill b {
+      padding: 0.2em 0.6em;
+      border-radius: 99em;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 800;
+    }
+    .headline {
+      margin: 0;
+      font-size: 1em;
+      font-weight: 800;
+      line-height: 1.02;
+      letter-spacing: -0.03em;
+      text-wrap: balance;
+      text-align: var(--text-align, center);
+    }
+    .headline em {
+      font-style: normal;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    /* The device rig is drawn in fixed units and scaled to fit the window */
+    .rig {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 680px;
+      height: 940px;
+      transform-origin: 0 0;
+      perspective: 2200px;
+    }
+    .shadow {
+      position: absolute;
+      left: 140px;
+      top: 850px;
+      width: 380px;
+      height: 70px;
+      border-radius: 50%;
+      background: radial-gradient(closest-side, rgb(30 20 80 / 0.32), rgb(30 20 80 / 0.12) 60%, transparent);
+    }
+    .float {
+      position: absolute;
+      left: 140px;
+      top: 70px;
+      width: 380px;
+      height: 780px;
+      transform-style: preserve-3d;
+    }
+    .edge,
+    .phone {
+      position: absolute;
+      inset: 0;
+      border-radius: 64px;
+    }
+    .edge { background: #0b0c14; }
+    .edge.e1 { transform: translateZ(-7px); background: #3b3e4f; }
+    .edge.e2 { transform: translateZ(-14px); }
+    .phone {
+      padding: 12px;
+      box-sizing: border-box;
+      background: linear-gradient(145deg, #4a4e62, #16171f 40%, #262838);
+      box-shadow: inset 0 0 0 2px rgb(255 255 255 / 0.14), 0 50px 80px -30px rgb(30 20 80 / 0.45);
+    }
+    .screen {
+      position: relative;
+      width: 356px;
+      height: 756px;
+      border-radius: 52px;
+      overflow: hidden;
+      background: #f7f7fb;
+    }
+    .glare {
+      position: absolute;
+      inset: 0;
+      border-radius: 52px;
+      background: linear-gradient(120deg, rgb(255 255 255 / 0.28), transparent 38%);
+      pointer-events: none;
+    }
+    .island {
+      position: absolute;
+      left: 50%;
+      top: 11px;
+      width: 112px;
+      height: 32px;
+      margin-left: -56px;
+      border-radius: 20px;
+      background: #07070b;
+      z-index: 5;
+    }
+    .status {
+      position: absolute;
+      inset: 0 0 auto;
+      height: 50px;
+      padding: 0 28px 0 34px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 15px;
+      font-weight: 700;
+      z-index: 4;
+    }
+    .status svg { width: 62px; height: 14px; }
+
+    .view {
+      position: absolute;
+      inset: 0;
+      padding: 58px 18px 0;
+      background: #f7f7fb;
+      box-sizing: border-box;
+    }
+    .shade {
+      position: absolute;
+      inset: 0;
+      background: #0b0c14;
+      opacity: 0;
+    }
+    .top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 56px;
+      margin-bottom: 14px;
+    }
+    .top small { display: block; font-size: 14px; color: var(--muted); font-weight: 500; }
+    .top h2 { margin: 2px 0 0; font-size: 28px; font-weight: 800; letter-spacing: -0.02em; }
+    .avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      overflow: hidden;
+      flex: none;
+    }
+    .avatar svg { display: block; width: 100%; height: 100%; }
+    .round {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      display: grid;
+      place-items: center;
+    }
+    .round svg { width: 22px; height: 22px; }
+
+    .hero {
+      height: 158px;
+      border-radius: 24px;
+      padding: 20px;
+      box-sizing: border-box;
+      color: #fff;
+      background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, var(--accent2)));
+      position: relative;
+      overflow: hidden;
+    }
+    .hero small { font-size: 14px; opacity: 0.8; font-weight: 500; }
+    .hero strong { display: block; font-size: 36px; font-weight: 800; letter-spacing: -0.02em; margin: 4px 0 8px; }
+    .hero .up {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 99px;
+      background: rgb(255 255 255 / 0.22);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .hero svg { position: absolute; right: 16px; bottom: 18px; width: 140px; height: 60px; }
+
+    .section {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin: 18px 2px 10px;
+      font-size: 17px;
+      font-weight: 800;
+    }
+    .section span { font-size: 13px; color: var(--accent); font-weight: 700; }
+
+    .card {
+      background: #fff;
+      border-radius: 22px;
+      box-shadow: 0 6px 18px rgb(30 20 80 / 0.06);
+    }
+    .bars {
+      height: 150px;
+      padding: 16px 18px 10px;
+      box-sizing: border-box;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+    }
+    .bar {
+      width: 28px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .bar i {
+      display: block;
+      width: 100%;
+      border-radius: 9px;
+      background: color-mix(in srgb, var(--accent) 22%, white);
+      transform-origin: 50% 100%;
+    }
+    .bar.hi i { background: linear-gradient(var(--accent2), color-mix(in srgb, var(--accent2) 60%, var(--accent))); }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 4px;
+    }
+    .tile {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      flex: none;
+    }
+    .tile svg { width: 20px; height: 20px; }
+    .row div { flex: 1; min-width: 0; }
+    .row b { display: block; font-size: 15px; font-weight: 700; }
+    .row small { font-size: 13px; color: var(--muted); font-weight: 500; }
+    .row .amount { font-size: 15px; font-weight: 800; }
+
+    .button {
+      height: 52px;
+      margin-top: 10px;
+      border-radius: 17px;
+      background: var(--ink);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .search {
+      height: 46px;
+      border-radius: 15px;
+      background: #eceef4;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 14px;
+      font-size: 15px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .search svg { width: 18px; height: 18px; }
+    .chips { display: flex; gap: 8px; margin: 14px 0 12px; }
+    .chips span {
+      padding: 8px 16px;
+      border-radius: 99px;
+      background: #fff;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--muted);
+      box-shadow: 0 2px 8px rgb(30 20 80 / 0.05);
+    }
+    .chips span:first-child { background: var(--ink); color: #fff; }
+    .project { padding: 14px 16px; margin-bottom: 11px; }
+    .project .row { padding: 0; }
+    .meter {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 12px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .meter span {
+      flex: 1;
+      height: 7px;
+      border-radius: 9px;
+      background: #eceef4;
+      overflow: hidden;
+    }
+    .meter i {
+      display: block;
+      height: 100%;
+      border-radius: 9px;
+      transform-origin: 0 50%;
+    }
+    .faces { display: flex; }
+    .faces .avatar { width: 26px; height: 26px; border: 2px solid #fff; margin-left: -8px; }
+
+    .cover {
+      height: 170px;
+      margin: -58px -18px 0;
+      background:
+        radial-gradient(80% 90% at 20% 20%, color-mix(in srgb, var(--accent2) 45%, white), transparent),
+        linear-gradient(135deg, color-mix(in srgb, var(--accent) 45%, white), color-mix(in srgb, var(--accent2) 35%, white));
+    }
+    .me { text-align: center; margin-top: -52px; }
+    .me .avatar { width: 100px; height: 100px; margin: 0 auto 10px; border: 4px solid #f7f7fb; }
+    .me h3 { margin: 0; font-size: 23px; font-weight: 800; letter-spacing: -0.02em; }
+    .me p { margin: 3px 0 0; font-size: 14px; color: var(--muted); font-weight: 500; }
+    .stats { display: flex; justify-content: space-around; margin: 16px 0; text-align: center; }
+    .stats b { display: block; font-size: 19px; font-weight: 800; }
+    .stats small { font-size: 12px; color: var(--muted); font-weight: 500; }
+    .pair { display: flex; gap: 10px; }
+    .pair .button { flex: 1; margin: 0; height: 46px; background: var(--accent); }
+    .pair .button + .button { background: #fff; color: var(--ink); box-shadow: inset 0 0 0 2px #e4e5ee; }
+    .settings { margin-top: 16px; padding: 4px 16px; }
+    .settings .row { padding: 12px 0; }
+    .settings .row + .row { border-top: 1px solid #f0f1f6; }
+    .switch {
+      width: 46px;
+      height: 28px;
+      border-radius: 99px;
+      background: #dfe1ea;
+      position: relative;
+      flex: none;
+    }
+    .switch.on { background: var(--accent); }
+    .switch i {
+      position: absolute;
+      left: 3px;
+      top: 3px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 2px 4px rgb(0 0 0 / 0.2);
+    }
+    .switch.on i { left: 21px; }
+    .chev { width: 18px; height: 18px; color: #b5b8c6; }
+
+    .tabs {
+      position: absolute;
+      inset: auto 0 0;
+      height: 84px;
+      background: rgb(255 255 255 / 0.94);
+      box-shadow: 0 -6px 20px rgb(30 20 80 / 0.06);
+      display: flex;
+      z-index: 3;
+    }
+    .tabs span {
+      flex: 1;
+      display: grid;
+      place-items: center;
+      height: 60px;
+      color: #a9adbd;
+      position: relative;
+    }
+    .tabs svg { width: 24px; height: 24px; position: relative; }
+    .tabs .spot {
+      position: absolute;
+      left: 0;
+      top: 12px;
+      width: 56px;
+      height: 38px;
+      margin-left: 16.5px;
+      border-radius: 14px;
+      background: var(--soft);
+    }
+    .tabs::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: 8px;
+      width: 124px;
+      height: 5px;
+      margin-left: -62px;
+      border-radius: 9px;
+      background: var(--ink);
+    }
+    .ripple {
+      position: absolute;
+      width: 60px;
+      height: 60px;
+      margin: -30px 0 0 -30px;
+      border-radius: 50%;
+      background: color-mix(in srgb, var(--accent) 45%, white);
+      opacity: 0;
+      z-index: 6;
+      pointer-events: none;
+    }
+
+    /* Cards that pop out of the screen */
+    .pop {
+      position: absolute;
+      box-sizing: border-box;
+      background: rgb(255 255 255 / 0.97);
+      border-radius: 24px;
+      box-shadow: 0 34px 60px -22px rgb(30 20 80 / 0.4), 0 2px 8px rgb(30 20 80 / 0.08);
+      visibility: hidden;
+    }
+    .notif { left: 22px; top: 64px; width: 336px; padding: 16px; display: flex; gap: 13px; align-items: center; }
+    .notif .tile { width: 46px; height: 46px; background: var(--accent); color: #fff; border-radius: 13px; }
+    .notif div { flex: 1; font-size: 13px; color: var(--muted); line-height: 1.35; font-weight: 500; }
+    .notif b { display: flex; justify-content: space-between; color: var(--ink); font-size: 15px; font-weight: 800; }
+    .notif b span { font-size: 12px; color: var(--muted); font-weight: 500; }
+    .growth { left: 206px; top: 300px; width: 236px; padding: 18px; }
+    .growth small { font-size: 13px; color: var(--muted); font-weight: 700; }
+    .growth strong { display: block; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; margin-top: 2px; }
+    .growth strong span { font-size: 14px; color: #18a36b; margin-left: 6px; }
+    .growth svg { display: block; width: 100%; height: 80px; margin-top: 8px; overflow: visible; }
+    .person { left: -106px; top: 330px; width: 228px; padding: 18px; text-align: center; }
+    .person .avatar { width: 64px; height: 64px; margin: 0 auto 8px; }
+    .person b { display: block; font-size: 16px; font-weight: 800; }
+    .person small { display: block; font-size: 12px; color: var(--muted); font-weight: 500; }
+    .person .stars { margin: 8px 0 10px; color: #ffb547; letter-spacing: 2px; font-size: 14px; }
+    .person .button { height: 38px; margin: 0; font-size: 14px; border-radius: 12px; background: var(--accent); }
+    .toast { left: 222px; top: 170px; width: 226px; padding: 14px; display: flex; gap: 11px; align-items: center; }
+    .toast .tile { width: 38px; height: 38px; border-radius: 50%; background: #18a36b; color: #fff; }
+    .toast b { display: block; font-size: 14px; font-weight: 800; }
+    .toast small { font-size: 12px; color: var(--muted); font-weight: 500; }
+    .follow { left: 232px; top: 196px; width: 206px; padding: 13px 16px; display: flex; gap: 10px; align-items: center; }
+    .follow .tile { width: 36px; height: 36px; border-radius: 11px; background: color-mix(in srgb, var(--accent2) 20%, white); color: var(--accent2); }
+    .follow b { display: block; font-size: 18px; font-weight: 800; }
+    .follow small { font-size: 12px; color: var(--muted); font-weight: 500; }
+
+    /* A fingertip that taps the screen */
+    .finger {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 54px;
+      height: 54px;
+      margin: -27px 0 0 -27px;
+      border-radius: 50%;
+      background: rgb(255 255 255 / 0.55);
+      border: 2px solid rgb(255 255 255 / 0.9);
+      box-shadow: 0 10px 24px rgb(20 20 50 / 0.3), inset 0 0 12px rgb(255 255 255 / 0.6);
+      box-sizing: border-box;
+      visibility: hidden;
+    }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage" role="img">
+    <div class="copy" id="copy">
+      <span class="pill"><b>New</b>Now available</span>
+      <h1 class="headline" id="headline"></h1>
+    </div>
+
+    <div class="rig" id="rig">
+      <div class="shadow" id="shadow"></div>
+      <div class="float" id="float">
+        <div class="edge e2"></div>
+        <div class="edge e1"></div>
+        <div class="phone">
+          <div class="screen" id="screen">
+            <div class="status"><span>9:41</span><svg viewBox="0 0 62 14"><rect x="0" y="8" width="3" height="5" rx="1"/><rect x="5" y="6" width="3" height="7" rx="1"/><rect x="10" y="3" width="3" height="10" rx="1"/><rect x="15" y="1" width="3" height="12" rx="1"/><path d="M25 5a9 9 0 0 1 12 0l-1.6 1.7a6.6 6.6 0 0 0-8.8 0zM28.2 8.3a4.6 4.6 0 0 1 5.6 0L31 11.3z"/><rect x="41" y="1.5" width="19" height="11" rx="3" fill="none" stroke="currentColor" stroke-opacity="0.4"/><rect x="43" y="3.5" width="13" height="7" rx="1.5"/></svg></div>
+            <div class="island"></div>
+
+            <!-- Screen A: overview -->
+            <section class="view" id="viewA">
+              <div class="top">
+                <div><small>Good morning</small><h2>Overview</h2></div>
+                <div class="avatar" data-avatar="0"></div>
+              </div>
+              <div class="hero">
+                <small>Total revenue</small>
+                <strong>$24,580</strong>
+                <span class="up">+12.4% this month</span>
+                <svg viewBox="0 0 140 60" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 50 L26 40 L44 44 L66 26 L86 32 L108 14 L136 8" opacity="0.9"/></svg>
+              </div>
+              <div class="section">This week<span>See all</span></div>
+              <div class="card bars" id="bars"></div>
+              <div class="row" style="margin-top:6px">
+                <span class="tile" style="background:color-mix(in srgb,var(--accent) 14%,white);color:var(--accent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg></span>
+                <div><b>Subscriptions</b><small>32 new today</small></div>
+                <span class="amount">$1,240</span>
+              </div>
+              <div class="button" id="btnA">View projects</div>
+              <div class="shade"></div>
+            </section>
+
+            <!-- Screen B: project list -->
+            <section class="view" id="viewB">
+              <div class="top">
+                <div><small>Your work</small><h2>Projects</h2></div>
+                <span class="round"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+              </div>
+              <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>Search projects</div>
+              <div class="chips"><span>All</span><span>Active</span><span>Done</span></div>
+              <div id="projects"></div>
+              <div class="shade"></div>
+            </section>
+
+            <!-- Screen C: profile -->
+            <section class="view" id="viewC">
+              <div class="cover"></div>
+              <div class="me">
+                <div class="avatar" data-avatar="1"></div>
+                <h3>Alex Morgan</h3>
+                <p>Product designer</p>
+              </div>
+              <div class="stats">
+                <div><b>128</b><small>Projects</small></div>
+                <div><b>4.9</b><small>Rating</small></div>
+                <div><b>2.4k</b><small>Followers</small></div>
+              </div>
+              <div class="pair"><div class="button">Follow</div><div class="button">Message</div></div>
+              <div class="card settings">
+                <div class="row"><div><b>Notifications</b></div><span class="switch" id="switch"><i></i></span></div>
+                <div class="row"><div><b>Dark mode</b></div><span class="switch on"><i></i></span></div>
+                <div class="row"><div><b>Privacy</b></div><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></div>
+              </div>
+              <div class="shade"></div>
+            </section>
+
+            <div class="tabs" id="tabs">
+              <i class="spot" id="spot"></i>
+              <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/></svg></span>
+              <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></svg></span>
+              <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 20V12M12 20V5M19 20v-9"/></svg></span>
+              <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4.5 4-6.5 8-6.5s7 2 8 6.5" stroke-linecap="round"/></svg></span>
+            </div>
+            <i class="ripple" id="ripple"></i>
+            <div class="glare"></div>
+          </div>
+        </div>
+
+        <!-- Pop-out cards -->
+        <div class="pop notif" id="notif">
+          <span class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 21h4"/></svg></span>
+          <div><b>New order<span>now</span></b>Your payout of $1,240 is on the way.</div>
+        </div>
+        <div class="pop growth" id="growth">
+          <small>Weekly growth</small>
+          <strong>+38%<span>&#9650; 12</span></strong>
+          <svg viewBox="0 0 200 80" preserveAspectRatio="none">
+            <defs><linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity="0.3"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>
+            <path id="area-fill" d="M0 64 C25 60 35 44 60 48 S95 30 115 34 S155 12 200 8 V80 H0Z" fill="url(#area)"/>
+            <path id="line" d="M0 64 C25 60 35 44 60 48 S95 30 115 34 S155 12 200 8" fill="none" stroke="var(--accent)" stroke-width="4" stroke-linecap="round" pathLength="1" stroke-dasharray="1"/>
+          </svg>
+        </div>
+        <div class="pop person" id="person">
+          <div class="avatar" data-avatar="2"></div>
+          <b>Sam Rivera</b>
+          <small>Joined your project</small>
+          <div class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+          <div class="button">Say hello</div>
+        </div>
+        <div class="pop toast" id="toast">
+          <span class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+          <div><b>Task completed</b><small>Website refresh</small></div>
+        </div>
+        <div class="pop follow" id="follow">
+          <span class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6 4 4 6-7"/><path d="M15 8h5v5"/></svg></span>
+          <div><b>+248</b><small>new followers</small></div>
+        </div>
+
+        <div class="finger" id="finger"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const root = document.documentElement;
+    for (const key of ["bg", "ink", "accent", "accent2"]) {
+      const value = params.get(key);
+      if (/^[0-9a-f]{6}$/i.test(value ?? "")) root.style.setProperty(`--${key}`, `#${value}`);
+    }
+    const text = (params.get("text") || "Your app, in motion").trim().slice(0, 60);
+    const $ = (id) => document.getElementById(id);
+    const stage = $("stage");
+    stage.setAttribute("aria-label", `A phone app showcase with floating cards: ${text}`);
+
+    // Headline: the last word gets the gradient.
+    const words = text.split(/\s+/);
+    const last = words.pop();
+    const headline = $("headline");
+    headline.append(words.length ? words.join(" ") + " " : "");
+    const em = document.createElement("em");
+    em.textContent = last;
+    headline.append(em);
+
+    // Simple avatar: a head and shoulders on a soft gradient.
+    const tones = [["#ffd2bd", "#8a5cf6", "#3b2a6b"], ["#f1c6a8", "#ff8a65", "#5a2c1c"], ["#c99a7a", "#35c2a1", "#1f2b3a"]];
+    document.querySelectorAll("[data-avatar]").forEach((node) => {
+      const [skin, back, hair] = tones[node.dataset.avatar];
+      node.innerHTML = `<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="${back}"/><circle cx="20" cy="17" r="8" fill="${skin}"/><path d="M11.5 15a8.5 8.5 0 0 1 17 0c-2-3-6-4-8.5-4s-6 1-8.5 4z" fill="${hair}"/><path d="M6 40c1-8 7-12 14-12s13 4 14 12z" fill="#fff" opacity="0.9"/></svg>`;
+    });
+
+    // Bar chart on screen A.
+    const days = ["M", "T", "W", "T", "F", "S", "S"];
+    const heights = [48, 70, 56, 88, 64, 100, 76];
+    $("bars").innerHTML = days.map((d, i) =>
+      `<span class="bar${i === 5 ? " hi" : ""}"><i style="height:${heights[i]}px"></i>${d}</span>`).join("");
+
+    // Project rows on screen B.
+    const projects = [
+      ["Website refresh", "12 tasks", 0.82, "var(--accent)"],
+      ["Mobile launch", "8 tasks", 0.56, "var(--accent2)"],
+      ["Brand guide", "5 tasks", 0.34, "#18a36b"],
+      ["Team offsite", "9 tasks", 0.68, "#ffb547"],
+    ];
+    const face = (n) => `<span class="avatar" data-face="${n}"></span>`;
+    $("projects").innerHTML = projects.map(([name, tasks, done, color]) => `
+      <div class="card project">
+        <div class="row">
+          <span class="tile" style="background:color-mix(in srgb,${color} 16%,white);color:${color}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg></span>
+          <div><b>${name}</b><small>${tasks}</small></div>
+          <span class="faces">${face(0)}${face(1)}${face(2)}</span>
+        </div>
+        <div class="meter"><span><i style="background:${color};width:${done * 100}%"></i></span>${Math.round(done * 100)}%</div>
+      </div>`).join("");
+    document.querySelectorAll("[data-face]").forEach((node) => {
+      node.innerHTML = document.querySelector(`[data-avatar="${node.dataset.face}"]`).innerHTML;
+    });
+
+    // Layout: headline on top in tall windows, on the left in wide ones. The rig scales to fit.
+    const copy = $("copy"), rig = $("rig");
+    const RIG_W = 680, RIG_H = 940;
+    function layout() {
+      const W = innerWidth, H = innerHeight;
+      const wide = W / H >= 1.25;
+      let box, area;
+      if (wide) {
+        box = { x: W * 0.07, y: H * 0.1, w: W * 0.43, h: H * 0.8 };
+        area = { x: W * 0.48, y: 0, w: W * 0.52, h: H };
+      } else {
+        const top = H * 0.05, copyH = H * (W / H < 0.7 ? 0.2 : 0.22);
+        box = { x: W * 0.07, y: top, w: W * 0.86, h: copyH };
+        area = { x: 0, y: top + copyH, w: W, h: H - top - copyH };
+      }
+      root.style.setProperty("--align", wide ? "flex-start" : "center");
+      root.style.setProperty("--text-align", wide ? "left" : "center");
+      Object.assign(copy.style, { left: `${box.x}px`, top: `${box.y}px`, width: `${box.w}px`, height: `${box.h}px` });
+
+      // Largest font size that still fits the box.
+      let lo = 6, hi = Math.min(box.h * 0.6, wide ? H * 0.17 : W * 0.16);
+      for (let i = 0; i < 12; i++) {
+        const mid = (lo + hi) / 2;
+        copy.style.fontSize = `${mid}px`;
+        const fits = copy.scrollHeight <= box.h + 0.5 && headline.scrollWidth <= box.w + 0.5;
+        if (fits) lo = mid; else hi = mid;
+      }
+      copy.style.fontSize = `${lo}px`;
+
+      const s = Math.min(area.w / RIG_W, area.h / RIG_H) * 0.95;
+      const x = area.x + (area.w - RIG_W * s) / 2;
+      const y = area.y + (area.h - RIG_H * s) / 2;
+      rig.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
+    }
+
+    // Position of an element inside the phone, ignoring transforms.
+    function spot(el, fx = 0.5, fy = 0.5) {
+      let x = 0, y = 0, node = el;
+      while (node && node.id !== "float") {
+        x += node.offsetLeft;
+        y += node.offsetTop;
+        node = node.offsetParent;
+      }
+      return { x: x + el.offsetWidth * fx, y: y + el.offsetHeight * fy };
+    }
+
+    function build() {
+      layout();
+      addEventListener("resize", layout);
+
+      const L = 10.8; // loop length in seconds
+      const float = $("float"), shadow = $("shadow"), finger = $("finger"), ripple = $("ripple");
+      const viewA = $("viewA"), viewB = $("viewB"), viewC = $("viewC");
+      const shades = [viewA, viewB, viewC].map((v) => v.querySelector(".shade"));
+      const bars = gsap.utils.toArray("#bars i");
+      const meters = gsap.utils.toArray("#projects .meter i");
+      const tabIcons = gsap.utils.toArray("#tabs span");
+      const sw = $("switch"), knob = sw.querySelector("i");
+      const tabX = (i) => i * 89;
+
+      gsap.set(float, { rotationY: 10, rotationX: 9, rotationZ: -3, transformOrigin: "50% 50%" });
+      gsap.set([viewB, viewC], { xPercent: 100 });
+      gsap.set([".pop", finger], { autoAlpha: 0 });
+      gsap.set(meters, { scaleX: 0 });
+      gsap.set(tabIcons[0], { color: "var(--accent)" });
+
+      const tl = gsap.timeline({ repeat: -1, defaults: { ease: "power3.inOut" } });
+      // Each step applies its start values only when it begins, not when it is created.
+      const fromTo = tl.fromTo.bind(tl);
+      tl.fromTo = (targets, from, to, at) => fromTo(targets, from, { ...to, immediateRender: false }, at);
+
+      // Gentle sway and float, one full cycle per loop.
+      tl.to(float, { rotationY: 20, rotationX: 5, rotationZ: -1, duration: L / 2, ease: "sine.inOut" }, 0)
+        .to(float, { rotationY: 10, rotationX: 9, rotationZ: -3, duration: L / 2, ease: "sine.inOut" }, L / 2);
+      for (let i = 0; i < 3; i++) {
+        const at = (i * L) / 3, half = L / 6;
+        tl.to(float, { y: -16, duration: half, ease: "sine.inOut" }, at)
+          .to(float, { y: 0, duration: half, ease: "sine.inOut" }, at + half)
+          .to(shadow, { scale: 0.86, opacity: 0.7, duration: half, ease: "sine.inOut" }, at)
+          .to(shadow, { scale: 1, opacity: 1, duration: half, ease: "sine.inOut" }, at + half);
+      }
+
+      // A card pops out of the screen towards the viewer, bobs, then sinks back.
+      function pop(el, at, until, { x = 0, y = 0, z = 130, turn = 0 } = {}) {
+        tl.fromTo(el, { autoAlpha: 0, x: 0, y: 0, z: 0, scale: 0.82, rotationY: 0 },
+          { autoAlpha: 1, x, y, z, scale: 1, rotationY: turn, duration: 0.75, ease: "back.out(1.5)" }, at)
+          .to(el, { y: y - 8, duration: (until - at - 0.75) / 2, ease: "sine.inOut", yoyo: true, repeat: 1 }, at + 0.75)
+          .to(el, { autoAlpha: 0, x: 0, y: 0, z: 0, scale: 0.85, duration: 0.4, ease: "power2.in" }, until);
+      }
+
+      // The fingertip glides to a target, presses, and a ripple spreads under it.
+      function tap(el, at, { fx = 0.5, fy = 0.5, from = { x: 60, y: 90 }, stay = false } = {}) {
+        const p = spot(el, fx, fy);
+        const r = { x: p.x - 12, y: p.y - 12 }; // screen sits 12 units inside the phone
+        tl.fromTo(finger, { autoAlpha: 0, x: p.x + from.x, y: p.y + from.y, z: 40, scale: 1.1 },
+          { autoAlpha: 1, x: p.x, y: p.y, scale: 1, duration: 0.55, ease: "power2.out" }, at)
+          .to(finger, { scale: 0.8, duration: 0.12, ease: "power2.in" }, at + 0.6)
+          .to(finger, { scale: 1, duration: 0.2, ease: "power2.out" }, at + 0.72)
+          .fromTo(ripple, { left: r.x, top: r.y, scale: 0.2, opacity: 0.7 },
+            { scale: 2.6, opacity: 0, duration: 0.6, ease: "power2.out" }, at + 0.62)
+          .fromTo(el, { scale: 1 }, { scale: 0.95, duration: 0.12, yoyo: true, repeat: 1, ease: "power1.inOut" }, at + 0.6);
+        if (!stay) tl.to(finger, { autoAlpha: 0, x: `+=${from.x * 0.6}`, y: `+=${from.y * 0.6}`, duration: 0.35, ease: "power2.in" }, at + 0.9);
+      }
+
+      // Push the next screen in from the right (or back in from the left).
+      function slide(from, to, at, back = false) {
+        const a = [viewA, viewB, viewC].indexOf(from), b = [viewA, viewB, viewC].indexOf(to);
+        if (back) {
+          tl.fromTo(from, { xPercent: 0 }, { xPercent: 100, duration: 0.7 }, at)
+            .fromTo(to, { xPercent: -30 }, { xPercent: 0, duration: 0.7 }, at)
+            .fromTo(shades[b], { opacity: 0.18 }, { opacity: 0, duration: 0.7 }, at);
+        } else {
+          tl.fromTo(from, { xPercent: 0 }, { xPercent: -30, duration: 0.7 }, at)
+            .fromTo(shades[a], { opacity: 0 }, { opacity: 0.18, duration: 0.7 }, at)
+            .fromTo(to, { xPercent: 100 }, { xPercent: 0, duration: 0.7 }, at);
+        }
+      }
+      function tab(i, at) {
+        tl.to($("spot"), { x: tabX(i), duration: 0.5 }, at)
+          .to(tabIcons, { color: (j) => (j === i ? "var(--accent)" : "#a9adbd"), duration: 0.3 }, at + 0.1);
+      }
+
+      // Screen A: notification and growth card pop out, then a tap opens projects.
+      pop($("notif"), 0.4, 3.0, { y: -64, z: 140 });
+      pop($("growth"), 1.1, 3.05, { x: 10, z: 160, turn: -6 });
+      tl.fromTo("#line", { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 1.3, ease: "power2.out" }, 1.4)
+        .fromTo("#area-fill", { opacity: 0 }, { opacity: 1, duration: 0.8 }, 1.9);
+      tap($("btnA"), 2.3);
+      slide(viewA, viewB, 3.15);
+      tab(1, 3.15);
+      tl.fromTo(meters, { scaleX: 0 }, { scaleX: 1, duration: 0.9, stagger: 0.08, ease: "power2.out" }, 3.5)
+        .set(bars, { scaleY: 0 }, 4);
+
+      // Screen B: a teammate card and a done toast, then a tap on the profile tab.
+      pop($("person"), 3.9, 6.3, { x: -26, z: 150, turn: 8 });
+      pop($("toast"), 4.5, 6.35, { x: 16, z: 120, turn: -6 });
+      tap(tabIcons[3], 5.6, { from: { x: -40, y: 90 } });
+      slide(viewB, viewC, 6.45);
+      tab(3, 6.45);
+      tl.set(viewB, { xPercent: 100 }, 7.2).set(shades[1], { opacity: 0 }, 7.2);
+
+      // Screen C: a followers card, a tap flips a switch, then home again.
+      pop($("follow"), 7.1, 9.0, { x: 16, z: 130, turn: -6 });
+      tap(sw, 7.5, { from: { x: 50, y: 110 }, stay: true });
+      tl.to(knob, { left: 21, duration: 0.3, ease: "power2.out" }, 8.12)
+        .to(sw, { backgroundColor: "var(--accent)", duration: 0.3 }, 8.12);
+      const home = spot(tabIcons[0]);
+      tl.to(finger, { x: home.x, y: home.y, duration: 0.6, ease: "power2.inOut" }, 8.45)
+        .to(finger, { scale: 0.8, duration: 0.12, ease: "power2.in" }, 9.05)
+        .to(finger, { scale: 1, duration: 0.2, ease: "power2.out" }, 9.17)
+        .fromTo(ripple, { left: home.x - 12, top: home.y - 12, scale: 0.2, opacity: 0.7 },
+          { scale: 2.6, opacity: 0, duration: 0.6, ease: "power2.out" }, 9.07)
+        .to(finger, { autoAlpha: 0, x: `+=30`, y: `+=60`, duration: 0.35, ease: "power2.in" }, 9.35);
+      slide(viewC, viewA, 9.15, true);
+      tab(0, 9.15);
+      tl.fromTo(bars, { scaleY: 0 }, { scaleY: 1, duration: 0.7, stagger: 0.05, ease: "back.out(1.4)" }, 9.6)
+        .set(knob, { left: 3 }, 10.2)
+        .set(sw, { backgroundColor: "#dfe1ea" }, 10.2)
+        .set(meters, { scaleX: 0 }, 10.2);
+
+      // Reduced motion: a still frame with the cards out on the first screen.
+      const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+      const apply = () => (reduce.matches ? tl.pause(2.3) : tl.play());
+      apply();
+      reduce.addEventListener("change", apply);
+    }
+
+    // Wait briefly for the font so the headline is measured in the right face.
+    Promise.race([
+      Promise.all(["500", "700", "800"].map((w) => document.fonts.load(`${w} 1em "Plus Jakarta Sans"`))),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(build);
+  </script>
+</body>
+</html>

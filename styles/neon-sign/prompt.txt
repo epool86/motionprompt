@@ -1,0 +1,18 @@
+Make my video in this style: Neon sign.
+
+Look and motion
+- My message is a glowing neon tube sign, mounted on a dark brick wall at night. The sign is tilted very slightly, like it was hung by hand.
+- It starts switched off, so you can see the dark glass tubes. Then the tubes flicker on letter by letter with a realistic stutter: a few quick blinks, then a steady glow.
+- Above the words sits a small neon icon that fits my message (for example a heart, a coffee cup or a star). It buzzes on just after the words.
+- Once lit, the tubes have a white hot core, a soft coloured bloom and a warm pool of light spilling onto the bricks. Now and then one tube gives a brief flicker.
+- Near the end the sign fades off, so the video can loop.
+- Keep the flicker gentle and brief, with no fast full screen flashing.
+
+Type and colour
+- A flowing script font that looks like bent glass tubing (like Yellowtail), on one to three lines.
+- Use my brand colours if I give them. Otherwise use hot pink #ff4f9a for the words, warm amber #ffb13b for the icon, a near white core #fff4f8 and a dark red brick wall #2a1512.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with CSS glow and a canvas brick wall) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

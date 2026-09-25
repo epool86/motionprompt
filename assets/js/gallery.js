@@ -91,7 +91,7 @@ function renderFilters() {
   const tags = [...new Set(styles.flatMap((s) => s.tags ?? []))].sort();
   filters.replaceChildren(...["all", ...tags].map((tag) => {
     const button = el("button", { class: "filter", type: "button", "aria-pressed": String(tag === activeTag), "data-tag": tag },
-      tag === "all" ? "All" : tag);
+      tag === "all" ? "All" : tag === "3d" ? "3D" : tag);
     button.addEventListener("click", () => {
       activeTag = tag;
       filters.querySelectorAll(".filter").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tag === tag)));

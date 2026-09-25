@@ -1,0 +1,17 @@
+Make my video in this style: Whiteboard sketch.
+
+Look and motion
+- A clean, slightly warm white board, like a friendly explainer video.
+- Everything is drawn by hand, stroke by stroke, as if an invisible marker is sketching it live. Lines have a slight wobble so they feel hand drawn, never perfect.
+- Turn my topic into a few simple steps. Give each step a small doodle (like a lightbulb, a checklist, a simple chart, a person or a speech bubble) with a short handwritten label.
+- Join the steps with curved marker arrows. Add a few marker touches: an underline, a quick circle around the key word, and a highlighter swipe behind the headline and one important word.
+- Start by writing my headline at the top, then draw the steps one after another. Hold the finished board for a moment, then erase it with a soft wipe.
+
+Type and colour
+- A casual handwriting font (like Caveat), bold enough to read easily.
+- Use my brand colours if I give them. Otherwise use a warm white board #fbf8f1, dark marker ink #23262f, a blue marker #2f6fe4 for arrows and ticks, and a yellow highlighter #ffd84a.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with SVG line drawing and GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

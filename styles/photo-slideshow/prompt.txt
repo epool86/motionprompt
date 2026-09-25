@@ -1,0 +1,19 @@
+Make my video in this style: Photo slideshow.
+
+Look and motion
+- Use the photos I attach, in the order I give them. If I attach none, ask me for them before you start. If I say I have none, use tasteful placeholder scenes that suit my subject.
+- Each photo fills the frame and moves slowly with a Ken Burns effect: a gentle zoom in or out with a slight pan, a different direction for each photo. Crop so the main subject stays in view in any frame shape.
+- Change photos with smooth, varied transitions: a clean wipe, a zoom through, panels that rise one after another, and a colour panel that sweeps across.
+- Give each photo a short, bold caption in the lower left, taken from my message. The words rise out of a mask one by one, with a small counter (like 01 / 04) and a thin accent line above them. Clear the caption just before the next photo.
+- Add a soft dark gradient behind the captions so they stay easy to read, and a light film grain.
+- A thin progress bar at the top, with one segment per photo, fills as the slideshow plays.
+- Keep it calm and editorial, like a travel magazine or a property tour. Loop smoothly back to the first photo at the end.
+
+Type and colour
+- An elegant, bold serif font (like Playfair Display) for captions, and a small sans serif in spaced capitals for the counter.
+- Use my brand colours if I give them. Otherwise use warm white #fbf7ef text, a gold #f2c14e accent and deep ink #10141c for the colour sweep.
+
+Output
+- Size: {size}
+- Length: about {duration}. Share the time evenly between the photos.
+- Build it as an HTML animation (for example with GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

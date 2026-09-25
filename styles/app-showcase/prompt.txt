@@ -1,0 +1,19 @@
+Make my video in this style: App showcase.
+
+Look and motion
+- A modern phone floats in 3D space, gently tilting and bobbing, with a soft shadow below it. If my app is on the web or desktop, use a laptop instead, or both.
+- If I attach screenshots of my app, use them as the screens, in order. If not, draw a clean, believable app screen for my product: a header, a chart, a few list rows and a clear button.
+- The app screens slide from one to the next, like real navigation.
+- Small UI cards pop out of the screen towards the camera with real depth, float for a moment, then sink back: for example a notification, a chart card and a profile card.
+- A fingertip or cursor taps a button, with a soft ripple, and the next screen slides in.
+- Show my headline or message as still, easy to read text: above the device in tall frames, beside it in wide ones.
+- Keep it calm and premium, like a SaaS launch video. Loop smoothly back to the first screen at the end.
+
+Type and colour
+- A clean, modern sans serif font (like Plus Jakarta Sans or Inter), extra bold for the headline, with the key word in a soft colour gradient.
+- Use my brand colours if I give them. Otherwise use a soft lilac backdrop #f3f1ff with gentle indigo #5b5bf6 and peach #ff8a65 glows, deep ink #151632 text, indigo for buttons and charts and peach for highlights.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP and CSS 3D) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

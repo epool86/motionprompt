@@ -1,5 +1,12 @@
 [
   {
+    "slug": "isometric-diorama",
+    "name": "Isometric diorama",
+    "summary": "A cute 3D diorama where objects pop onto a round stage as the camera orbits.",
+    "library": "Three.js",
+    "tags": ["3d", "product", "explainer"]
+  },
+  {
     "slug": "kinetic-type",
     "name": "Kinetic typography",
     "summary": "Big bold words that punch in on the beat, then stack into one line.",
@@ -7,17 +14,94 @@
     "tags": ["text", "social"]
   },
   {
-    "slug": "particle-field",
-    "name": "Particle field",
-    "summary": "Thousands of glowing dots drifting along soft currents, like smoke or wind.",
+    "slug": "app-showcase",
+    "name": "App showcase",
+    "summary": "A floating 3D phone with sliding app screens, pop out UI cards and a tap ripple.",
+    "library": "GSAP",
+    "tags": ["product", "3d"]
+  },
+  {
+    "slug": "neon-sign",
+    "name": "Neon sign",
+    "summary": "Neon tube lettering that flickers on letter by letter over a dark brick wall.",
+    "library": "CSS",
+    "tags": ["text", "retro"]
+  },
+  {
+    "slug": "liquid-gradient",
+    "name": "Liquid gradient",
+    "summary": "Soft colour blobs melt into each other under fine grain while a clean headline fades in.",
+    "library": "WebGL",
+    "tags": ["background", "text"]
+  },
+  {
+    "slug": "data-story",
+    "name": "Data story",
+    "summary": "Numbers count up while bars grow, lines draw and donuts fill, card by card.",
+    "library": "GSAP",
+    "tags": ["data", "explainer"]
+  },
+  {
+    "slug": "retro-synthwave",
+    "name": "Retro synthwave",
+    "summary": "80s outrun: a neon grid, a striped setting sun and a chrome headline.",
     "library": "Canvas",
-    "tags": ["background", "ambient"]
+    "tags": ["retro", "background"]
   },
   {
     "slug": "logo-spin-3d",
     "name": "3D logo spin",
     "summary": "A shiny 3D logo that spins, settles and floats, ready for an intro or outro.",
     "library": "Three.js",
-    "tags": ["3d", "logo", "intro"]
+    "tags": ["3d", "brand"]
+  },
+  {
+    "slug": "photo-slideshow",
+    "name": "Photo slideshow",
+    "summary": "Your photos with slow Ken Burns zooms, bold captions and smooth editorial transitions.",
+    "library": "GSAP",
+    "tags": ["photos", "social"]
+  },
+  {
+    "slug": "glitch",
+    "name": "Glitch",
+    "summary": "Digital glitch type with RGB split, sliced frames and a blinking terminal cursor.",
+    "library": "Canvas",
+    "tags": ["text", "social"]
+  },
+  {
+    "slug": "sale-countdown",
+    "name": "Sale countdown",
+    "summary": "A punchy 3, 2, 1 countdown, a swinging price tag and a burst of confetti.",
+    "library": "GSAP",
+    "tags": ["promo", "social"]
+  },
+  {
+    "slug": "whiteboard-sketch",
+    "name": "Whiteboard sketch",
+    "summary": "Marker doodles and handwriting draw themselves on a warm whiteboard, explainer style.",
+    "library": "GSAP",
+    "tags": ["explainer", "handmade"]
+  },
+  {
+    "slug": "particle-field",
+    "name": "Particle field",
+    "summary": "Thousands of glowing dots drifting along soft currents, like smoke or wind.",
+    "library": "Canvas",
+    "tags": ["background"]
+  },
+  {
+    "slug": "paper-cutout",
+    "name": "Paper cut-out",
+    "summary": "Layered paper hills, sun and clouds pop into place with a handmade stop motion wobble.",
+    "library": "SVG",
+    "tags": ["handmade", "background"]
+  },
+  {
+    "slug": "swiss-geometric",
+    "name": "Swiss geometric",
+    "summary": "Bold circles, squares and bars snap along a strict grid beside a tight grotesk headline.",
+    "library": "GSAP",
+    "tags": ["text", "brand"]
   }
 ]

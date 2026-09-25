@@ -1,0 +1,18 @@
+Make my video in this style: Glitch.
+
+Look and motion
+- Digital glitch type on a near black screen, like a corrupted video signal.
+- Show my message one word at a time, with hard jump cuts between words. Then show the whole line together and hold it.
+- The text has a small red and cyan channel split all the time. At each cut, and in one bigger burst in the middle, the frame breaks up: horizontal slices shift sideways, the colour split jumps wide, and small blocks of noise appear. Each burst lasts well under half a second, then everything snaps back to calm.
+- Add small monospace captions like a terminal: a channel tag and a running timecode at the top, and a typed status line with a blinking block cursor at the bottom.
+- End on a short, almost empty standby moment, so the video loops cleanly.
+- Keep the background dark at all times. No bright full screen flashes.
+
+Type and colour
+- A heavy monospace font in capitals for my message (like JetBrains Mono ExtraBold), and the same font in a light weight for the captions.
+- Use my brand colours if I give them: one bright brand colour as the only accent. Otherwise use near black #0b0c0f, off white #eef2f0 text and acid green #c6ff00 for the accent, the cursor and the noise blocks.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML canvas animation and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

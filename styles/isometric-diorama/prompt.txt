@@ -1,0 +1,18 @@
+Make my video in this style: Isometric diorama.
+
+Look and motion
+- A small 3D world on a light grey round disc, floating on a clean white background, drawn like a flat vector illustration (think Storyset).
+- Fill the disc with simple, cute objects that represent my topic, made from rounded blocks, cylinders and simple shapes. For example, for an invoicing app: a laptop showing my app's screen, a green folder of invoices, a calculator, coin stacks, a giant pencil and a % tag.
+- If I attach screenshots of my app, show them on the laptop screen. If not, draw a simple app screen with a sidebar, a header bar, a few cards and a small chart.
+- Flat toon shading with two or three tones per colour, soft shadows under each object, no textures or gloss.
+- The camera looks down at an isometric angle, with no perspective. It slowly orbits and eases between two or three shots, for example wide on the whole disc, closer on the most important object, then back out. It is never fully still.
+- Every object pops in one by one with a springy bounce, then gently bobs or tilts. At the end, everything pops out, so the video can loop.
+
+Type and colour
+- Keep text to a minimum. If my message needs words, show a short line in a clean, bold, rounded sans serif font above or below the disc, in the dark colour.
+- Use my brand colours if I give them (two colours only, plus white and greys). Otherwise use teal #1fb5a8 and dark slate #263238.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as a 3D scene in HTML (for example with Three.js) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

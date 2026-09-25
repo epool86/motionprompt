@@ -1,0 +1,17 @@
+Make my video in this style: Swiss geometric.
+
+Look and motion
+- A Bauhaus and Swiss poster that moves. Bold flat shapes (circles, squares, half circles, quarter circles and thick lines) sit on a strict, visible grid with thin hairlines. Only three or four flat colours, no gradients or shadows.
+- Every move is precise: shapes slide along the grid one direction at a time, turn in quarter turns and snap exactly into their cells, with crisp ease in and ease out. No wobble, no bounce.
+- Rearrange the shapes into a few different compositions, holding each one for a moment like a new poster.
+- Set my message as a big headline in its own area of the grid, left aligned, with a thick rule above it. Each line slides up into view from behind a clean edge.
+- Open by popping the shapes on and revealing the headline, and end by clearing everything back to the empty page.
+
+Type and colour
+- A clean, heavy grotesk sans serif font (like Archivo or Inter), tight letter spacing and tight line spacing.
+- Use my brand colours if I give them. Otherwise use warm off white #efe9dc, near black #141414, signal red #e23b2e and cobalt blue #1f45c7.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

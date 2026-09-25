@@ -1,0 +1,17 @@
+Make my video in this style: Data story.
+
+Look and motion
+- Turn the numbers in my request into an animated infographic. Pick the right chart for each number: bars to compare amounts, a line for change over time, a donut for a share of a whole, or just a big number on its own.
+- Show the numbers as two or three cards, one after another. Each card has one big number that counts up, a short label under it, and one chart.
+- Bars grow up from the baseline one after another, lines draw themselves from left to right, and donuts fill around like a clock. Small labels fade in once each chart has landed.
+- Keep a short title at the top and a row of thin progress bars at the bottom, one per card, that fill as the video plays.
+- Flat and tidy: a clean grid, lots of empty space, thin grey guide lines and no 3D or shadows. Only use the numbers I give you and never invent data. If my request has no numbers, ask me for them.
+
+Type and colour
+- A clean sans serif font (like Inter), bold for the big numbers with even-width digits so they do not wobble while counting, and regular for labels.
+- Use my brand colours if I give them, one colour per chart. Otherwise use an off white background #f7f5f0, near black text #16181d, grey labels, and blue #3b5bff, green #16a37a and coral #ff6a3d for the charts.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with SVG and GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

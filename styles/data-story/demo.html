@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Data story demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource-variable/inter@5.3.0/index.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=f7f5f0&ink=16181d&accent=3b5bff&accent2=ff6a3d */
+    :root {
+      --bg: #f7f5f0;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    svg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      font-family: "Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-variant-numeric: tabular-nums;
+    }
+  </style>
+</head>
+<body>
+  <svg id="stage" role="img"></svg>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => "#" + (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const c = { bg: hex("bg", "f7f5f0"), ink: hex("ink", "16181d"), accent: hex("accent", "3b5bff"), accent2: hex("accent2", "ff6a3d") };
+    document.documentElement.style.setProperty("--bg", c.bg);
+    const custom = params.has("accent") || params.has("accent2");
+    const mint = custom ? c.accent : "#16a37a";
+
+    // Mix two hex colours, used for the quiet greys (grid lines, small labels).
+    const mix = (a, b, t) => "#" + [1, 3, 5].map((i) => {
+      const v = Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - t) + parseInt(b.slice(i, i + 2), 16) * t);
+      return v.toString(16).padStart(2, "0");
+    }).join("");
+    const muted = mix(c.ink, c.bg, 0.45);
+    const grid = mix(c.ink, c.bg, 0.87);
+
+    const title = (params.get("text") || "Our year in numbers").trim().slice(0, 60);
+    const svg = document.getElementById("stage");
+    svg.setAttribute("aria-label", `Animated infographic: ${title}. A number counts up, bars grow, a line draws and a donut fills.`);
+
+    // Three cards of sample stats, each with the chart that suits it.
+    const cards = [
+      { value: 12480, prefix: "", suffix: "", caption: "new customers", chart: "bars", color: c.accent,
+        bars: [2140, 2860, 3310, 4170], labels: ["Q1", "Q2", "Q3", "Q4"] },
+      { value: 38, prefix: "+", suffix: "%", caption: "growth since last year", chart: "line", color: mint,
+        points: [100, 104, 101, 109, 113, 110, 118, 124, 121, 129, 133, 138], labels: ["Jan", "Jun", "Dec"] },
+      { value: 72, prefix: "", suffix: "%", caption: "would recommend us", chart: "donut", color: c.accent2,
+        share: 0.72, center: "7 in 10" },
+    ];
+    const CARD = 3.6; // seconds per card
+
+    const NS = "http://www.w3.org/2000/svg";
+    function el(name, attrs, parent) {
+      const node = document.createElementNS(NS, name);
+      for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+      parent.append(node);
+      return node;
+    }
+    function text(str, attrs, parent) {
+      const node = el("text", attrs, parent);
+      node.textContent = str;
+      return node;
+    }
+    // Shrink a text node until it fits a width.
+    function fitWidth(node, maxW) {
+      let size = parseFloat(node.getAttribute("font-size"));
+      while (size > 6 && node.getComputedTextLength() > maxW) {
+        size *= 0.94;
+        node.setAttribute("font-size", size);
+      }
+      return size;
+    }
+    const format = (card, v) => card.prefix + Math.round(v).toLocaleString("en-US") + card.suffix;
+
+    let tl = null;
+
+    function build() {
+      const saved = tl ? tl.time() : 0;
+      if (tl) tl.kill();
+      svg.replaceChildren();
+
+      const W = innerWidth, H = innerHeight, u = Math.min(W, H);
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      const pad = Math.max(12, u * 0.08);
+      const small = Math.max(7, u * 0.034);
+      const radius = Math.max(2, u * 0.01); // rounded bar tops
+
+      // Header: the title, fixed through the whole loop.
+      const titleEl = text(title, { x: pad, y: pad + u * 0.045, "font-size": u * 0.056, "font-weight": 650, fill: c.ink, "letter-spacing": "-0.01em" }, svg);
+      const titleSize = fitWidth(titleEl, W - pad * 2);
+
+      // Story style progress bars at the bottom, one per card.
+      const progY = H - pad * 0.75;
+      const gapP = u * 0.015;
+      const segW = (W - pad * 2 - gapP * (cards.length - 1)) / cards.length;
+      const segH = Math.max(2, u * 0.008);
+      const fills = cards.map((_, i) => {
+        const x = pad + i * (segW + gapP);
+        el("rect", { x, y: progY, width: segW, height: segH, rx: segH / 2, fill: grid }, svg);
+        return el("rect", { x, y: progY, width: segW, height: segH, rx: segH / 2, fill: c.ink }, svg);
+      });
+
+      // Content area, split into a stat block and a chart block.
+      const top = pad + u * 0.045 + titleSize * 0.3 + u * 0.07;
+      const bottom = progY - u * 0.07;
+      const cw = W - pad * 2, ch = bottom - top;
+      const wide = W / H > 1.2;
+      const stat = wide
+        ? { x: pad, y: top, w: cw * 0.4, h: ch }
+        : { x: pad, y: top, w: cw, h: Math.min(ch * 0.34, u * 0.34) };
+      const chart = wide
+        ? { x: pad + cw * 0.46, y: top, w: cw * 0.54, h: ch }
+        : { x: pad, y: top + stat.h + u * 0.05, w: cw, h: ch - stat.h - u * 0.05 };
+
+      tl = gsap.timeline({ repeat: -1, defaults: { ease: "power3.out" } });
+
+      cards.forEach((card, i) => {
+        const at = i * CARD;
+        const g = el("g", {}, svg);
+
+        // Big number and caption.
+        const numSize = Math.min(stat.h * (wide ? 0.34 : 0.62), u * 0.24);
+        const numY = wide ? stat.y + stat.h / 2 - numSize * 0.05 : stat.y + numSize * 0.78;
+        const num = text(format(card, card.value), { x: stat.x - numSize * 0.04, y: numY, "font-size": numSize, "font-weight": 750, fill: c.ink, "letter-spacing": "-0.035em" }, g);
+        fitWidth(num, stat.w);
+        const cap = text(card.caption, { x: stat.x, y: numY + Math.max(small * 1.9, numSize * 0.36), "font-size": Math.max(small * 1.15, numSize * 0.2), "font-weight": 500, fill: muted }, g);
+        fitWidth(cap, stat.w);
+        // A short colour key above the number links it to its chart.
+        const key = el("rect", { x: stat.x, y: numY - numSize * 0.98, width: u * 0.06, height: Math.max(2, u * 0.012), rx: u * 0.006, fill: card.color }, g);
+
+        tl.fromTo(g, { autoAlpha: 0, y: u * 0.03 }, { autoAlpha: 1, y: 0, duration: 0.5 }, at);
+        tl.fromTo(key, { scaleX: 0, transformOrigin: "0% 50%" }, { scaleX: 1, duration: 0.6 }, at + 0.1);
+        const counter = { v: 0 };
+        tl.fromTo(counter, { v: 0 }, { v: card.value, duration: 1.5, ease: "power2.out", onUpdate: () => (num.textContent = format(card, counter.v)) }, at + 0.1);
+        tl.fromTo(cap, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.5 }, at + 0.45);
+
+        const b = { x: chart.x, y: chart.y, w: chart.w, h: chart.h };
+        if (card.chart === "bars") {
+          // Columns grow from one baseline, value on each cap.
+          const plotTop = b.y + small * 1.8, base = b.y + b.h - small * 1.9;
+          el("line", { x1: b.x, x2: b.x + b.w, y1: base, y2: base, stroke: grid, "stroke-width": 1 }, g);
+          const max = Math.max(...card.bars);
+          const slot = b.w / card.bars.length;
+          const bw = Math.min(slot * 0.56, u * 0.14);
+          card.bars.forEach((v, j) => {
+            const h = ((base - plotTop) * v) / max;
+            const x = b.x + slot * j + (slot - bw) / 2;
+            const r = Math.min(radius, bw / 2);
+            const bar = el("path", {
+              d: `M${x},${base} V${base - h + r} Q${x},${base - h} ${x + r},${base - h} H${x + bw - r} Q${x + bw},${base - h} ${x + bw},${base - h + r} V${base} Z`,
+              fill: card.color,
+            }, g);
+            const val = text(v.toLocaleString("en-US"), { x: x + bw / 2, y: base - h - small * 0.6, "font-size": small, "font-weight": 600, fill: c.ink, "text-anchor": "middle" }, g);
+            const lab = text(card.labels[j], { x: x + bw / 2, y: base + small * 1.45, "font-size": small, fill: muted, "text-anchor": "middle" }, g);
+            tl.fromTo(bar, { scaleY: 0, svgOrigin: `${x + bw / 2} ${base}` }, { scaleY: 1, duration: 0.8 }, at + 0.35 + j * 0.13);
+            tl.fromTo(val, { autoAlpha: 0, y: small * 0.5 }, { autoAlpha: 1, y: 0, duration: 0.4 }, at + 0.85 + j * 0.13);
+            tl.fromTo(lab, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.4 }, at + 0.3 + j * 0.08);
+          });
+        } else if (card.chart === "line") {
+          // A line that draws itself, with a light wash under it and a dot at the end.
+          const plotTop = b.y + small, base = b.y + b.h - small * 1.9;
+          const lo = 90, hi = 140;
+          for (let k = 0; k < 3; k++) {
+            const y = base - ((base - plotTop) * k) / 2;
+            const line = el("line", { x1: b.x, x2: b.x + b.w, y1: y, y2: y, stroke: grid, "stroke-width": 1 }, g);
+            tl.fromTo(line, { scaleX: 0, transformOrigin: "0% 50%" }, { scaleX: 1, duration: 0.6 }, at + 0.2 + k * 0.08);
+          }
+          const dotR = Math.max(4, u * 0.014);
+          const pts = card.points.map((v, k) => [
+            b.x + dotR + ((b.w - dotR * 2) * k) / (card.points.length - 1),
+            base - ((base - plotTop) * (v - lo)) / (hi - lo),
+          ]);
+          // Smooth curve through the points.
+          let d = `M${pts[0][0]},${pts[0][1]}`;
+          for (let k = 0; k < pts.length - 1; k++) {
+            const p0 = pts[k - 1] || pts[k], p1 = pts[k], p2 = pts[k + 1], p3 = pts[k + 2] || p2;
+            d += ` C${p1[0] + (p2[0] - p0[0]) / 6},${p1[1] + (p2[1] - p0[1]) / 6} ${p2[0] - (p3[0] - p1[0]) / 6},${p2[1] - (p3[1] - p1[1]) / 6} ${p2[0]},${p2[1]}`;
+          }
+          const last = pts[pts.length - 1];
+          const area = el("path", { d: `${d} L${last[0]},${base} L${pts[0][0]},${base} Z`, fill: card.color, "fill-opacity": 0.12 }, g);
+          const path = el("path", { d, fill: "none", stroke: card.color, "stroke-width": Math.max(2, u * 0.009), "stroke-linecap": "round", "stroke-linejoin": "round" }, g);
+          const len = path.getTotalLength();
+          path.style.strokeDasharray = len;
+          const dot = el("circle", { cx: last[0], cy: last[1], r: dotR, fill: card.color, stroke: c.bg, "stroke-width": 2 }, g);
+          const xl = [0, Math.floor((pts.length - 1) / 2), pts.length - 1];
+          card.labels.forEach((l, k) => {
+            const lab = text(l, { x: pts[xl[k]][0], y: base + small * 1.45, "font-size": small, fill: muted, "text-anchor": k === 0 ? "start" : k === 2 ? "end" : "middle" }, g);
+            tl.fromTo(lab, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.4 }, at + 0.3 + k * 0.1);
+          });
+          tl.fromTo(path, { strokeDashoffset: len }, { strokeDashoffset: 0, duration: 1.5, ease: "power2.inOut" }, at + 0.35);
+          tl.fromTo(area, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.8 }, at + 1.2);
+          tl.fromTo(dot, { scale: 0, transformOrigin: "50% 50%" }, { scale: 1, duration: 0.5, ease: "back.out(3)" }, at + 1.75);
+        } else {
+          // A donut that fills to the share, with a short note in the middle.
+          const r = Math.min(b.w, b.h) * 0.41;
+          const sw = r * 0.3;
+          const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+          const circ = 2 * Math.PI * r;
+          el("circle", { cx, cy, r, fill: "none", stroke: grid, "stroke-width": sw }, g);
+          const arc = el("circle", { cx, cy, r, fill: "none", stroke: card.color, "stroke-width": sw, transform: `rotate(-90 ${cx} ${cy})` }, g);
+          arc.style.strokeDasharray = circ;
+          const mid = text(card.center, { x: cx, y: cy + r * 0.11, "font-size": r * 0.34, "font-weight": 700, fill: c.ink, "text-anchor": "middle", "letter-spacing": "-0.02em" }, g);
+          fitWidth(mid, (r - sw / 2) * 1.6);
+          tl.fromTo(arc, { strokeDashoffset: circ }, { strokeDashoffset: circ * (1 - card.share), duration: 1.5, ease: "power2.inOut" }, at + 0.3);
+          tl.fromTo(mid, { autoAlpha: 0, scale: 0.8, transformOrigin: "50% 50%" }, { autoAlpha: 1, scale: 1, duration: 0.5, ease: "back.out(2)" }, at + 1.2);
+        }
+
+        // Progress fill for this card, then the card clears for the next one.
+        tl.fromTo(fills[i], { scaleX: 0, transformOrigin: "0% 50%" }, { scaleX: 1, duration: CARD, ease: "none" }, at);
+        tl.to(g, { autoAlpha: 0, y: -u * 0.03, duration: 0.4, ease: "power2.in" }, at + CARD - 0.45);
+      });
+      // Empty the progress bars together at the end of the loop.
+      tl.to(fills, { autoAlpha: 0, duration: 0.3, ease: "power1.in" }, cards.length * CARD - 0.3);
+      tl.set(fills, { autoAlpha: 1, scaleX: 0 }, cards.length * CARD);
+
+      tl.time(saved);
+      apply();
+    }
+
+    // Reduced motion: hold the first card, fully drawn, as a still frame.
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    function apply() {
+      if (reduce.matches) tl.pause().time(2.6, false);
+      else tl.play();
+    }
+    reduce.addEventListener("change", apply);
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(build, 120);
+    });
+
+    // Wait briefly for the font so text is measured in the right face.
+    Promise.race([
+      document.fonts.load("700 1em 'Inter Variable'"),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(build);
+  </script>
+</body>
+</html>
