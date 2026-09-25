@@ -5,20 +5,149 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MotionPrompt</title>
   <meta name="description" content="Make short animated videos with Claude: live style demos, a prompt builder, and an export guide.">
+  <meta name="theme-color" content="#07070c">
+  <link rel="icon" href="assets/img/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource-variable/geist@5.3.0/index.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource-variable/geist-mono@5.3.0/index.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/instrument-serif@5.3.0/400-italic.css">
   <link rel="stylesheet" href="assets/css/site.css">
 </head>
 <body>
+  <div class="backdrop" aria-hidden="true"><span class="orb a"></span><span class="orb b"></span><span class="orb c"></span></div>
+
   <header class="site-header">
-    <a class="brand" href="index.html">MotionPrompt</a>
-    <nav class="site-nav" aria-label="Main">
-      <a href="gallery.html">Gallery</a>
-    </nav>
+    <div class="wrap">
+      <a class="brand" href="index.html"><img src="assets/img/logo.svg" alt="" width="28" height="28">MotionPrompt</a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="gallery.html">Gallery</a>
+        <span class="soon">Builder<small>Soon</small></span>
+        <span class="soon">Guide<small>Soon</small></span>
+      </nav>
+    </div>
   </header>
+
   <main>
-    <h1>MotionPrompt</h1>
-    <p>Make short animated videos with Claude. Pick a style, build your prompt, paste it into Claude, and record the result for Reels, TikTok or YouTube.</p>
-    <p><a class="button" href="gallery.html">Browse the style gallery</a></p>
-    <p class="note">The prompt builder and the export guide are on the way.</p>
+    <section class="wrap hero">
+      <div>
+        <span class="eyebrow rise"><span class="dot">Free</span>For creators, no coding needed</span>
+        <h1 class="rise d1">Turn one prompt into a video that <span class="serif shine">moves.</span></h1>
+        <p class="lead rise d2">Pick a style, copy the prompt, and paste it into Claude. You get a page that animates on its own. Record your screen and post it to Reels, TikTok or YouTube.</p>
+        <div class="actions rise d3">
+          <a class="button" href="gallery.html">Explore the styles
+            <svg class="arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+          </a>
+          <a class="button secondary" href="#how">How it works</a>
+        </div>
+        <ul class="hero-meta rise d4">
+          <li>Live demos</li>
+          <li>Ready prompts</li>
+          <li>9:16, 1:1, 16:9</li>
+        </ul>
+      </div>
+
+      <div class="stage-frames rise d2" aria-label="Live examples of three animation styles">
+        <div class="phone side left">
+          <div class="screen"><iframe src="styles/particle-field/demo.html" title="Particle field demo" loading="lazy" tabindex="-1"></iframe></div>
+        </div>
+        <div class="phone side right">
+          <div class="screen"><iframe src="styles/logo-spin-3d/demo.html" title="3D logo spin demo" loading="lazy" tabindex="-1"></iframe></div>
+        </div>
+        <div class="phone center">
+          <div class="screen"><iframe src="styles/kinetic-type/demo.html" title="Kinetic typography demo" tabindex="-1"></iframe></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="marquee" aria-hidden="true">
+      <ul class="marquee-track">
+        <li>Instagram Reels</li><li>TikTok</li><li>YouTube Shorts</li><li>Kinetic type</li><li>3D logos</li><li>Particles</li><li>Intros and outros</li><li>Product teasers</li>
+        <li>Instagram Reels</li><li>TikTok</li><li>YouTube Shorts</li><li>Kinetic type</li><li>3D logos</li><li>Particles</li><li>Intros and outros</li><li>Product teasers</li>
+      </ul>
+    </div>
+
+    <section class="section" id="how">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <span class="kicker">How it works</span>
+            <h2>Three steps. <span class="serif">No editing app.</span></h2>
+          </div>
+          <p>Claude writes the animation as a web page. Your browser plays it, and your screen recorder turns it into a video file.</p>
+        </div>
+        <ol class="steps">
+          <li class="step">
+            <span class="num">01</span>
+            <h3>Pick a style</h3>
+            <p>Browse live demos and find a look you like: bold text, glowing particles, a spinning 3D logo.</p>
+          </li>
+          <li class="step">
+            <span class="num">02</span>
+            <h3>Copy the prompt</h3>
+            <p>Every style comes with a prompt. Change the words and colours, then paste it into Claude.</p>
+          </li>
+          <li class="step">
+            <span class="num">03</span>
+            <h3>Record and post</h3>
+            <p>Open the page Claude gives you, record the screen, and share it anywhere you post videos.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="section tight">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <span class="kicker">What's inside</span>
+            <h2>Everything you need, <span class="serif">in one place.</span></h2>
+          </div>
+        </div>
+        <div class="features">
+          <a class="feature live" href="gallery.html">
+            <span class="status-pill">Live</span>
+            <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="16" width="7" height="5" rx="2"/></svg></span>
+            <h3>Style gallery</h3>
+            <p>Live animation demos, each with a ready prompt you can copy in one click.</p>
+            <span class="go">Open the gallery <svg class="arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></span>
+          </a>
+          <div class="feature">
+            <span class="status-pill">Soon</span>
+            <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M4 12h6M4 18h12"/><circle cx="17" cy="6" r="2.5"/><circle cx="13" cy="12" r="2.5"/><circle cx="19" cy="18" r="2.5"/></svg></span>
+            <h3>Prompt builder</h3>
+            <p>Choose a style, size, length, colours and your own text. Get a finished prompt.</p>
+          </div>
+          <div class="feature">
+            <span class="status-pill">Soon</span>
+            <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="13" height="14" rx="2.5"/><path d="M16 10l5-3v10l-5-3"/></svg></span>
+            <h3>Export guide</h3>
+            <p>Simple steps to record your animation and save it as an MP4 on any computer.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section tight">
+      <div class="wrap">
+        <div class="cta">
+          <span class="kicker">Ready when you are</span>
+          <h2>Your next post could <span class="serif shine">move.</span></h2>
+          <p>Start with a style you like. It takes a couple of minutes from prompt to video.</p>
+          <div class="actions">
+            <a class="button" href="gallery.html">Browse the styles
+              <svg class="arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <a class="brand" href="index.html"><img src="assets/img/logo.svg" alt="" width="24" height="24">MotionPrompt</a>
+      <p>Free to use. Made with Claude.</p>
+      <a href="https://github.com/epool86/motionprompt">GitHub</a>
+    </div>
+  </footer>
 </body>
 </html>

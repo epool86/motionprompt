@@ -22,16 +22,17 @@ function chipList(style) {
   return list;
 }
 
-function card(style) {
+function card(style, i) {
   const demoUrl = `styles/${style.slug}/demo.html`;
   const preview = el("div", { class: "preview", "data-src": demoUrl, "data-title": `${style.name} demo` },
     el("span", { class: "loading" }, "Loading demo..."));
+  const badge = el("span", { class: "preview-badge", "aria-hidden": "true" }, "Live");
 
   const promptBox = el("pre", { class: "prompt-text" }, "Loading prompt...");
   const details = el("details", {}, el("summary", {}, "Read the prompt"), promptBox);
   const status = el("p", { class: "status", role: "status", "aria-live": "polite" });
-  const copyButton = el("button", { class: "button", type: "button", "aria-label": `Copy the ${style.name} prompt` }, "Copy prompt");
-  const openLink = el("a", { class: "button secondary", href: demoUrl, target: "_blank", rel: "noopener", "aria-label": `Open the ${style.name} demo full screen` }, "Full screen");
+  const copyButton = el("button", { class: "button small", type: "button", "aria-label": `Copy the ${style.name} prompt` }, "Copy prompt");
+  const openLink = el("a", { class: "button small secondary", href: demoUrl, target: "_blank", rel: "noopener", "aria-label": `Open the ${style.name} demo full screen` }, "Full screen");
 
   let prompt = "";
   const ready = loadTemplate(style.slug).then((template) => {
@@ -53,14 +54,16 @@ function card(style) {
   });
 
   return el("article", { class: "card", id: style.slug },
-    preview,
+    el("div", { class: "preview-wrap" }, preview, badge),
     el("div", { class: "card-body" },
-      el("h2", {}, style.name),
+      el("div", { class: "card-title" },
+        el("h2", {}, style.name),
+        el("span", { class: "index", "aria-hidden": "true" }, String(i + 1).padStart(2, "0"))),
       el("p", {}, style.summary),
       chipList(style),
-      details,
       el("div", { class: "card-actions" }, copyButton, openLink),
-      status));
+      status,
+      details));
 }
 
 function loadDemo(preview) {

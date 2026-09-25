@@ -5,22 +5,46 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Style gallery · MotionPrompt</title>
   <meta name="description" content="Live demos of animation styles you can make with Claude, each with a ready prompt to copy.">
+  <meta name="theme-color" content="#07070c">
+  <link rel="icon" href="assets/img/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource-variable/geist@5.3.0/index.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource-variable/geist-mono@5.3.0/index.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/instrument-serif@5.3.0/400-italic.css">
   <link rel="stylesheet" href="assets/css/site.css">
   <script type="module" src="assets/js/gallery.js"></script>
 </head>
 <body>
+  <div class="backdrop" aria-hidden="true"><span class="orb a"></span><span class="orb b"></span><span class="orb c"></span></div>
+
   <header class="site-header">
-    <a class="brand" href="index.html">MotionPrompt</a>
-    <nav class="site-nav" aria-label="Main">
-      <a href="gallery.html" aria-current="page">Gallery</a>
-    </nav>
+    <div class="wrap">
+      <a class="brand" href="index.html"><img src="assets/img/logo.svg" alt="" width="28" height="28">MotionPrompt</a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="gallery.html" aria-current="page">Gallery</a>
+        <span class="soon">Builder<small>Soon</small></span>
+        <span class="soon">Guide<small>Soon</small></span>
+      </nav>
+    </div>
   </header>
-  <main class="wide">
-    <h1>Style gallery</h1>
-    <p class="lead">Each card shows a live example of one animation style, with a prompt that asks Claude for one like it. Copy the prompt, paste it into Claude, and you get your own version as a web page. Then record your screen to turn it into a video.</p>
+
+  <main class="wrap">
+    <section class="page-hero">
+      <span class="eyebrow rise"><span class="dot">Live</span>Every card is a real, running animation</span>
+      <h1 class="rise d1">Pick a look. <span class="serif shine">Copy the prompt.</span></h1>
+      <p class="lead rise d2">Each card plays one animation style. Copy its prompt, paste it into Claude, and you get your own version as a web page. Then record your screen to turn it into a video.</p>
+    </section>
+
     <div class="gallery" id="gallery" aria-live="polite">
       <p>Loading styles...</p>
     </div>
   </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <a class="brand" href="index.html"><img src="assets/img/logo.svg" alt="" width="24" height="24">MotionPrompt</a>
+      <p>Free to use. Made with Claude.</p>
+      <a href="https://github.com/epool86/motionprompt">GitHub</a>
+    </div>
+  </footer>
 </body>
 </html>
