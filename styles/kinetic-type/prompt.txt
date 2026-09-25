@@ -8,5 +8,5 @@ Style: kinetic typography. Big, bold words punch in one or two at a time on a st
 - Colours: {colors}
 - Font: heavy and condensed, like Anton, all capitals, very large
 
-Hint: build it as an HTML animation (for example with {library}) and render it to MP4 frame by frame so the motion is smooth. Send me the HTML file as well so I can tweak it later.
+Hint: build it as an HTML animation (for example with {library}) and render it to MP4 frame by frame so the motion is smooth.
 {notes}

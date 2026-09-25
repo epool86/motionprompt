@@ -7,5 +7,5 @@ Style: a glowing particle field. A few thousand tiny dots drift along smooth, in
 - Length: about {duration}
 - Colours: {colors}. The background colour fills the frame, the brighter colours are the particles.
 
-Hint: build it as an HTML canvas animation (for example with {library}) and render it to MP4 frame by frame so the motion is smooth. Send me the HTML file as well so I can tweak it later.
+Hint: build it as an HTML canvas animation (for example with {library}) and render it to MP4 frame by frame so the motion is smooth.
 {notes}

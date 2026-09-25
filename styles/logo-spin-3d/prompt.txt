@@ -7,5 +7,5 @@ Style: a shiny 3D logo that spins and floats. The logo is a rounded square badge
 - Length: about {duration}
 - Colours: {colors}. The logo uses the accent colour, over a soft radial glow of the background colour.
 
-Hint: build it as a 3D scene in HTML (for example with {library}) and render it to MP4 frame by frame so the motion is smooth. Send me the HTML file as well so I can tweak it later.
+Hint: build it as a 3D scene in HTML (for example with {library}) and render it to MP4 frame by frame so the motion is smooth.
 {notes}

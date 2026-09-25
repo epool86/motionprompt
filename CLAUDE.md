@@ -72,7 +72,7 @@ Dark "film studio" look with a light variant; tokens live on `:root` in `site.cs
 `{duration}`, `{colors}` (four hex colours), `{library}` and `{notes}` (the visitor's extra
 notes, or nothing). `assets/js/prompt.js` fills them in.
 
-Prompts ask Claude for the final MP4 (and the HTML so it can be tweaked). Keep them in plain
+Prompts ask Claude for the final MP4 only (visitors want the video, not the source). Keep them in plain
 language: describe the look and motion, list the visitor's choices, and give a one-line build
 hint. Claude knows how to render video, so do not spell out the technical steps.
 
