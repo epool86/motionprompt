@@ -15,9 +15,7 @@ const detailPreview = document.getElementById("detail-preview");
 const previewDock = document.querySelector(".preview-dock");
 const detailTitle = document.getElementById("detail-title");
 const detailSummary = document.getElementById("detail-summary");
-const detailExample = document.getElementById("detail-example");
 const detailCopy = document.getElementById("detail-copy");
-const detailOpen = document.getElementById("detail-open");
 const detailStatus = document.getElementById("detail-status");
 const detailPrompt = document.getElementById("detail-prompt");
 
@@ -134,9 +132,6 @@ onChange((key) => {
 async function fillDetail(style) {
   detailTitle.textContent = style.name;
   detailSummary.textContent = style.summary;
-  detailExample.textContent = style.example ?? "";
-  detailOpen.href = demoUrl(style);
-  detailOpen.setAttribute("aria-label", `Open the ${style.name} demo full screen`);
   detailStatus.textContent = "";
   detailPrompt.textContent = "Loading style...";
   setPreviewShape();

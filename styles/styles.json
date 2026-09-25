@@ -4,23 +4,20 @@
     "name": "Kinetic typography",
     "summary": "Big bold words that punch in on the beat, then stack into one line.",
     "library": "GSAP",
-    "tags": ["text", "social"],
-    "example": "Make a video for our bakery's grand opening. Text: Fresh bread. Warm coffee. Grand opening this Saturday."
+    "tags": ["text", "social"]
   },
   {
     "slug": "particle-field",
     "name": "Particle field",
     "summary": "Thousands of glowing dots drifting along soft currents, like smoke or wind.",
     "library": "Canvas",
-    "tags": ["background", "ambient"],
-    "example": "Make a calm background video for my yoga studio. Text: Breathe in. Slow down. New classes from 1 October."
+    "tags": ["background", "ambient"]
   },
   {
     "slug": "logo-spin-3d",
     "name": "3D logo spin",
     "summary": "A shiny 3D logo that spins, settles and floats, ready for an intro or outro.",
     "library": "Three.js",
-    "tags": ["3d", "logo", "intro"],
-    "example": "Make an intro for my YouTube channel, Kopi Pagi. My logo is attached."
+    "tags": ["3d", "logo", "intro"]
   }
 ]

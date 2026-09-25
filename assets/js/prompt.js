@@ -24,9 +24,9 @@ export const FORMATS = [
 
 // The short side of the video, in pixels.
 export const QUALITIES = [
+  { value: 480, label: "480p" },
   { value: 720, label: "720p" },
   { value: 1080, label: "1080p" },
-  { value: 2160, label: "4K" },
 ];
 
 export const DURATIONS = [6, 8, 10, 15, 30];

@@ -5,8 +5,8 @@ style, chooses video settings (format, size, length), copies the style and paste
 own video request in Claude on the web or Claude Code. Claude sends back a finished MP4.
 The site gives them:
 
-1. **Style gallery** (the home page): live demos of animation styles. Each style page shows how
-   to use it, video settings (format, size, length) and the style prompt to copy.
+1. **Style gallery** (the home page): live demos of animation styles. Each style page has video
+   settings (format, size, length), the style prompt to copy, and a one-line tip.
 2. **Guide** (not built yet): how to prompt, iterate, and what to do if a render times out.
 
 Audience: friends and followers, not developers. Plain English, short sentences, no jargon
@@ -56,12 +56,10 @@ Dark "film studio" look with a light variant; tokens live on `:root` in `site.cs
   "name": "Kinetic typography",
   "summary": "Words that punch in on the beat.",
   "library": "GSAP",
-  "tags": ["text", "social"],
-  "example": "Make a video for our bakery's grand opening."
+  "tags": ["text", "social"]
 }
 ```
 
-`example` is a sample video request shown in "How to use" (the visitor writes their own).
 
 `slug` must match a folder in `styles/` that has both `demo.html` and `prompt.txt`.
 

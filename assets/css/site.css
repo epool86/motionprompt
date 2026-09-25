@@ -649,53 +649,6 @@ a { color: var(--accent); }
 
 .detail-info > p { color: var(--on-stage); font-size: 0.97rem; }
 
-/* How to use: three short numbered steps */
-.how {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin: 4px 0 0;
-  padding: 16px;
-  border: 1px solid var(--field-line);
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--field) 70%, transparent);
-  list-style: none;
-}
-
-.how li {
-  display: flex;
-  gap: 12px;
-  color: var(--on-stage);
-  font-size: 0.92rem;
-  line-height: 1.5;
-}
-
-.how strong { color: var(--fg); font-weight: 600; }
-
-.step-num {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: var(--btn-bg);
-  color: var(--btn-fg);
-  font: 600 0.8rem var(--font-mono);
-}
-
-.how q {
-  display: block;
-  margin-top: 6px;
-  padding: 8px 12px;
-  border-left: 3px solid var(--accent);
-  border-radius: 0 8px 8px 0;
-  background: var(--field);
-  color: var(--field-text);
-  font-style: italic;
-  quotes: none;
-}
-
 /* Video settings: format, size and length as compact segmented buttons */
 .settings {
   display: flex;
@@ -784,17 +737,10 @@ a { color: var(--accent); }
 
 .detail-actions {
   display: grid;
-  grid-template-columns: 1fr auto;
   gap: 8px;
 }
 
 .detail-actions .button svg { width: 18px; height: 18px; }
-
-.detail-actions .button.secondary {
-  border-color: var(--field-line);
-  background: var(--field);
-  color: var(--field-text);
-}
 
 .status {
   margin: -2px 0 0;
@@ -804,6 +750,12 @@ a { color: var(--accent); }
 }
 
 .status:empty { display: none; }
+
+.paste-tip {
+  margin: 0;
+  color: var(--on-stage) !important;
+  font-size: 0.86rem !important;
+}
 
 .prompt-label {
   margin: 8px 0 0;
@@ -846,7 +798,7 @@ a { color: var(--accent); }
     border-radius: 18px;
   }
 
-  .detail-actions { grid-template-columns: auto auto; justify-content: start; }
+  .detail-actions { justify-content: start; }
 }
 
 /* Footer */
