@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>3D logo spin demo</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: radial-gradient(120% 80% at 50% 40%, #2a1f5c 0%, #120e2b 55%, #07060f 100%);
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .caption {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 16%;
+      margin: 0;
+      text-align: center;
+      color: #f6f3ea;
+      font: 700 min(8vw, 5vh) / 1.1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="scene" role="img" aria-label="A shiny 3D logo with the letter M, spinning and floating"></canvas>
+  <p class="caption">Make it move</p>
+
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js";
+
+    const canvas = document.getElementById("scene");
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+
+    // The logo: a rounded square badge with a bold letter M cut out of it.
+    function roundedSquare(size, radius) {
+      const h = size / 2;
+      const s = new THREE.Shape();
+      s.moveTo(-h + radius, -h);
+      s.lineTo(h - radius, -h);
+      s.quadraticCurveTo(h, -h, h, -h + radius);
+      s.lineTo(h, h - radius);
+      s.quadraticCurveTo(h, h, h - radius, h);
+      s.lineTo(-h + radius, h);
+      s.quadraticCurveTo(-h, h, -h, h - radius);
+      s.lineTo(-h, -h + radius);
+      s.quadraticCurveTo(-h, -h, -h + radius, -h);
+      return s;
+    }
+
+    const badge = roundedSquare(2, 0.5);
+    const letterM = [
+      [-0.55, -0.45], [-0.55, 0.45], [-0.33, 0.45], [0, 0.05], [0.33, 0.45], [0.55, 0.45],
+      [0.55, -0.45], [0.33, -0.45], [0.33, 0.1], [0, -0.28], [-0.33, 0.1], [-0.33, -0.45],
+    ];
+    badge.holes.push(new THREE.Path(letterM.map(([x, y]) => new THREE.Vector2(x, y))).closePath());
+
+    const geometry = new THREE.ExtrudeGeometry(badge, {
+      depth: 0.4,
+      bevelEnabled: true,
+      bevelThickness: 0.12,
+      bevelSize: 0.08,
+      bevelSegments: 6,
+      curveSegments: 24,
+    });
+    geometry.center();
+
+    const material = new THREE.MeshStandardMaterial({ color: 0xffb547, metalness: 0.5, roughness: 0.3 });
+    const logo = new THREE.Mesh(geometry, material);
+    const pivot = new THREE.Group();
+    pivot.add(logo);
+    scene.add(pivot);
+
+    scene.add(new THREE.HemisphereLight(0xd9d3ff, 0x2a1f5c, 2));
+    const key = new THREE.DirectionalLight(0xffffff, 3);
+    key.position.set(3, 4, 5);
+    scene.add(key);
+    const rim = new THREE.PointLight(0x6bd5ff, 40, 20);
+    rim.position.set(-3, 1, -2);
+    scene.add(rim);
+    const warm = new THREE.PointLight(0xffd23f, 25, 20);
+    warm.position.set(2, -3, 2);
+    scene.add(warm);
+
+    // Fit the logo to about half of the shorter side of the window.
+    function resize() {
+      const w = window.innerWidth, h = window.innerHeight;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+      const visible = Math.min(tanHalf, tanHalf * camera.aspect);
+      camera.position.set(0, 0, 2.4 / (2 * 0.5 * visible));
+      camera.updateProjectionMatrix();
+      pivot.position.y = 0.35 * (h > w ? 1 : 0.5);
+    }
+
+    const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+    const spinTime = 1.6; // one full turn
+    const restTime = 1.4; // float in place before the next turn
+    const cycle = spinTime + restTime;
+
+    // Pose at a given time in seconds: an eased full spin, then a gentle float.
+    function pose(t) {
+      const inCycle = t % cycle;
+      const turns = Math.floor(t / cycle);
+      const spin = inCycle < spinTime ? easeInOutCubic(inCycle / spinTime) : 1;
+      logo.rotation.y = (turns + spin) * Math.PI * 2;
+      logo.rotation.x = Math.sin(t * 1.3) * 0.12;
+      logo.rotation.z = Math.sin(t * 0.9) * 0.05;
+      logo.position.y = Math.sin(t * 2.1) * 0.06;
+    }
+
+    // setAnimationLoop passes the time in milliseconds.
+    function loop(ms) {
+      pose(ms / 1000);
+      renderer.render(scene, camera);
+    }
+
+    // Reduced motion: render one angled still frame and stop.
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    function still() {
+      renderer.setAnimationLoop(null);
+      logo.rotation.set(0.12, -0.5, 0);
+      logo.position.y = 0;
+      renderer.render(scene, camera);
+    }
+    function apply() {
+      if (reduce.matches) still();
+      else renderer.setAnimationLoop(loop);
+    }
+
+    window.addEventListener("resize", () => {
+      resize();
+      if (reduce.matches) still();
+    });
+    reduce.addEventListener("change", apply);
+
+    resize();
+    apply();
+  </script>
+</body>
+</html>

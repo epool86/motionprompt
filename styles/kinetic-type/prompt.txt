@@ -1,0 +1,18 @@
+Make me a single HTML file that plays a kinetic typography animation. I will screen-record it and post it as a short video.
+
+Size and timing
+- Aspect ratio: {ratio}. Put the animation on a stage with exactly this shape, centred and scaled to fit the browser window. Fill the space around it with the same background colour.
+- Length: about {duration}, then loop back to the start with no visible jump.
+
+Look and feel
+- Colours: {colors}.
+- The words: "{text}". Show them one or two words at a time, each one punching in on a steady beat (about 130 beats per minute). Words start big and slightly rotated, then snap into place.
+- On some beats, cut the background to a different colour from the palette, like a music video.
+- Let a few letters move on their own: spin in, drop from above, or slide in from the side.
+- End on the full line stacked in the centre. Hold it for about a second, then clear the screen with a quick colour wipe so the loop restarts cleanly.
+- Use a heavy, condensed font (for example Anton from a CDN), all capitals, very large.
+
+Technical
+- Use {library} for the animation, loaded from a CDN with an exact version number (no "latest").
+- Keep everything in one file. No buttons, menus or extra text, so the recording is clean.
+- If the viewer has "reduce motion" turned on in their system settings, show the final stacked line as a still frame instead of animating.

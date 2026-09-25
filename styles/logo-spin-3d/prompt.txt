@@ -1,0 +1,20 @@
+Make me a single HTML file with a shiny 3D logo that spins and floats. I will screen-record it and use it as an intro or outro for a short video.
+
+Size and timing
+- Aspect ratio: {ratio}. Put the animation on a stage with exactly this shape, centred and scaled to fit the browser window.
+- One loop lasts about {duration}. It must loop smoothly with no jump.
+
+The logo
+- Build a simple logo in 3D: a rounded square badge with a bold capital letter cut out of the middle (the first letter of the text below), given real depth and softly bevelled edges. Build the letter from straight lines and curves so no font file is needed. (If I add a description of my own logo at the end of this message, build that shape instead.)
+- Make it look like polished, slightly metallic plastic, lit by a bright key light from the front, a coloured rim light from behind, and a soft fill light.
+- Motion: one full turn with smooth ease-in and ease-out, then a short pause where it floats and gently tilts, then spin again.
+
+Look and feel
+- Colours: {colors}. Use the accent colour for the logo, and a soft radial gradient of the background colour behind it.
+- Show the text "{text}" under the logo, in a bold, clean font with wide letter spacing. Keep the text flat and still.
+
+Technical
+- Use {library} loaded from a CDN with an exact version number (no "latest"). Use only the core library so nothing else needs to load.
+- Fit the logo to the screen on both tall and wide windows, and handle resizing and high-resolution screens.
+- Keep everything in one file. No buttons, controls or orbit dragging, so the recording is clean.
+- If the viewer has "reduce motion" turned on in their system settings, show one still frame of the logo at a slight angle instead of animating.
