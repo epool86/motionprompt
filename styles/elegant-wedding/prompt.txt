@@ -1,0 +1,20 @@
+Make my video in this style: Elegant wedding.
+
+Look and motion
+- A digital wedding invitation on soft ivory paper with a gentle blush glow.
+- Watercolour flowers (roses, peonies and eucalyptus leaves) bloom and grow in slowly from the corners. Petals open in layers and the stems grow before the leaves unfold.
+- A delicate gold arch draws itself around the centre, like a frame on a printed card.
+- The names from my request write on in gold foil script, one after the other, with a small glowing pen tip leading the stroke. A soft shine sweeps across the gold now and then.
+- Then the details from my request (date, time and venue) fade up gently one line at a time, under a thin gold divider. If I give a short heading, such as Walimatul Urus, put it small above the names.
+- Fine gold glitter floats upward the whole time. Everything moves slowly and gracefully, never fast or bouncy.
+- Write my text in the language I use. Keep every word inside the arch and easy to read, and keep the flowers clear of the words.
+- At the end, the words and flowers fade softly back to the plain paper.
+
+Type and colour
+- A flowing script font (like Great Vibes) for the names, and an elegant serif (like Cormorant Garamond) for the heading and details. Small spaced capitals for the heading.
+- Use my brand colours if I give them. Otherwise use ivory #fbf6ef, blush pink #e9b7b3, dusty rose #c9707c, sage green #9db3a3, gold #c9a04e and warm brown text #5b4a42.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

@@ -1,0 +1,20 @@
+Make my video in this style: Chat story.
+
+Look and motion
+- Turn my message into a short, friendly chat conversation on a phone. If my request already has a conversation, use it word for word. If not, write a few short, natural lines that tell my message.
+- Draw my own clean chat app, not a real brand: a header with a round avatar (initials or a small drawing), a name and a status, a dotted wallpaper and a message bar at the bottom.
+- Messages pop in one by one with a springy scale from the bubble tail: sent messages on the right in the accent colour, replies on the left in white.
+- Before each reply, three typing dots bounce in a small bubble and the header says "typing...". Sent messages show small ticks that change colour once they are read. The words of a sent message appear in the message bar first, then fly into the chat.
+- Add a few lively details: an emoji or heart reaction that pops onto a bubble, and one voice note bubble with a small waveform that plays.
+- The conversation scrolls up smoothly as it grows. Keep every bubble short and easy to read.
+- In wide and square frames, show the phone floating on a soft background with a gentle bob. In tall frames, the chat can fill the whole screen.
+- At the end, clear the chat so it can loop back to the start.
+
+Type and colour
+- A clean, friendly sans serif font (like DM Sans), medium for messages and bold for the name.
+- Use my brand colours if I give them. Otherwise use a warm sand background #f6eee6, dark ink #1f1c2c text, violet #5b3df5 for sent bubbles and buttons, and coral #ff7a59 for the avatar and reactions.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

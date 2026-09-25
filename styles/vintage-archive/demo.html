@@ -1,0 +1,1174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vintage archive demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/playfair-display@5.3.0/700.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/special-elite@5.3.0/400.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=ecdfc4&ink=3a2718&accent=8e2b22&accent2=a8864f */
+    :root {
+      --bg: #ecdfc4;
+      --ink: #3a2718;
+      --accent: #8e2b22;
+      --accent2: #a8864f;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #2b1d12;
+    }
+
+    .stage {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--ink);
+    }
+
+    /* Everything on the film moves together for a tiny projector weave */
+    .film {
+      position: absolute;
+      inset: 0;
+      will-change: transform;
+    }
+    .film > * { position: absolute; }
+    .paper { inset: 0; width: 100%; height: 100%; }
+
+    .head { text-align: center; }
+    .land .head { text-align: left; }
+    .kicker {
+      font: 400 var(--kicker) / 1.2 "Special Elite", "Courier New", monospace;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      margin-bottom: 0.35em;
+    }
+    .kicker .rest, .caption .rest { visibility: hidden; }
+    h1 {
+      margin: 0;
+      font: 700 var(--title) / 1.04 "Playfair Display", Georgia, serif;
+      letter-spacing: -0.005em;
+      text-shadow: 0 0 0.02em rgb(58 39 24 / 0.35);
+    }
+    h1 .line { display: block; white-space: nowrap; }
+    h1 .ch { display: inline-block; }
+    /* A small printer's rule with a diamond under the title */
+    .ornament {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: calc(var(--kicker) * 0.5);
+      margin-top: calc(var(--kicker) * 0.5);
+      color: var(--accent2);
+    }
+    .land .ornament { justify-content: flex-start; transform-origin: 0 50%; }
+    .ornament i {
+      display: block;
+      width: calc(var(--title) * 1.3);
+      height: max(1px, calc(var(--title) * 0.03));
+      background: currentColor;
+    }
+    .ornament b {
+      width: calc(var(--kicker) * 0.5);
+      height: calc(var(--kicker) * 0.5);
+      background: currentColor;
+      transform: rotate(45deg);
+    }
+
+    .print { position: absolute; }
+    .print canvas.mount, .print canvas.top { position: absolute; pointer-events: none; }
+    .print .win { position: absolute; overflow: hidden; background: #3b2c20; }
+    .print .win canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+    .caption {
+      position: absolute;
+      inset: 0;
+      margin: 0;
+      font: 400 var(--cap) / 1.4 "Special Elite", "Courier New", monospace;
+      text-align: center;
+      opacity: 0;
+    }
+    .land .caption { text-align: left; }
+    /* Typewriter caret: an empty inline span, so it never changes where lines wrap */
+    .caret { position: relative; }
+    .caret::after {
+      content: "";
+      position: absolute;
+      left: 0.06em;
+      top: 0;
+      width: 0.09em;
+      height: 1.05em;
+      background: currentColor;
+      animation: blink 1s steps(1) infinite;
+    }
+    .typing .caret::after { animation: none; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .tl { inset: 0; width: 100%; height: 100%; overflow: visible; }
+    .tl path { fill: none; stroke: var(--ink); stroke-linecap: round; }
+    .stamp {
+      position: absolute;
+      color: var(--accent);
+      mix-blend-mode: multiply;
+    }
+    .stamp svg { display: block; width: 100%; height: 100%; overflow: visible; }
+
+    .vignette {
+      inset: 0;
+      background: radial-gradient(ellipse 75% 70% at 50% 48%, transparent 55%, rgb(52 30 12 / 0.42) 100%);
+      pointer-events: none;
+    }
+    .fx { inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    /* Warm light that blooms like film burning at the end of the reel */
+    .burn {
+      position: absolute;
+      inset: -12%;
+      visibility: hidden;
+      background:
+        radial-gradient(circle at 70% 40%, #fffaf0 0%, #fff0c8 12%, rgb(255 204 118) 28%, rgb(236 126 46) 50%, rgb(170 58 20) 74%, rgb(96 26 10) 100%);
+    }
+    /* A softer light leak from one side between chapters */
+    .leak {
+      position: absolute;
+      inset: 0;
+      visibility: hidden;
+      background:
+        radial-gradient(ellipse 45% 80% at 0% 45%, rgb(255 196 120 / 0.9), rgb(240 120 50 / 0.45) 45%, rgb(240 120 50 / 0) 75%);
+    }
+    .leak.right { transform: scaleX(-1); }
+
+    @media (prefers-reduced-motion: reduce) {
+      .caret::after { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage" role="img">
+    <div class="film" id="film">
+      <canvas class="paper" id="paper"></canvas>
+      <div id="prints"></div>
+      <svg class="tl" id="tl" xmlns="http://www.w3.org/2000/svg">
+        <path id="line1"></path>
+        <path id="line2"></path>
+        <path class="tick"></path>
+        <path class="tick"></path>
+        <path class="tick"></path>
+        <path id="tip"></path>
+      </svg>
+      <div id="stamps"></div>
+      <div class="head" id="head">
+        <div class="kicker" id="kicker"></div>
+        <h1 id="title"></h1>
+        <div class="ornament" id="ornament"><i></i><b></b><i></i></div>
+      </div>
+      <div id="captions"></div>
+    </div>
+    <div class="vignette"></div>
+    <canvas class="fx" id="fx"></canvas>
+    <div class="leak" id="leak"></div>
+    <div class="leak right" id="leak2"></div>
+    <div class="burn" id="burn"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const root = document.documentElement;
+    for (const key of ["bg", "ink", "accent", "accent2"]) {
+      const value = params.get(key);
+      if (/^[0-9a-f]{6}$/i.test(value ?? "")) root.style.setProperty(`--${key}`, `#${value}`);
+    }
+    const css = (name) => getComputedStyle(root).getPropertyValue(name).trim();
+    const rgbOf = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+
+    const title = (params.get("text") || "Our story").trim().slice(0, 40);
+    const YEARS = ["1957", "1963", "1990"];
+    const KICKER = "Since 1957";
+    const CAPTIONS = [
+      "1957. A small shop opens on a busy street.",
+      "1963. Our goods travel the country by rail.",
+      "1990. The next generation takes over.",
+    ];
+    const $ = (id) => document.getElementById(id);
+    const stage = $("stage");
+    stage.setAttribute("aria-label", `An old film history reel titled ${title}: sepia photos drop onto the page, typewriter captions type on, and a timeline stamps the years ${YEARS.join(", ")}.`);
+
+    // Seeded random numbers, so the photos and paper look the same on every load.
+    function rng(seed) {
+      return () => {
+        seed = (seed + 0x6d2b79f5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    const canvas = (w, h) => Object.assign(document.createElement("canvas"), { width: w, height: h });
+    const gv = (v, a = 1) => {
+      const c = Math.round(Math.max(0, Math.min(1, v)) * 255);
+      return `rgba(${c},${c},${c},${a})`;
+    };
+    function poly(g, pts, fill) {
+      g.beginPath();
+      pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+      g.closePath();
+      g.fillStyle = typeof fill === "number" ? gv(fill) : fill;
+      g.fill();
+    }
+    function blob(g, x, y, rx, ry, fill) {
+      g.beginPath();
+      g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+      g.fillStyle = typeof fill === "number" ? gv(fill) : fill;
+      g.fill();
+    }
+    // A soft round puff with a feathered edge, cheaper than a blur filter
+    function puff(g, x, y, r, v, a) {
+      const rg = g.createRadialGradient(x, y, 0, x, y, r);
+      rg.addColorStop(0, gv(v, a));
+      rg.addColorStop(0.55, gv(v, a * 0.85));
+      rg.addColorStop(1, gv(v, 0));
+      g.fillStyle = rg;
+      g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    function vgrad(g, y0, y1, a, b) {
+      const lg = g.createLinearGradient(0, y0, 0, y1);
+      lg.addColorStop(0, gv(a));
+      lg.addColorStop(1, gv(b));
+      return lg;
+    }
+
+    // ---------- The three old photos, drawn in grey and then toned ----------
+
+    // Photo 1: a street of old shophouses, drawn in real perspective.
+    function street(g, w, h, rand) {
+      const f = w * 0.56, cx = w * 0.6, cy = h * 0.5, eye = 1.6, SKY = 0.9;
+      const P = (X, Y, Z) => [cx + (f * X) / Z, cy - (f * (Y - eye)) / Z];
+      const hz = (v, Z) => v + (SKY - v) * (1 - Math.exp(-Z / 42));
+      g.fillStyle = vgrad(g, 0, cy, 0.64, 0.9);
+      g.fillRect(0, 0, w, cy + 2);
+      for (let i = 0; i < 9; i++) {
+        const x = rand() * w, y = rand() * cy * 0.6, r = w * (0.07 + rand() * 0.1);
+        g.save();
+        g.translate(x, y);
+        g.scale(1, 0.3);
+        puff(g, 0, 0, r, 0.97, 0.5);
+        g.restore();
+      }
+      // Hazy buildings at the far end of the street
+      for (let X = -8; X < 9; X += 1.6 + rand()) {
+        const Hb = 5 + rand() * 9;
+        poly(g, [P(X, 0, 95), P(X + 2.2, 0, 95), P(X + 2.2, Hb, 95), P(X, Hb, 95)], hz(0.45 + rand() * 0.1, 95));
+      }
+      // Road, ruts and the shade from the right hand buildings
+      const road = g.createLinearGradient(0, cy, 0, h);
+      road.addColorStop(0, gv(0.8));
+      road.addColorStop(1, gv(0.5));
+      poly(g, [P(-4.5, 0, 1), P(5.5, 0, 1), P(5.5, 0, 200), P(-4.5, 0, 200)], road);
+      g.lineWidth = w * 0.002;
+      for (const X of [-1.4, -0.4, 1.5, 2.6]) {
+        g.strokeStyle = gv(0.4, 0.3);
+        g.beginPath(); g.moveTo(...P(X, 0, 1.4)); g.lineTo(...P(X, 0, 200)); g.stroke();
+      }
+      poly(g, [P(5.5, 0, 1.5), P(2.4, 0, 1.5), P(3.8, 0, 200), P(5.5, 0, 200)], "rgba(0,0,0,0.2)");
+      poly(g, [P(-4.5, 0, 1), P(-3.6, 0, 1), P(-3.6, 0, 200), P(-4.5, 0, 200)], gv(0.72));
+
+      const rect = (X, Z0, Z1, Y0, Y1, v) => poly(g, [P(X, Y0, Z0), P(X, Y0, Z1), P(X, Y1, Z1), P(X, Y1, Z0)], v);
+      function unit(X, Z0, Z1, lit) {
+        const Zm = (Z0 + Z1) / 2, base = lit ? 0.64 + rand() * 0.1 : 0.4 + rand() * 0.08;
+        const floors = rand() < 0.3 ? 3 : 2, top = floors === 3 ? 10.6 : 7.3 + rand() * 0.6;
+        const t = (v) => hz(v, Zm);
+        rect(X, Z0, Z1, 0, top, t(base));
+        rect(X, Z0 + 0.4, Z1 - 0.4, top, top + 0.8, t(base - 0.04));
+        rect(X, Z0, Z1, top - 0.45, top - 0.2, t(base + 0.14));
+        // Arches of the covered walkway
+        const aw = (Z1 - Z0 - 0.45 * 3) / 2;
+        for (let j = 0; j < 2; j++) {
+          const za = Z0 + 0.45 + j * (aw + 0.45), zb = za + aw, pts = [P(X, 0, za)];
+          for (let s = 0; s <= 1.001; s += 0.1) pts.push(P(X, 2.3 + Math.sin(s * Math.PI) * 0.6, za + (zb - za) * s));
+          pts.push(P(X, 0, zb));
+          poly(g, pts, t(0.14));
+          if (rand() < 0.4) rect(X, za, zb, 1.9, 2.5, t(lit ? 0.78 : 0.55));
+        }
+        // Shop sign across the front, with a few pale strokes for lettering
+        rect(X, Z0 + 0.2, Z1 - 0.2, 3.0, 3.7, t(0.24));
+        for (let k = 0; k < 4; k++) {
+          const z = Z0 + 0.7 + k * ((Z1 - Z0 - 1.4) / 4);
+          rect(X, z, z + (Z1 - Z0) * 0.12, 3.18, 3.52, t(0.82));
+        }
+        // Windows with open shutters
+        for (let fl = 1; fl < floors; fl++) {
+          const y0 = 4.1 + (fl - 1) * 3.1;
+          for (let k = 0; k < 2; k++) {
+            const z = Z0 + (Z1 - Z0) * (0.28 + k * 0.44) - 0.4;
+            rect(X, z, z + 0.8, y0, y0 + 1.9, t(0.2));
+            rect(X, z - 0.36, z - 0.04, y0, y0 + 1.9, t(base - 0.14));
+            rect(X, z + 0.84, z + 1.16, y0, y0 + 1.9, t(base - 0.14));
+            rect(X, z - 0.1, z + 0.9, y0 + 2.0, y0 + 2.15, t(base + 0.12));
+          }
+        }
+        rect(X, Z0, Z0 + 0.14, 0, top, t(base - 0.16));
+      }
+      for (let Z = 70; Z - 4.2 > 1.3; Z -= 4.2) unit(5.5, Z - 4.2, Z, false);
+      for (let Z = 72; Z - 4.4 > 1.2; Z -= 4.4) {
+        unit(-4.5, Z - 4.4, Z, true);
+        // Hanging vertical signboards
+        if (Math.round(Z) % 3 === 0) {
+          const Zs = Z - 4.4, v = hz(0.2, Zs);
+          poly(g, [P(-4.5, 4.2, Zs), P(-3.7, 4.2, Zs), P(-3.7, 6.9, Zs), P(-4.5, 6.9, Zs)], v);
+          for (let k = 0; k < 3; k++) poly(g, [P(-4.3, 4.5 + k * 0.8, Zs), P(-3.9, 4.5 + k * 0.8, Zs), P(-3.9, 5 + k * 0.8, Zs), P(-4.3, 5 + k * 0.8, Zs)], hz(0.8, Zs));
+        }
+      }
+      // Telegraph poles and sagging wires
+      const poles = [5, 12, 19, 27, 37, 50, 68];
+      const arm = (X, Z) => P(X, 8.1, Z);
+      g.lineCap = "round";
+      poles.forEach((Z) => {
+        g.strokeStyle = gv(hz(0.16, Z));
+        g.lineWidth = (f * 0.2) / Z;
+        g.beginPath(); g.moveTo(...P(4.1, 0, Z)); g.lineTo(...P(4.1, 8.6, Z)); g.stroke();
+        g.lineWidth = (f * 0.1) / Z;
+        g.beginPath(); g.moveTo(...arm(3.4, Z)); g.lineTo(...arm(4.8, Z)); g.stroke();
+      });
+      g.lineWidth = Math.max(1, w * 0.0014);
+      g.strokeStyle = gv(0.2, 0.75);
+      const wire = (a, b) => {
+        const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2 + Math.hypot(b[0] - a[0], b[1] - a[1]) * 0.08;
+        g.beginPath(); g.moveTo(...a); g.quadraticCurveTo(mx, my, ...b); g.stroke();
+      };
+      for (let i = 0; i < poles.length - 1; i++) {
+        for (const X of [3.5, 4.1, 4.7]) wire(arm(X, poles[i]), arm(X, poles[i + 1]));
+      }
+      for (const X of [3.5, 4.7]) wire(P(X, 8.1, 2), arm(X, 5));
+      wire(P(-4.5, 7, 11), arm(3.5, 12));
+      wire(P(-4.5, 7.4, 25), arm(3.5, 27));
+      // People, far first. Some wear hats, one holds a parasol.
+      const people = [[1.2, 30, 0], [-2.2, 24, 1], [2.6, 16, 0], [0.4, 12, 2], [-3.0, 8.5, 1], [3.2, 6.5, 0]];
+      people.forEach(([X, Z, kind]) => {
+        const s = f / Z, [bx, by] = P(X, 0, Z), v = hz(0.16, Z);
+        const fill = gv(v);
+        poly(g, [[bx - 0.16 * s, by], [bx - 0.05 * s, by], [bx - 0.02 * s, by - 0.9 * s], [bx - 0.15 * s, by - 0.9 * s]], fill);
+        poly(g, [[bx + 0.04 * s, by], [bx + 0.15 * s, by], [bx + 0.14 * s, by - 0.9 * s], [bx + 0.01 * s, by - 0.9 * s]], fill);
+        poly(g, [[bx - 0.19 * s, by - 0.85 * s], [bx + 0.19 * s, by - 0.85 * s], [bx + 0.23 * s, by - 1.45 * s], [bx - 0.23 * s, by - 1.45 * s]], kind === 1 ? gv(v + 0.35) : fill);
+        blob(g, bx, by - 1.58 * s, 0.11 * s, 0.12 * s, fill);
+        if (kind === 1) {
+          blob(g, bx, by - 1.68 * s, 0.2 * s, 0.04 * s, fill);
+          poly(g, [[bx - 0.1 * s, by - 1.68 * s], [bx + 0.1 * s, by - 1.68 * s], [bx + 0.08 * s, by - 1.8 * s], [bx - 0.08 * s, by - 1.8 * s]], fill);
+        }
+        if (kind === 2) {
+          g.beginPath();
+          g.ellipse(bx, by - 1.9 * s, 0.45 * s, 0.22 * s, 0, Math.PI, 0);
+          g.fillStyle = gv(v + 0.12);
+          g.fill();
+        }
+      });
+    }
+
+    // Photo 2: a steam train crossing open country with a big plume of smoke.
+    function train(g, w, h, rand) {
+      g.save();
+      g.scale(w / 800, h / 600);
+      g.fillStyle = vgrad(g, 0, 380, 0.6, 0.88);
+      g.fillRect(0, 0, 800, 390);
+      // Hills, trees, fields
+      const ridge = (y, amp, fr, v) => {
+        const pts = [[0, 600]];
+        for (let x = 0; x <= 800; x += 10) pts.push([x, y - Math.sin(x * fr + y) * amp - Math.sin(x * fr * 2.7) * amp * 0.4]);
+        pts.push([800, 600]);
+        poly(g, pts, v);
+      };
+      ridge(330, 26, 0.008, 0.74);
+      ridge(365, 14, 0.013, 0.62);
+      for (let x = -10; x < 810; x += 12 + rand() * 14) blob(g, x, 384 - rand() * 8, 14 + rand() * 14, 12 + rand() * 10, 0.42 + rand() * 0.08);
+      g.fillStyle = vgrad(g, 385, 600, 0.6, 0.38);
+      g.fillRect(0, 385, 800, 215);
+      // Telegraph poles along the line
+      g.strokeStyle = gv(0.35);
+      g.lineWidth = 3;
+      for (const x of [40, 290, 540, 790]) { g.beginPath(); g.moveTo(x, 430); g.lineTo(x, 318); g.moveTo(x - 12, 326); g.lineTo(x + 12, 326); g.stroke(); }
+      g.lineWidth = 1;
+      g.strokeStyle = gv(0.3, 0.8);
+      for (let i = 0; i < 3; i++) { g.beginPath(); g.moveTo(40, 326); g.quadraticCurveTo(165, 345, 290, 326); g.quadraticCurveTo(415, 345, 540, 326); g.quadraticCurveTo(665, 345, 790, 326); g.stroke(); }
+      // Embankment and track
+      poly(g, [[0, 440], [800, 440], [800, 470], [0, 470]], 0.66);
+      poly(g, [[0, 470], [800, 470], [800, 600], [0, 600]], vgrad(g, 470, 600, 0.44, 0.3));
+      g.strokeStyle = gv(0.55, 0.5);
+      g.lineWidth = 1.5;
+      for (let i = 0; i < 260; i++) {
+        const x = rand() * 800, y = 475 + rand() * 125;
+        g.beginPath(); g.moveTo(x, y); g.lineTo(x + (rand() - 0.5) * 6, y - 6 - rand() * 8); g.stroke();
+      }
+      for (let x = 0; x < 800; x += 13) poly(g, [[x, 452], [x + 7, 452], [x + 9, 459], [x - 2, 459]], 0.3);
+      g.fillStyle = gv(0.18);
+      g.fillRect(0, 448, 800, 4);
+      g.fillStyle = gv(0.72);
+      g.fillRect(0, 448, 800, 1.2);
+
+      // Smoke: round puffs from the chimney, drifting up and back, lit from above
+      for (let i = 26; i >= 0; i--) {
+        const t = i / 26;
+        const x = 180 + t * 600 + Math.sin(t * 7) * 22, y = 232 - Math.pow(t, 0.65) * 185 + Math.sin(t * 4) * 16;
+        const r = 16 + t * 66, v = 0.26 + t * 0.52;
+        for (let k = 0; k < 3; k++) {
+          const px = x + (rand() - 0.5) * r * 1.2, py = y + (rand() - 0.5) * r * 0.7, pr = r * (0.7 + rand() * 0.4);
+          puff(g, px, py, pr, v, 0.9);
+          puff(g, px - pr * 0.2, py - pr * 0.25, pr * 0.7, v + 0.2, 0.5);
+        }
+      }
+
+      // Wheels with spokes
+      function wheel(x, y, r) {
+        blob(g, x, y, r, r, 0.08);
+        blob(g, x, y, r * 0.84, r * 0.84, 0.2);
+        g.strokeStyle = gv(0.42);
+        g.lineWidth = r * 0.08;
+        for (let k = 0; k < 12; k++) {
+          const a = (k / 12) * Math.PI * 2;
+          g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * r * 0.84, y + Math.sin(a) * r * 0.84); g.stroke();
+        }
+        blob(g, x, y, r * 0.2, r * 0.2, 0.38);
+        g.strokeStyle = gv(0.5, 0.8);
+        g.lineWidth = r * 0.06;
+        g.beginPath(); g.arc(x, y, r * 0.95, Math.PI * 1.1, Math.PI * 1.6); g.stroke();
+      }
+      // Carriages trailing off to the right
+      for (let c = 0; c < 2; c++) {
+        const x0 = 612 + c * 170;
+        poly(g, [[x0, 322], [x0 + 162, 322], [x0 + 162, 420], [x0, 420]], 0.3);
+        g.beginPath(); g.ellipse(x0 + 81, 322, 84, 14, 0, Math.PI, 0); g.fillStyle = gv(0.2); g.fill();
+        for (let k = 0; k < 5; k++) poly(g, [[x0 + 12 + k * 30, 338], [x0 + 32 + k * 30, 338], [x0 + 32 + k * 30, 368], [x0 + 12 + k * 30, 368]], 0.72);
+        poly(g, [[x0, 390], [x0 + 162, 390], [x0 + 162, 394], [x0, 394]], 0.5);
+        wheel(x0 + 30, 436, 14); wheel(x0 + 62, 436, 14); wheel(x0 + 102, 436, 14); wheel(x0 + 134, 436, 14);
+      }
+      // Tender full of coal
+      poly(g, [[470, 330], [600, 330], [600, 422], [470, 422]], 0.2);
+      g.fillStyle = gv(0.1);
+      g.beginPath(); g.moveTo(474, 332);
+      for (let x = 474; x <= 596; x += 8) g.lineTo(x, 322 - rand() * 10);
+      g.lineTo(596, 332); g.fill();
+      poly(g, [[470, 336], [600, 336], [600, 340], [470, 340]], 0.45);
+      wheel(500, 432, 20); wheel(570, 432, 20);
+      // Locomotive: boiler, domes, chimney, cab
+      const boiler = g.createLinearGradient(0, 296, 0, 372);
+      boiler.addColorStop(0, gv(0.28)); boiler.addColorStop(0.22, gv(0.62)); boiler.addColorStop(0.5, gv(0.3)); boiler.addColorStop(1, gv(0.1));
+      poly(g, [[150, 298], [392, 298], [392, 372], [150, 372]], boiler);
+      poly(g, [[128, 292], [158, 292], [158, 376], [128, 376]], 0.16);
+      blob(g, 128, 334, 8, 42, 0.12);
+      for (const x of [205, 262, 318]) poly(g, [[x, 298], [x + 4, 298], [x + 4, 372], [x, 372]], 0.18);
+      poly(g, [[162, 298], [166, 252], [158, 244], [194, 244], [186, 252], [190, 298]], 0.14);
+      poly(g, [[164, 250], [170, 250], [172, 296], [168, 296]], 0.45);
+      g.beginPath(); g.ellipse(262, 298, 22, 20, 0, Math.PI, 0); g.fillStyle = gv(0.2); g.fill();
+      g.beginPath(); g.ellipse(318, 298, 16, 13, 0, Math.PI, 0); g.fillStyle = gv(0.22); g.fill();
+      blob(g, 258, 284, 6, 8, gv(0.6, 0.7));
+      poly(g, [[380, 262], [470, 262], [470, 392], [380, 392]], 0.16);
+      poly(g, [[372, 256], [478, 256], [478, 264], [372, 264]], 0.1);
+      poly(g, [[394, 280], [428, 280], [428, 318], [394, 318]], 0.7);
+      poly(g, [[438, 280], [460, 280], [460, 318], [438, 318]], 0.62);
+      poly(g, [[120, 372], [470, 372], [470, 380], [120, 380]], 0.42);
+      blob(g, 140, 282, 8, 7, 0.75);
+      // Cylinder, cowcatcher, rods
+      poly(g, [[148, 380], [212, 380], [212, 414], [148, 414]], 0.24);
+      poly(g, [[118, 392], [140, 392], [150, 446], [96, 446]], 0.18);
+      g.strokeStyle = gv(0.45);
+      g.lineWidth = 2;
+      for (let x = 102; x < 146; x += 7) { g.beginPath(); g.moveTo(x + 18, 394); g.lineTo(x, 446); g.stroke(); }
+      wheel(168, 428, 22);
+      wheel(250, 404, 46);
+      wheel(352, 404, 46);
+      wheel(432, 428, 22);
+      g.strokeStyle = gv(0.6);
+      g.lineWidth = 6;
+      g.beginPath(); g.moveTo(236, 420); g.lineTo(338, 420); g.stroke();
+      g.lineWidth = 5;
+      g.beginPath(); g.moveTo(206, 398); g.lineTo(250, 420); g.stroke();
+      // Steam leaking at the cylinders
+      for (let k = 0; k < 7; k++) puff(g, 150 + rand() * 90, 430 + rand() * 20, 20 + rand() * 18, 0.92, 0.7);
+      g.restore();
+    }
+
+    // Photo 3: a studio portrait in profile, a man in a hat, backlit against a painted backdrop.
+    function portrait(g, w, h, rand) {
+      g.save();
+      g.scale(w / 480, h / 600);
+      const bg = g.createRadialGradient(300, 250, 20, 260, 300, 380);
+      bg.addColorStop(0, gv(0.9)); bg.addColorStop(0.5, gv(0.64)); bg.addColorStop(1, gv(0.28));
+      g.fillStyle = bg;
+      g.fillRect(0, 0, 480, 600);
+      for (let i = 0; i < 14; i++) puff(g, rand() * 480, rand() * 600, 50 + rand() * 70, rand() < 0.5 ? 0.35 : 0.9, 0.2);
+      // A smooth path through points
+      const path = (pts, close) => {
+        g.moveTo(...pts[0]);
+        for (let i = 1; i < pts.length - 1; i++) {
+          const [x, y] = pts[i], [nx, ny] = pts[i + 1];
+          g.quadraticCurveTo(x, y, (x + nx) / 2, (y + ny) / 2);
+        }
+        g.lineTo(...pts.at(-1));
+        if (close) g.closePath();
+      };
+      const dark = (x0, x1, a, b) => {
+        const lg = g.createLinearGradient(x0, 0, x1, 0);
+        lg.addColorStop(0, gv(a)); lg.addColorStop(1, gv(b));
+        return lg;
+      };
+      const face = [[292, 212], [297, 240], [301, 261], [297, 272], [305, 285], [316, 297], [326, 307], [318, 313], [305, 316], [308, 325], [312, 332], [305, 338], [309, 346], [300, 353], [305, 368], [294, 380], [274, 388], [266, 398], [270, 414], [272, 446]];
+      const back = [[180, 446], [186, 400], [190, 358], [178, 324], [163, 290], [158, 254], [165, 224], [176, 212]];
+      // Head and neck
+      g.beginPath();
+      path([...face, ...back], true);
+      g.fillStyle = dark(170, 320, 0.07, 0.2);
+      g.fill();
+      // Rim light along the face, where the backdrop light spills round
+      g.save();
+      g.clip();
+      g.filter = "blur(3px)";
+      g.strokeStyle = gv(0.92, 0.75);
+      g.lineWidth = 8;
+      g.beginPath();
+      path(face.slice(1, -1));
+      g.stroke();
+      g.restore();
+      // Suit and shoulders over the neck, then the collar
+      g.beginPath();
+      path([[0, 600], [16, 510], [70, 446], [140, 410], [192, 388], [236, 408], [276, 426], [322, 450], [372, 504], [400, 600]]);
+      g.closePath();
+      g.fillStyle = dark(60, 420, 0.08, 0.22);
+      g.fill();
+      poly(g, [[258, 416], [292, 432], [298, 446], [268, 452]], 0.86);
+      poly(g, [[280, 448], [340, 600], [300, 600], [268, 466]], 0.28);
+      // Hat: crown, band and brim
+      g.beginPath();
+      path([[160, 216], [164, 170], [184, 138], [214, 132], [232, 142], [256, 132], [284, 142], [298, 176], [300, 216]]);
+      g.closePath();
+      g.fillStyle = dark(160, 300, 0.1, 0.24);
+      g.fill();
+      poly(g, [[161, 196], [299, 196], [300, 214], [160, 214]], 0.06);
+      g.beginPath();
+      path([[104, 204], [140, 216], [220, 220], [300, 218], [352, 222], [340, 230], [260, 232], [160, 230], [104, 204]], true);
+      g.fillStyle = gv(0.1);
+      g.fill();
+      g.save();
+      g.filter = "blur(3px)";
+      g.strokeStyle = gv(0.85, 0.55);
+      g.lineWidth = 4;
+      g.beginPath(); path([[214, 134], [256, 134], [284, 144], [298, 178]]); g.stroke();
+      g.beginPath(); path([[300, 219], [352, 222]]); g.stroke();
+      g.restore();
+      g.restore();
+    }
+
+    // Develop a grey drawing into an aged print: soft focus, fading, grain, tone and wear.
+    const TONES = {
+      sepia: [[44, 28, 16], [146, 104, 64], [244, 230, 202]],
+      mono: [[24, 23, 22], [122, 119, 112], [238, 234, 224]],
+      warm: [[50, 30, 20], [152, 108, 70], [240, 224, 194]],
+    };
+    function develop(draw, w, h, seed, tone, oval, focus = 1) {
+      const rand = rng(seed);
+      const src = canvas(w, h), sg = src.getContext("2d");
+      draw(sg, w, h, rand);
+      const c = canvas(w, h), g = c.getContext("2d", { willReadFrequently: true });
+      g.filter = `blur(${(w / 700) * focus}px)`;
+      g.drawImage(src, 0, 0);
+      g.filter = "none";
+      const img = g.getImageData(0, 0, w, h), d = img.data, [lo, mid, hi] = TONES[tone];
+      for (let y = 0, i = 0; y < h; y++) {
+        for (let x = 0; x < w; x++, i += 4) {
+          let l = d[i] / 255;
+          l = l * l * (3 - 2 * l) * 0.7 + l * 0.3;
+          const dx = x / w - 0.5, dy = y / h - 0.5;
+          l *= 1 - 0.55 * Math.pow(dx * dx + dy * dy, 1.2) * 2;
+          l = 0.07 + l * 0.86 + (rand() - 0.5) * 0.11;
+          l = Math.max(0, Math.min(1, l));
+          const [a, b, k] = l < 0.5 ? [lo, mid, l * 2] : [mid, hi, l * 2 - 1];
+          d[i] = a[0] + (b[0] - a[0]) * k;
+          d[i + 1] = a[1] + (b[1] - a[1]) * k;
+          d[i + 2] = a[2] + (b[2] - a[2]) * k;
+        }
+      }
+      g.putImageData(img, 0, 0);
+      // Oval mount for the portrait: the corners fade to pale card
+      if (oval) {
+        g.save();
+        g.translate(w / 2, h * 0.47);
+        g.scale(1, (h * 0.86) / w);
+        const rg = g.createRadialGradient(0, 0, w * 0.36, 0, 0, w * 0.52);
+        rg.addColorStop(0, `rgba(${hi},0)`);
+        rg.addColorStop(1, `rgba(${hi},1)`);
+        g.fillStyle = rg;
+        g.fillRect(-w, -w * 2, w * 2, w * 4);
+        g.restore();
+      }
+      // Wear: specks and a couple of fine scratches
+      for (let k = 0; k < 16; k++) blob(g, rand() * w, rand() * h, w * 0.0015 * (1 + rand() * 1.5), w * 0.0015 * (1 + rand() * 1.5), rand() < 0.7 ? `rgba(${hi},0.7)` : "rgba(20,12,6,0.5)");
+      g.strokeStyle = `rgba(${hi},0.35)`;
+      g.lineWidth = w / 900;
+      for (let k = 0; k < 2; k++) {
+        const x = rand() * w;
+        g.beginPath(); g.moveTo(x, rand() * h * 0.3); g.bezierCurveTo(x + w * 0.05, h * 0.4, x - w * 0.05, h * 0.6, x + (rand() - 0.5) * w * 0.1, h * (0.7 + rand() * 0.3)); g.stroke();
+      }
+      return c;
+    }
+
+    const PHOTOS = [
+      { draw: street, w: 800, h: 600, seed: 3, tone: "sepia", kind: "corners", rot: -5 },
+      { draw: train, w: 800, h: 600, seed: 8, tone: "mono", kind: "deckle", rot: 4 },
+      { draw: portrait, w: 480, h: 600, seed: 5, tone: "warm", kind: "cabinet", rot: -2, oval: true, focus: 1.8 },
+    ];
+    PHOTOS.forEach((p) => (p.img = develop(p.draw, p.w, p.h, p.seed, p.tone, p.oval, p.focus)));
+
+    // ---------- Build the page ----------
+
+    // Title on one or two lines, split where the longer line is shortest.
+    const words = title.split(/\s+/);
+    let lines = [title];
+    if (title.length > 14 && words.length > 1) {
+      for (let i = 1; i < words.length; i++) {
+        const pair = [words.slice(0, i).join(" "), words.slice(i).join(" ")];
+        if (lines.length === 1 || Math.max(...pair.map((x) => x.length)) < Math.max(...lines.map((x) => x.length))) lines = pair;
+      }
+    }
+    const h1 = $("title");
+    lines.forEach((line) => {
+      const el = document.createElement("span");
+      el.className = "line";
+      [...line].forEach((ch) => {
+        const s = document.createElement("span");
+        s.className = "ch";
+        s.textContent = ch === " " ? " " : ch;
+        el.append(s);
+      });
+      h1.append(el);
+    });
+
+    // Typed text: typed part, caret, then the rest kept invisible so lines never shift.
+    function typer(el, text, caret) {
+      el.innerHTML = "";
+      const typed = document.createElement("span"), rest = document.createElement("span");
+      rest.className = "rest";
+      el.append(typed);
+      if (caret) {
+        const c = document.createElement("span");
+        c.className = "caret";
+        el.append(c);
+      }
+      el.append(rest);
+      rest.textContent = text;
+      // Uneven key timing, with small pauses after spaces and full stops
+      let sum = 0;
+      const times = [...text].map((ch, i) => (sum += (ch === " " ? 1.5 : /[.,]/.test(text[i - 1] ?? "") ? 3 : 1) * (0.7 + ((i * 7919) % 13) / 20)));
+      return { el, typed, rest, text, times: times.map((x) => x / sum), n: -1 };
+    }
+    const kicker = typer($("kicker"), KICKER, false);
+    const caps = CAPTIONS.map((text) => {
+      const p = document.createElement("p");
+      p.className = "caption";
+      $("captions").append(p);
+      return typer(p, text, true);
+    });
+
+    // Prints: a mount canvas (paper and shadow), the photo window, and a top canvas (corners, tape).
+    const prints = PHOTOS.map((p) => {
+      const el = document.createElement("div");
+      el.className = "print";
+      el.innerHTML = '<canvas class="mount"></canvas><div class="win"></div><canvas class="top"></canvas>';
+      p.img.style.transformOrigin = "50% 40%";
+      el.querySelector(".win").append(p.img);
+      $("prints").append(el);
+      return { ...p, el, mount: el.querySelector(".mount"), top: el.querySelector(".top"), win: el.querySelector(".win") };
+    });
+
+    // Stamps: a worn ink ring with the year in the middle.
+    const worn = (() => {
+      const c = canvas(120, 120), g = c.getContext("2d"), rand = rng(21);
+      g.fillStyle = "#fff";
+      g.fillRect(0, 0, 120, 120);
+      for (let i = 0; i < 260; i++) blob(g, rand() * 120, rand() * 120, 0.4 + rand() * 1.6, 0.4 + rand() * 1.4, `rgba(0,0,0,${0.3 + rand() * 0.6})`);
+      g.filter = "blur(3px)";
+      for (let i = 0; i < 8; i++) blob(g, rand() * 120, rand() * 120, 6 + rand() * 10, 4 + rand() * 8, "rgba(0,0,0,0.35)");
+      return c.toDataURL();
+    })();
+    const stamps = YEARS.map((year, i) => {
+      const el = document.createElement("div");
+      el.className = "stamp";
+      el.innerHTML = `<svg viewBox="-50 -50 100 100" aria-hidden="true">
+        <defs><mask id="worn${i}" maskUnits="userSpaceOnUse" x="-60" y="-60" width="120" height="120">
+          <image href="${worn}" x="-60" y="-60" width="120" height="120" transform="rotate(${i * 120})"/></mask></defs>
+        <g mask="url(#worn${i})" fill="currentColor">
+          <circle r="45" fill="none" stroke="currentColor" stroke-width="5"/>
+          <circle r="37" fill="none" stroke="currentColor" stroke-width="1.6"/>
+          <text y="9.5" text-anchor="middle" font-family="Special Elite, Courier New, monospace" font-size="27" letter-spacing="0.5">${year}</text>
+          <circle cy="-22" r="2.4"/><circle cx="-7" cy="-22" r="1.4"/><circle cx="7" cy="-22" r="1.4"/>
+          <circle cy="23" r="2.4"/><circle cx="-7" cy="23" r="1.4"/><circle cx="7" cy="23" r="1.4"/>
+        </g></svg>`;
+      $("stamps").append(el);
+      return el;
+    });
+
+    // Film grain tiles, made once
+    const fx = $("fx"), fg = fx.getContext("2d");
+    const grains = [11, 12, 13].map((seed) => {
+      const size = 180, c = canvas(size, size), g = c.getContext("2d"), img = g.createImageData(size, size), rand = rng(seed);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const v = rand();
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = v > 0.5 ? 255 : 40;
+        img.data[i + 3] = Math.pow(Math.abs(v - 0.5) * 2, 1.6) * 62;
+      }
+      g.putImageData(img, 0, 0);
+      return fg.createPattern(c, "repeat");
+    });
+
+    // ---------- Layout for any window shape ----------
+
+    let W = 0, H = 0, u = 0, land = false;
+    const measure = canvas(10, 10).getContext("2d");
+
+    function drawPaper() {
+      const dpr = Math.min(devicePixelRatio || 1, 2), c = $("paper"), g = c.getContext("2d"), rand = rng(7);
+      c.width = Math.round(W * dpr);
+      c.height = Math.round(H * dpr);
+      g.scale(dpr, dpr);
+      const [r, gr, b] = rgbOf(css("--bg"));
+      g.fillStyle = `rgb(${r},${gr},${b})`;
+      g.fillRect(0, 0, W, H);
+      // Cloudy mottling at two scales
+      for (const cells of [7, 26]) {
+        const cw = Math.max(2, Math.round((cells * W) / u)), ch = Math.max(2, Math.round((cells * H) / u)), m = canvas(cw, ch), mg = m.getContext("2d");
+        for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+          mg.fillStyle = `rgba(${cells < 10 ? "120,78,36" : "90,60,30"},${rand() * (cells < 10 ? 0.16 : 0.08)})`;
+          mg.fillRect(x, y, 1, 1);
+        }
+        g.imageSmoothingQuality = "high";
+        g.drawImage(m, 0, 0, W, H);
+      }
+      // Stains: irregular water marks near the edges, one with a faint tide line
+      for (let i = 0; i < 4; i++) {
+        const edge = i % 4, x = edge === 1 ? W * (0.85 + rand() * 0.15) : edge === 3 ? W * rand() * 0.15 : rand() * W;
+        const y = edge === 0 ? H * rand() * 0.15 : edge === 2 ? H * (0.85 + rand() * 0.15) : rand() * H;
+        const rr = u * (0.1 + rand() * 0.14);
+        for (let j = 0; j < 9; j++) {
+          const px = x + (rand() - 0.5) * rr, py = y + (rand() - 0.5) * rr, pr = rr * (0.25 + rand() * 0.45);
+          const rg = g.createRadialGradient(px, py, 0, px, py, pr);
+          rg.addColorStop(0, "rgba(130,84,34,0.07)");
+          rg.addColorStop(1, "rgba(130,84,34,0)");
+          g.fillStyle = rg;
+          g.fillRect(px - pr, py - pr, pr * 2, pr * 2);
+        }
+        if (i === 1) {
+          g.save();
+          g.filter = `blur(${u * 0.002}px)`;
+          g.strokeStyle = "rgba(120,74,28,0.1)";
+          g.lineWidth = u * 0.006;
+          g.beginPath();
+          g.ellipse(x, y, rr * 0.55, rr * 0.5, rand() * 6, 0.4, Math.PI * 1.45);
+          g.stroke();
+          g.restore();
+        }
+      }
+      // Foxing spots
+      for (let i = 0; i < 70; i++) {
+        const x = rand() * W, y = rand() * H, rr = u * (0.002 + rand() * 0.006);
+        const rg = g.createRadialGradient(x, y, 0, x, y, rr);
+        rg.addColorStop(0, "rgba(110,62,24,0.35)");
+        rg.addColorStop(1, "rgba(110,62,24,0)");
+        g.fillStyle = rg;
+        g.fillRect(x - rr, y - rr, rr * 2, rr * 2);
+      }
+      // Paper fibres
+      g.lineWidth = Math.max(0.5, u * 0.0014);
+      for (let i = 0; i < (W * H) / 900; i++) {
+        const x = rand() * W, y = rand() * H, a = rand() * Math.PI, l = u * (0.01 + rand() * 0.03);
+        g.strokeStyle = rand() < 0.6 ? `rgba(90,60,30,${0.05 + rand() * 0.08})` : `rgba(255,250,236,${0.1 + rand() * 0.15})`;
+        g.beginPath(); g.moveTo(x, y);
+        g.quadraticCurveTo(x + Math.cos(a) * l * 0.5 + (rand() - 0.5) * l * 0.4, y + Math.sin(a) * l * 0.5 + (rand() - 0.5) * l * 0.4, x + Math.cos(a) * l, y + Math.sin(a) * l);
+        g.stroke();
+      }
+      // Darker, soft worn edges
+      const e = u * 0.12;
+      for (const [x0, y0, x1, y1] of [[0, 0, e, 0], [W, 0, W - e, 0], [0, 0, 0, e], [0, H, 0, H - e]]) {
+        const lg = g.createLinearGradient(x0, y0, x1, y1);
+        lg.addColorStop(0, "rgba(96,58,24,0.45)");
+        lg.addColorStop(0.25, "rgba(110,70,30,0.16)");
+        lg.addColorStop(1, "rgba(110,70,30,0)");
+        g.fillStyle = lg;
+        g.fillRect(0, 0, W, H);
+      }
+    }
+
+    // Paper outline of a print: straight, or deckled with small scallops.
+    function outline(g, kind, x, y, w, h, rand) {
+      g.beginPath();
+      if (kind !== "deckle") { g.rect(x, y, w, h); return; }
+      const n = Math.max(8, Math.round(w / 9)), m = Math.max(6, Math.round(h / 9)), a = Math.min(w, h) * 0.012;
+      const edge = (x0, y0, x1, y1, count, nx, ny) => {
+        for (let i = 0; i < count; i++) {
+          const t0 = i / count, t1 = (i + 1) / count, tm = (t0 + t1) / 2, bump = a * (0.6 + rand() * 0.8);
+          g.quadraticCurveTo(x0 + (x1 - x0) * tm + nx * bump * 2, y0 + (y1 - y0) * tm + ny * bump * 2, x0 + (x1 - x0) * t1, y0 + (y1 - y0) * t1);
+        }
+      };
+      g.moveTo(x, y);
+      edge(x, y, x + w, y, n, 0, -1);
+      edge(x + w, y, x + w, y + h, m, 1, 0);
+      edge(x + w, y + h, x, y + h, n, 0, 1);
+      edge(x, y + h, x, y, m, -1, 0);
+      g.closePath();
+    }
+    function tape(g, cx, cy, tw, th, rot, rand) {
+      g.save();
+      g.translate(cx, cy);
+      g.rotate(rot);
+      g.shadowColor = "rgba(60,40,20,0.25)";
+      g.shadowBlur = th * 0.3;
+      g.beginPath();
+      g.moveTo(-tw / 2, -th / 2);
+      for (let i = 0; i <= 6; i++) g.lineTo(-tw / 2 + (i % 2) * th * 0.08, -th / 2 + (th * i) / 6);
+      for (let i = 0; i <= 6; i++) g.lineTo(tw / 2 - (i % 2) * th * 0.08, th / 2 - (th * i) / 6);
+      g.closePath();
+      g.fillStyle = "rgba(232,216,168,0.78)";
+      g.fill();
+      g.restore();
+    }
+
+    // Draw one print's mount and top layer at its current size.
+    function mountPrint(p, pw, ph, b, bb, k) {
+      const w = pw + 2 * b, h = ph + b + bb, m = Math.ceil(w * 0.12), rand = rng(p.seed + 40);
+      Object.assign(p.el.style, { width: `${w}px`, height: `${h}px` });
+      Object.assign(p.win.style, { left: `${b}px`, top: `${b}px`, width: `${pw}px`, height: `${ph}px` });
+      for (const c of [p.mount, p.top]) {
+        c.width = Math.round((w + 2 * m) * k);
+        c.height = Math.round((h + 2 * m) * k);
+        Object.assign(c.style, { left: `${-m}px`, top: `${-m}px`, width: `${w + 2 * m}px`, height: `${h + 2 * m}px` });
+      }
+      let g = p.mount.getContext("2d");
+      g.setTransform(k, 0, 0, k, m * k, m * k);
+      const card = { corners: "#f3ebda", deckle: "#eeeae1", cabinet: "#e2d3b2" }[p.kind];
+      g.save();
+      g.shadowColor = "rgba(50,28,10,0.42)";
+      g.shadowBlur = w * 0.05;
+      g.shadowOffsetY = w * 0.022;
+      outline(g, p.kind, 0, 0, w, h, rng(p.seed));
+      g.fillStyle = card;
+      g.fill();
+      g.restore();
+      // Yellowed paper with a few specks
+      outline(g, p.kind, 0, 0, w, h, rng(p.seed));
+      g.save();
+      g.clip();
+      const lg = g.createLinearGradient(0, 0, w, h);
+      lg.addColorStop(0, "rgba(160,110,50,0.05)");
+      lg.addColorStop(1, "rgba(150,100,40,0.22)");
+      g.fillStyle = lg;
+      g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 30; i++) blob(g, rand() * w, rand() * h, w * 0.003, w * 0.003, "rgba(120,80,40,0.25)");
+      if (p.kind === "cabinet") {
+        // A thin gilt rule and a studio mark on the card
+        g.strokeStyle = "rgba(140,104,52,0.8)";
+        g.lineWidth = Math.max(0.6, w * 0.006);
+        g.strokeRect(b * 0.45, b * 0.45, w - b * 0.9, ph + b * 1.1);
+        g.fillStyle = "rgba(120,86,44,0.75)";
+        g.fillRect(w * 0.3, ph + b + bb * 0.42, w * 0.4, Math.max(0.8, w * 0.01));
+        g.fillRect(w * 0.38, ph + b + bb * 0.62, w * 0.24, Math.max(0.6, w * 0.006));
+      }
+      g.restore();
+      // Top layer: photo corners or tape
+      g = p.top.getContext("2d");
+      g.setTransform(k, 0, 0, k, m * k, m * k);
+      if (p.kind === "corners") {
+        const L = w * 0.13, e = w * 0.012;
+        [[0, 0, 1, 1], [w, 0, -1, 1], [w, h, -1, -1], [0, h, 1, -1]].forEach(([x, y, sx, sy]) => {
+          g.save();
+          g.shadowColor = "rgba(0,0,0,0.35)";
+          g.shadowBlur = w * 0.012;
+          g.shadowOffsetY = w * 0.004;
+          poly(g, [[x - sx * e, y - sy * e], [x + sx * L, y - sy * e], [x - sx * e, y + sy * L]], "#2a1f17");
+          g.restore();
+          g.strokeStyle = "rgba(255,240,210,0.22)";
+          g.lineWidth = Math.max(0.6, w * 0.004);
+          g.beginPath(); g.moveTo(x + sx * L * 0.92, y); g.lineTo(x, y + sy * L * 0.92); g.stroke();
+        });
+      } else if (p.kind === "deckle") {
+        tape(g, w * 0.06, h * 0.02, w * 0.3, w * 0.075, -0.75, rand);
+        tape(g, w * 0.94, h * 0.02, w * 0.3, w * 0.075, 0.72, rand);
+      } else {
+        tape(g, w * 0.5, 0, w * 0.42, w * 0.1, -0.05, rand);
+      }
+      return { w, h };
+    }
+
+    function layout() {
+      W = innerWidth;
+      H = innerHeight;
+      u = Math.min(W, H);
+      land = W / H >= 1.15;
+      stage.classList.toggle("land", land);
+      drawPaper();
+      const k = Math.min(devicePixelRatio || 1, 2), pad = Math.max(8, u * 0.06);
+      measure.font = '700 100px "Playfair Display", Georgia, serif';
+      const widest = Math.max(...lines.map((l) => measure.measureText(l).width)) / 100;
+
+      // Timeline along the bottom, full width
+      const x0 = pad * 1.1, x1 = W - pad * 1.1;
+      const sd = Math.min(land ? H * 0.19 : u * 0.2, (x1 - x0) * 0.24, land ? H * 0.16 : H * 0.13);
+      const lineY = H - pad - sd * 0.08;
+      const tlTop = lineY - sd * 1.18;
+
+      let region, headBox, capBox, titleFS, capFS, capLines;
+      if (land) {
+        const colX = W * 0.575, colW = W - pad - colX;
+        region = { x: pad, y: pad, w: W * 0.535 - pad, h: tlTop - pad * 1.2 };
+        titleFS = Math.min(H * 0.17, (colW * 0.98) / widest);
+        capFS = Math.min(H * 0.048, colW / 17);
+        capLines = 3;
+        const kFS = Math.max(6, titleFS * 0.24);
+        const headH = kFS * 1.6 + titleFS * 1.04 * lines.length + kFS * 1.1;
+        const capH = capFS * 1.4 * capLines, total = headH + capFS * 1.2 + capH;
+        const top = pad + Math.max(0, (region.h - total) / 2);
+        headBox = { x: colX, y: top, w: colW, kFS };
+        capBox = { x: colX, y: top + headH + capFS * 1.2, w: colW, h: capH };
+      } else {
+        titleFS = Math.min(W * 0.16, H * 0.1, ((W - 2 * pad) * 0.98) / widest);
+        capFS = Math.min(u * 0.046, W / 21, H * 0.04);
+        capLines = 2;
+        const kFS = Math.max(6, Math.min(u * 0.036, titleFS * 0.3));
+        const headH = kFS * 1.6 + titleFS * 1.04 * lines.length + kFS * 1.1;
+        const capH = capFS * 1.4 * capLines;
+        headBox = { x: pad, y: pad, w: W - 2 * pad, kFS };
+        capBox = { x: pad, y: tlTop - capH - pad * 0.5, w: W - 2 * pad, h: capH };
+        const ry = pad + headH + pad * 0.6;
+        region = { x: pad, y: ry, w: W - 2 * pad, h: capBox.y - pad * 0.5 - ry };
+      }
+      stage.style.setProperty("--title", `${titleFS}px`);
+      stage.style.setProperty("--kicker", `${headBox.kFS}px`);
+      stage.style.setProperty("--cap", `${capFS}px`);
+      Object.assign($("head").style, { left: `${headBox.x}px`, top: `${headBox.y}px`, width: `${headBox.w}px` });
+      Object.assign($("captions").style, { left: `${capBox.x}px`, top: `${capBox.y}px`, width: `${capBox.w}px`, height: `${capBox.h}px` });
+
+      // Prints: size them so the little stack fits the region, then spread them apart.
+      const R = region;
+      const pw0 = Math.min(R.w / 1.3, R.h / 1.06);
+      const specs = [
+        { pw: pw0, ph: pw0 * 0.75, b: pw0 * 0.055, bb: pw0 * 0.055 },
+        { pw: pw0 * 0.96, ph: pw0 * 0.72, b: pw0 * 0.06, bb: pw0 * 0.06 },
+        { pw: pw0 * 0.62, ph: pw0 * 0.775, b: pw0 * 0.065, bb: pw0 * 0.17 },
+      ];
+      const sizes = prints.map((p, i) => mountPrint(p, specs[i].pw, specs[i].ph, specs[i].b, specs[i].bb, k));
+      const cx = R.x + R.w / 2, cy = R.y + R.h / 2;
+      const spots = [[-0.8, -0.85], [0.85, 0.7], [0.05, 0.1]];
+      sizes.forEach((s, i) => {
+        const ox = Math.max(0, (R.w - s.w) / 2 - s.h * 0.06) * 0.95, oy = Math.max(0, (R.h - s.h) / 2 - s.w * 0.06) * 0.95;
+        const [fx, fy] = spots[i];
+        Object.assign(prints[i].el.style, { left: `${cx + fx * ox - s.w / 2}px`, top: `${cy + fy * oy - s.h / 2}px` });
+      });
+
+      // Timeline: a slightly wobbly ink line, a thin second rule, ticks and stamps.
+      const rand = rng(9), pts = [], pts2 = [];
+      for (let x = x0; x <= x1 + 0.1; x += Math.max(4, u * 0.012)) {
+        pts.push(`${x.toFixed(1)} ${(lineY + (rand() - 0.5) * u * 0.003).toFixed(1)}`);
+        pts2.push(`${x.toFixed(1)} ${(lineY + u * 0.012 + (rand() - 0.5) * u * 0.002).toFixed(1)}`);
+      }
+      $("tl").setAttribute("viewBox", `0 0 ${W} ${H}`);
+      const l1 = $("line1"), l2 = $("line2");
+      l1.setAttribute("d", `M${pts.join(" L")}`);
+      l2.setAttribute("d", `M${pts2.join(" L")}`);
+      for (const [el, sw, op] of [[l1, Math.max(1.2, u * 0.007), 1], [l2, Math.max(0.6, u * 0.0025), 0.55]]) {
+        el.setAttribute("pathLength", "1");
+        el.setAttribute("stroke-dasharray", "1 2");
+        el.style.strokeWidth = sw;
+        el.style.opacity = op;
+      }
+      const tick = sd * 0.16;
+      document.querySelectorAll(".tick").forEach((el, i) => {
+        const x = x0 + (x1 - x0) * MARKS[i];
+        el.setAttribute("d", `M${x} ${lineY - tick} L${x} ${lineY + tick * 0.9}`);
+        el.style.strokeWidth = Math.max(1, u * 0.005);
+      });
+      const tip = u * 0.014;
+      $("tip").setAttribute("d", `M${x1 - tip * 1.4} ${lineY - tip} L${x1} ${lineY} L${x1 - tip * 1.4} ${lineY + tip}`);
+      $("tip").style.strokeWidth = Math.max(1.2, u * 0.006);
+      stamps.forEach((el, i) => {
+        const x = x0 + (x1 - x0) * MARKS[i];
+        Object.assign(el.style, { width: `${sd}px`, height: `${sd}px`, left: `${x - sd / 2}px`, top: `${lineY - tick - sd * 1.02}px` });
+      });
+
+      fx.width = Math.round(W);
+      fx.height = Math.round(H);
+      fxLast = -1;
+      if (still) drawFx(0, STILL, true);
+    }
+    const MARKS = [0.16, 0.5, 0.84];
+
+    // ---------- Film effects: grain, flicker, dust, a scratch and weave ----------
+
+    let fxLast = -1;
+    const film = $("film");
+    function drawFx(frame, t, still) {
+      const r = rng(frame * 7919 + 1);
+      fg.setTransform(1, 0, 0, 1, 0, 0);
+      fg.clearRect(0, 0, fx.width, fx.height);
+      fg.save();
+      fg.translate(-r() * 180, -r() * 180);
+      fg.fillStyle = grains[frame % 3];
+      fg.fillRect(0, 0, fx.width + 180, fx.height + 180);
+      fg.restore();
+      if (still) { film.style.transform = ""; return; }
+      // Flicker: the light dips and lifts a little from frame to frame
+      const dip = 0.02 + r() * 0.05;
+      fg.fillStyle = `rgba(30,16,4,${dip.toFixed(3)})`;
+      fg.fillRect(0, 0, fx.width, fx.height);
+      if (r() < 0.12) {
+        fg.fillStyle = "rgba(255,244,220,0.06)";
+        fg.fillRect(0, 0, fx.width, fx.height);
+      }
+      // Dust specks and the odd hair, each for a single frame
+      const s = u / 400;
+      if (r() < 0.45) {
+        for (let i = 0, n = 1 + Math.floor(r() * 3); i < n; i++) {
+          const x = r() * W, y = r() * H;
+          if (r() < 0.25) {
+            fg.strokeStyle = "rgba(25,14,6,0.55)";
+            fg.lineWidth = Math.max(0.7, s);
+            fg.beginPath(); fg.moveTo(x, y);
+            fg.bezierCurveTo(x + (r() - 0.5) * 30 * s, y + (r() - 0.5) * 30 * s, x + (r() - 0.5) * 30 * s, y + (r() - 0.5) * 30 * s, x + (r() - 0.5) * 40 * s, y + (r() - 0.5) * 40 * s);
+            fg.stroke();
+          } else {
+            blob(fg, x, y, (0.8 + r() * 2.2) * s, (0.6 + r() * 1.8) * s, r() < 0.7 ? "rgba(25,14,6,0.6)" : "rgba(255,248,230,0.7)");
+          }
+        }
+      }
+      // A vertical scratch that wanders during parts of the reel
+      for (const [a, b, x0] of [[1.6, 3.4, 0.72], [6.2, 7.3, 0.3], [9.6, 10.8, 0.62]]) {
+        if (t < a || t > b) continue;
+        const x = W * (x0 + (t - a) * 0.02) + (r() - 0.5) * u * 0.006;
+        fg.fillStyle = `rgba(255,248,228,${(0.35 + r() * 0.3).toFixed(2)})`;
+        fg.fillRect(x, 0, Math.max(1, u * 0.0025), H);
+        fg.fillStyle = "rgba(40,24,10,0.18)";
+        fg.fillRect(x + Math.max(1, u * 0.0025), 0, Math.max(1, u * 0.002), H);
+      }
+      // Gate weave: the whole picture shifts by a hair
+      const wy = r() < 0.3 ? (r() - 0.5) * u * 0.004 : 0;
+      film.style.transform = wy ? `translate(0px, ${wy.toFixed(2)}px)` : "";
+    }
+
+    // ---------- Typed text follows the timeline clock ----------
+
+    const KICK = { at: 0.95, dur: 0.6 };
+    const CAP = [{ at: 1.75, out: 3.62 }, { at: 5.0, out: 7.55 }, { at: 8.95, out: 99 }];
+    function typeTo(tp, count, active) {
+      if (tp.n === count && tp.active === active) return;
+      tp.n = count;
+      tp.active = active;
+      tp.typed.textContent = tp.text.slice(0, count);
+      tp.rest.textContent = tp.text.slice(count);
+      tp.el.classList.toggle("typing", active);
+    }
+    const countAt = (tp, p) => (p <= 0 ? 0 : p >= 1 ? tp.text.length : tp.times.findIndex((x) => x > p));
+    function sync(t) {
+      typeTo(kicker, countAt(kicker, (t - KICK.at) / KICK.dur), false);
+      caps.forEach((tp, i) => {
+        const { at, out } = CAP[i], dur = tp.text.length * 0.042, p = (t - at) / dur;
+        typeTo(tp, countAt(tp, p), p > 0 && p < 1);
+        const o = t < at ? 0 : t < out ? 1 : Math.max(0, 1 - (t - out) / 0.3);
+        if (tp.o !== o) tp.el.style.opacity = tp.o = o;
+      });
+    }
+
+    // ---------- The 12 second reel ----------
+
+    const L = 12;
+    // Start values. A step rewound past its start returns to these.
+    gsap.set(["#title .ch", "#ornament", ".print", ".stamp", ".tick", "#tip", ".leak"], { autoAlpha: 0 });
+    gsap.set("#ornament", { scaleX: 0 });
+    gsap.set(["#line1", "#line2"], { attr: { "stroke-dashoffset": 1 } });
+    const tl = gsap.timeline({ repeat: -1, paused: true });
+    // Each step applies its start values only when it begins.
+    const fromTo = tl.fromTo.bind(tl);
+    tl.fromTo = (targets, from, to, at) => fromTo(targets, from, { ...to, immediateRender: false }, at);
+
+    // Burn fades out at the start (it peaked at the end of the last loop)
+    tl.fromTo("#burn", { autoAlpha: 1, scale: 1, xPercent: 0 }, { autoAlpha: 0, scale: 1.08, xPercent: -4, duration: 0.75, ease: "power2.out" }, 0);
+    // Title letters come up like ink soaking into paper
+    tl.fromTo("#title .ch", { autoAlpha: 0, yPercent: 22, filter: "blur(6px)" }, { autoAlpha: 1, yPercent: 0, filter: "blur(0px)", duration: 0.8, stagger: 0.05, ease: "power2.out" }, 0.3);
+    tl.fromTo("#ornament", { scaleX: 0, autoAlpha: 0 }, { scaleX: 1, autoAlpha: 1, duration: 0.7, ease: "power3.out" }, 0.9);
+
+    const lines12 = ["#line1", "#line2"];
+    tl.fromTo(lines12, { attr: { "stroke-dashoffset": 1 } }, { attr: { "stroke-dashoffset": 1 - MARKS[0] }, duration: 0.8, ease: "power2.inOut" }, 0.5);
+    const S = [0.7, 4.0, 8.0];
+    prints.forEach((p, i) => {
+      const at = S[i] + (i ? 0.15 : 0);
+      tl.fromTo(p.el, { autoAlpha: 0, scale: 1.35, rotation: p.rot + 9, yPercent: -10 }, { autoAlpha: 1, scale: 1, rotation: p.rot, yPercent: 0, duration: 0.75, ease: "power3.out" }, at);
+      // Ken Burns: a slow push in with a small drift
+      const dir = i % 2 ? 1 : -1;
+      tl.fromTo(p.img, { scale: 1.08, xPercent: -2 * dir, yPercent: 1 }, { scale: 1.2, xPercent: 2 * dir, yPercent: -1, duration: L - at, ease: "none" }, at);
+      // The print underneath gets nudged as the new one lands
+      if (i) tl.to(prints[i - 1].el, { rotation: prints[i - 1].rot - 1.5 * (i % 2 ? 1 : -1), xPercent: -2, duration: 0.5, ease: "power2.out" }, at + 0.35);
+    });
+    stamps.forEach((el, i) => {
+      const at = i ? S[i] + 0.8 : 1.3, r = [-8, 6, -4][i];
+      if (i) tl.fromTo(lines12, { attr: { "stroke-dashoffset": 1 - MARKS[i - 1] } }, { attr: { "stroke-dashoffset": 1 - MARKS[i] }, duration: 0.75, ease: "power2.inOut" }, S[i]);
+      tl.fromTo(el, { autoAlpha: 0, scale: 2.3, rotation: r - 14 }, { autoAlpha: 1, scale: 1, rotation: r, duration: 0.24, ease: "power3.in" }, at)
+        .fromTo(el, { scale: 1 }, { scale: 1.07, duration: 0.07, ease: "power1.out", yoyo: true, repeat: 1 }, at + 0.24)
+        .fromTo(document.querySelectorAll(".tick")[i], { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.2 }, at + 0.2);
+    });
+    tl.fromTo(lines12, { attr: { "stroke-dashoffset": 1 - MARKS[2] } }, { attr: { "stroke-dashoffset": 0 }, duration: 0.6, ease: "power2.out" }, 8.8);
+    tl.fromTo("#tip", { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.3 }, 9.3);
+
+    // Soft light leaks between chapters, then the film burns out at the end of the reel
+    tl.fromTo("#leak", { autoAlpha: 0 }, { autoAlpha: 0.7, duration: 0.3, ease: "sine.out" }, 3.75)
+      .to("#leak", { autoAlpha: 0, duration: 0.8, ease: "sine.in" }, 4.05)
+      .fromTo("#leak2", { autoAlpha: 0 }, { autoAlpha: 0.6, duration: 0.3, ease: "sine.out" }, 7.75)
+      .to("#leak2", { autoAlpha: 0, duration: 0.8, ease: "sine.in" }, 8.05);
+    tl.to(["#head", "#prints", "#tl", "#stamps", "#captions"], { autoAlpha: 0, duration: 0.3, ease: "power1.in" }, 11.62);
+    tl.fromTo("#burn", { autoAlpha: 0, scale: 1.25, xPercent: 6 }, { autoAlpha: 1, scale: 1, xPercent: 0, duration: 0.6, ease: "power2.in" }, L - 0.6);
+    // Record every start value once, then rest at the start.
+    tl.time(L - 0.001).time(0);
+
+    // The ticker reads a flag, not the media query: reading .matches every frame
+    // can swallow the change event in Chrome.
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    const STILL = 10.9;
+    let ready = false, still = false;
+    gsap.ticker.add(() => {
+      if (!ready) return;
+      sync(tl.time());
+      if (still) return;
+      const frame = Math.floor(performance.now() / 62.5);
+      if (frame !== fxLast) {
+        fxLast = frame;
+        drawFx(frame, tl.time(), false);
+      }
+    });
+    // Reduced motion: one still frame with everything in place, still grain, no flicker.
+    function apply() {
+      still = reduce.matches;
+      if (still) {
+        tl.pause(STILL);
+        sync(STILL);
+        drawFx(0, STILL, true);
+      } else {
+        tl.play();
+      }
+    }
+
+    let timer;
+    addEventListener("resize", () => {
+      clearTimeout(timer);
+      timer = setTimeout(layout, 150);
+    });
+
+    // Wait briefly for the fonts so the title is measured in the right face.
+    Promise.race([
+      Promise.all([document.fonts.load('700 1em "Playfair Display"'), document.fonts.load('400 1em "Special Elite"')]),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(() => {
+      reduce.addEventListener("change", apply);
+      ready = true;
+      layout();
+      // Begin just after the peak of the burn, so the page does not open on a flash.
+      tl.time(0.35);
+      apply();
+    });
+  </script>
+</body>
+</html>

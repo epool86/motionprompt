@@ -64,7 +64,8 @@ Dark "film studio" look with a light variant; tokens live on `:root` in `site.cs
 `slug` must match a folder in `styles/` that has both `demo.html` and `prompt.txt`.
 
 Tags become the filter chips, so reuse the existing ones: text, 3d, product, explainer,
-background, promo, retro, photos, data, social, brand, handmade. The list order in
+background, promo, retro, photos, data, social, brand, handmade, malaysia, festive, food,
+travel, cute. The list order in
 `styles.json` is the gallery order; mix looks so neighbouring tiles differ.
 
 ### Style prompts

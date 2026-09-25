@@ -1,0 +1,19 @@
+Make my video in this style: Festive Raya.
+
+Look and motion
+- A warm festive greeting at night, with a deep green sky that turns golden near the horizon and a thin crescent moon at the top.
+- Gold Islamic geometric patterns (eight point stars and star and cross tiling) draw themselves line by line behind the words, then turn very slowly.
+- Hanging ketupat and glowing lanterns sway gently from the top of the frame. A row of pelita (bamboo oil lamps) flickers softly along the bottom, in front of a dark skyline of palm trees and a distant mosque.
+- Small fireworks burst quietly in the distance, and little gold glints twinkle around the words.
+- The greeting from my request rises in with its letters closing together, in gold, then a soft shine sweeps across it. A short friendly line from my request fades in underneath.
+- Write my text in the language I use. Keep the words easy to read and clear of the lamps and decorations.
+- Keep it respectful: no Quranic text and no people. At the end, the words and patterns fade out while the lamps keep glowing.
+
+Type and colour
+- An elegant classical display font in capitals (like Cinzel) for the greeting, and a friendly rounded sans (like Quicksand) for the short line.
+- Use my brand colours if I give them. Otherwise use deep emerald night #06261f, emerald #1f7a5a, gold #e3b75a, light gold #f5dc9a and cream #fbf1dc.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

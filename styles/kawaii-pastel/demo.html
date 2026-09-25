@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kawaii pastel demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/mochiy-pop-one@5.3.0/latin-400.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=fff0f4&ink=4b2a3a&accent=ff9cbf&accent2=c3a8f5 */
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #fff0f4;
+    }
+
+    svg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .kp-letter {
+      font-family: "Mochiy Pop One", "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
+      font-weight: 400;
+    }
+  </style>
+</head>
+<body>
+  <svg id="scene" role="img" xmlns="http://www.w3.org/2000/svg"></svg>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => "#" + (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const C = {
+      bg: hex("bg", "fff0f4"),
+      ink: hex("ink", "4b2a3a"),
+      pink: hex("accent", "ff9cbf"),
+      lilac: hex("accent2", "c3a8f5"),
+      mint: "#a8e6cf",
+      butter: "#ffe07a",
+      peach: "#ffc4a8",
+      dots: "#ffd7e3",
+      skin: "#ffe6da",
+      blush: "#ff9ebb",
+      hair: "#b07999",
+      hairLight: "#d4a3c2",
+      mouth: "#d9537f",
+      white: "#ffffff",
+    };
+    document.body.style.background = C.bg;
+    const text = (params.get("text") || "Hello, cutie!").trim().slice(0, 40);
+    // Letter colours cycle through deeper versions of the pastels, so they read on white.
+    const letterColors = ["#f0508c", "#9a6fe0", "#2fae8c", "#f39237"];
+
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.getElementById("scene");
+    svg.setAttribute("aria-label", `A cute cartoon girl bounces in, waves and says: ${text}`);
+
+    function el(name, attrs, parent) {
+      const node = document.createElementNS(NS, name);
+      for (const k in attrs) node.setAttribute(k, attrs[k]);
+      if (parent) parent.append(node);
+      return node;
+    }
+
+    // Shape paths, centred on 0 0.
+    const n = (v) => +v.toFixed(2);
+    const heartD = (s) => `M0 ${n(0.9 * s)} C${n(-0.2 * s)} ${n(0.72 * s)} ${n(-s)} ${n(0.25 * s)} ${n(-s)} ${n(-0.3 * s)} C${n(-s)} ${n(-0.8 * s)} ${n(-0.42 * s)} ${n(-1 * s)} 0 ${n(-0.5 * s)} C${n(0.42 * s)} ${n(-1 * s)} ${n(s)} ${n(-0.8 * s)} ${n(s)} ${n(-0.3 * s)} C${n(s)} ${n(0.25 * s)} ${n(0.2 * s)} ${n(0.72 * s)} 0 ${n(0.9 * s)}Z`;
+    const sparkleD = (s) => {
+      const k = s * 0.14;
+      return `M0 ${n(-s)} C${n(k)} ${n(-k)} ${n(k)} ${n(-k)} ${n(s)} 0 C${n(k)} ${n(k)} ${n(k)} ${n(k)} 0 ${n(s)} C${n(-k)} ${n(k)} ${n(-k)} ${n(k)} ${n(-s)} 0 C${n(-k)} ${n(-k)} ${n(-k)} ${n(-k)} 0 ${n(-s)}Z`;
+    };
+    const starD = (r, inner = 0.52) => {
+      let d = "";
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r * inner : r;
+        d += `${i ? "L" : "M"}${n(Math.cos(a) * rr)} ${n(Math.sin(a) * rr)}`;
+      }
+      return d + "Z";
+    };
+    const circleD = (x, y, r) => `M${n(x - r)} ${n(y)}a${n(r)} ${n(r)} 0 1 0 ${n(r * 2)} 0a${n(r)} ${n(r)} 0 1 0 ${n(-r * 2)} 0`;
+    const cloudD = (s) => [circleD(-s * 0.5, s * 0.08, s * 0.4), circleD(0, -s * 0.12, s * 0.52), circleD(s * 0.55, s * 0.1, s * 0.36),
+      `M${n(-s * 0.5)} ${n(s * 0.48)} H${n(s * 0.55)} V${n(s * 0.1)} H${n(-s * 0.5)}Z`].join(" ");
+
+    // A tiny happy face for the stickers.
+    function tinyFace(g, s, y = 0) {
+      el("circle", { cx: -s * 0.3, cy: y, r: s * 0.09, fill: C.ink }, g);
+      el("circle", { cx: s * 0.3, cy: y, r: s * 0.09, fill: C.ink }, g);
+      el("path", { d: `M${n(-s * 0.13)} ${n(y + s * 0.12)} Q0 ${n(y + s * 0.3)} ${n(s * 0.13)} ${n(y + s * 0.12)}`, fill: "none", stroke: C.ink, "stroke-width": s * 0.07, "stroke-linecap": "round" }, g);
+      el("ellipse", { cx: -s * 0.52, cy: y + s * 0.16, rx: s * 0.13, ry: s * 0.08, fill: C.blush, opacity: 0.8 }, g);
+      el("ellipse", { cx: s * 0.52, cy: y + s * 0.16, rx: s * 0.13, ry: s * 0.08, fill: C.blush, opacity: 0.8 }, g);
+    }
+
+    // A sticker: a shape with a thick white outline and a soft shadow.
+    function sticker(parent, d, fill, outline) {
+      const g = el("g", { filter: "url(#kp-shadow)" }, parent);
+      el("path", { d, fill: C.white, stroke: C.white, "stroke-width": outline, "stroke-linejoin": "round" }, g);
+      el("path", { d, fill, stroke: fill, "stroke-width": outline * 0.3, "stroke-linejoin": "round" }, g);
+      return g;
+    }
+
+    // The girl, drawn with her feet at 0 0, about 290 units tall.
+    function drawGirl(parent) {
+      const O = C.ink, sw = 3.5;
+      const line = { stroke: O, "stroke-width": sw, "stroke-linejoin": "round", "stroke-linecap": "round" };
+      const shadow = el("ellipse", { cx: 0, cy: 2, rx: 60, ry: 9, fill: C.pink, opacity: 0.35 }, parent);
+      const body = el("g", {}, parent);
+
+      // Legs, socks and shoes
+      for (const s of [-1, 1]) {
+        el("rect", { x: s * 15 - 7.5, y: -44, width: 15, height: 34, rx: 7, fill: C.skin, ...line }, body);
+        el("rect", { x: s * 15 - 8, y: -24, width: 16, height: 14, rx: 4, fill: C.white, ...line }, body);
+        el("ellipse", { cx: s * 17, cy: -7, rx: 15, ry: 8.5, fill: C.lilac, ...line }, body);
+        el("ellipse", { cx: s * 17 - 5, cy: -10, rx: 4, ry: 2, fill: C.white, opacity: 0.8 }, body);
+      }
+
+      // Dress with a little heart and a white collar
+      el("path", { d: "M-22 -104 C-30 -82 -44 -58 -52 -42 Q-55 -32 -43 -32 L43 -32 Q55 -32 52 -42 C44 -58 30 -82 22 -104 Z", fill: C.pink, ...line }, body);
+      el("path", { d: "M-47 -40 Q0 -34 47 -40", fill: "none", stroke: C.white, "stroke-width": 4, "stroke-linecap": "round", "stroke-dasharray": "0.1 9" }, body);
+      el("path", { d: heartD(7), transform: "translate(0 -68)", fill: C.white }, body);
+      for (const s of [-1, 1]) {
+        el("ellipse", { cx: s * 10, cy: -101, rx: 12, ry: 7, transform: `rotate(${s * 18} ${s * 10} -101)`, fill: C.white, ...line }, body);
+      }
+
+      // One arm: skin, a round hand with a thumb and a puff sleeve.
+      const arm = (s, ex, ey, hx, hy, tx, ty) => {
+        const g = el("g", {}, body);
+        el("line", { x1: s * 30, y1: -90, x2: s * ex, y2: ey, stroke: O, "stroke-width": 16, "stroke-linecap": "round" }, g);
+        el("line", { x1: s * 30, y1: -90, x2: s * ex, y2: ey, stroke: C.skin, "stroke-width": 9, "stroke-linecap": "round" }, g);
+        el("circle", { cx: s * tx, cy: ty, r: 4.5, fill: C.skin, ...line }, g);
+        el("circle", { cx: s * hx, cy: hy, r: 9.5, fill: C.skin, ...line }, g);
+        el("circle", { cx: s * 27, cy: -93, r: 14, fill: C.pink, ...line }, g);
+        el("path", { d: `M${s * 18} -97 Q${s * 27} -103 ${s * 35} -96`, fill: "none", stroke: C.white, "stroke-width": 2.5, "stroke-linecap": "round", opacity: 0.7 }, g);
+        return g;
+      };
+      arm(-1, 47, -58, 49, -54, 42, -52);
+      const armR = arm(1, 47, -58, 49, -54, 42, -52);
+      // A longer raised arm for waving, shown only while she waves.
+      const armUp = arm(1, 62, -124, 66, -130, 57, -121);
+      armUp.setAttribute("opacity", 0);
+
+      // Head, tilts around the neck
+      const head = el("g", {}, body);
+      for (const s of [-1, 1]) {
+        el("circle", { cx: s * 58, cy: -232, r: 27, fill: C.hair, ...line }, head);
+        el("path", { d: `M${s * 44} -244 Q${s * 54} -254 ${s * 66} -250`, fill: "none", stroke: C.hairLight, "stroke-width": 4, "stroke-linecap": "round" }, head);
+      }
+      el("path", { d: "M-84 -168 A84 78 0 0 1 84 -168 C87 -130 82 -106 64 -101 L-64 -101 C-82 -106 -87 -130 -84 -168 Z", fill: C.hair, ...line }, head);
+      el("ellipse", { cx: 0, cy: -162, rx: 72, ry: 63, fill: C.skin, ...line }, head);
+
+      // Eyes: big and dark with a lilac glow and two highlights
+      const eyes = el("g", {}, head);
+      for (const s of [-1, 1]) {
+        const x = s * 30;
+        el("ellipse", { cx: x, cy: -154, rx: 15, ry: 20, fill: "url(#kp-iris)" }, eyes);
+        el("path", { d: `M${x - 16} -166 Q${x} -187 ${x + 16} -166`, fill: "none", stroke: O, "stroke-width": 5, "stroke-linecap": "round" }, eyes);
+        el("path", { d: `M${x + s * 14} -171 L${x + s * 21} -177`, fill: "none", stroke: O, "stroke-width": 3.5, "stroke-linecap": "round" }, eyes);
+        el("ellipse", { cx: x + 5, cy: -162, rx: 5.5, ry: 6.5, fill: C.white }, eyes);
+        el("circle", { cx: x - 5, cy: -146, r: 2.8, fill: C.white }, eyes);
+      }
+      const happy = el("g", { opacity: 0 }, head);
+      for (const s of [-1, 1]) {
+        el("path", { d: `M${s * 30 - 13} -150 Q${s * 30} -172 ${s * 30 + 13} -150`, fill: "none", stroke: O, "stroke-width": 5, "stroke-linecap": "round" }, happy);
+      }
+
+      // Rosy cheeks and a small open smile
+      for (const s of [-1, 1]) {
+        el("ellipse", { cx: s * 49, cy: -132, rx: 13, ry: 7.5, fill: C.blush, opacity: 0.75 }, head);
+        for (let i = -1; i <= 1; i++) {
+          el("line", { x1: s * 49 + i * 6 - 1.5, y1: -130, x2: s * 49 + i * 6 + 1.5, y2: -135, stroke: C.white, "stroke-width": 1.6, "stroke-linecap": "round", opacity: 0.9 }, head);
+        }
+      }
+      el("path", { d: "M-10 -130 Q0 -113 10 -130 Q0 -127 -10 -130 Z", fill: C.mouth, stroke: O, "stroke-width": 2.5, "stroke-linejoin": "round" }, head);
+      el("ellipse", { cx: 0, cy: -121.5, rx: 4, ry: 2.2, fill: "#ff9fb4" }, head);
+
+      // Fringe with rounded clumps, plus a shine
+      let fringe = "M-80 -126 C-94 -196 -64 -246 0 -246 C64 -246 94 -196 80 -126 C77 -119 70 -120 68 -130 C66 -158 60 -178 52 -192";
+      const notches = [52, 26, 0, -26, -52];
+      for (let i = 1; i < notches.length; i++) {
+        const a = notches[i - 1], b = notches[i];
+        fringe += ` Q${(a + b) / 2} ${i % 2 ? -168 : -171} ${b} -192`;
+      }
+      fringe += " C-60 -178 -66 -158 -68 -130 C-70 -120 -77 -119 -80 -126 Z";
+      el("path", { d: fringe, fill: C.hair, ...line }, head);
+      for (const s of [-1, 1]) {
+        el("ellipse", { cx: s * 47, cy: -238, rx: 12, ry: 6, transform: `rotate(${s * 40} ${s * 47} -238)`, fill: C.lilac, ...line }, head);
+      }
+      el("path", { d: "M18 -234 Q44 -232 58 -214", fill: "none", stroke: C.hairLight, "stroke-width": 5, "stroke-linecap": "round" }, head);
+
+      // A bow clip on one side
+      const bow = el("g", { transform: "translate(-54 -206) rotate(-20)" }, head);
+      el("path", { d: "M0 0 C-10 -14 -26 -12 -24 0 C-26 12 -10 14 0 0 C10 -14 26 -12 24 0 C26 12 10 14 0 0 Z", fill: C.butter, ...line }, bow);
+      el("circle", { cx: 0, cy: 0, r: 5, fill: C.butter, ...line }, bow);
+
+      // The waving arm sits in front, so her hand shows beside her face.
+      body.append(armR, armUp);
+      return { body, head, eyes, happy, armR, armUp, shadow };
+    }
+
+    // Split long text over two lines, where the longer line is shortest.
+    function twoLines(t) {
+      const words = t.split(/\s+/);
+      if (words.length < 2) return null;
+      let best = null;
+      for (let i = 1; i < words.length; i++) {
+        const pair = [words.slice(0, i).join(" "), words.slice(i).join(" ")];
+        if (!best || Math.max(pair[0].length, pair[1].length) < Math.max(best[0].length, best[1].length)) best = pair;
+      }
+      return best;
+    }
+
+    const LOOP = 10, STILL = 7.5, FS = 40;
+    const CL = { w: 320, top: -300, bottom: 12 }; // the girl and her stickers, in her units
+    let tl = null;
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+
+    function build() {
+      const W = innerWidth, H = innerHeight, u = Math.min(W, H);
+      const keep = tl ? tl.time() : 0;
+      if (tl) tl.kill();
+      svg.replaceChildren();
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+
+      const defs = el("defs", {}, svg);
+      const shadow = el("filter", { id: "kp-shadow", x: "-30%", y: "-30%", width: "160%", height: "170%" }, defs);
+      el("feDropShadow", { dx: 0, dy: 3, stdDeviation: 3, "flood-color": "#d77a9c", "flood-opacity": 0.35 }, shadow);
+      const iris = el("radialGradient", { id: "kp-iris", cx: 0.5, cy: 0.82, r: 0.62 }, defs);
+      el("stop", { offset: 0, "stop-color": "#c89af5" }, iris);
+      el("stop", { offset: 0.5, "stop-color": "#6d4390" }, iris);
+      el("stop", { offset: 1, "stop-color": "#3a1f33" }, iris);
+      const glow = el("radialGradient", { id: "kp-glow", cx: 0.5, cy: 0.5, r: 0.6 }, defs);
+      el("stop", { offset: 0, "stop-color": C.white, "stop-opacity": 0.75 }, glow);
+      el("stop", { offset: 1, "stop-color": C.white, "stop-opacity": 0 }, glow);
+      const ds = Math.max(14, u * 0.075);
+      const pat = el("pattern", { id: "kp-dots", width: ds, height: ds, patternUnits: "userSpaceOnUse" }, defs);
+      el("circle", { cx: ds / 4, cy: ds / 4, r: ds * 0.1, fill: C.dots }, pat);
+      el("circle", { cx: (ds * 3) / 4, cy: (ds * 3) / 4, r: ds * 0.1, fill: C.dots }, pat);
+
+      // Background: base colour, polka dots and a soft glow. Always there.
+      el("rect", { width: W, height: H, fill: C.bg }, svg);
+      el("rect", { width: W, height: H, fill: "url(#kp-dots)" }, svg);
+      el("rect", { width: W, height: H, fill: "url(#kp-glow)" }, svg);
+
+      // A group placed at x y with a scale, holding a group GSAP can move.
+      const place = (parent, x, y, s = 1) => {
+        const outer = el("g", { transform: `translate(${n(x)} ${n(y)}) scale(${n(s * 1000) / 1000})` }, parent);
+        return el("g", {}, outer);
+      };
+
+      // Soft pastel blobs in the corners
+      const blobs = [
+        [0.02, 0.04, 0.42, C.pink, 0.45], [1, 0.98, 0.5, C.lilac, 0.45],
+        [0.98, 0.06, 0.26, C.butter, 0.55], [0, 0.95, 0.32, C.mint, 0.5],
+      ].map(([fx, fy, r, fill, op]) => {
+        const g = place(svg, fx * W, fy * H);
+        const pts = [];
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2, rr = r * u * (1 + 0.08 * Math.sin(i * 2.3 + fx * 5));
+          pts.push([Math.cos(a) * rr, Math.sin(a) * rr]);
+        }
+        let d = `M${n((pts[7][0] + pts[0][0]) / 2)} ${n((pts[7][1] + pts[0][1]) / 2)}`;
+        pts.forEach((p, i) => { const q = pts[(i + 1) % 8]; d += ` Q${n(p[0])} ${n(p[1])} ${n((p[0] + q[0]) / 2)} ${n((p[1] + q[1]) / 2)}`; });
+        el("path", { d: d + "Z", fill, opacity: op }, g);
+        return g;
+      });
+
+      // Little clouds that drift
+      const clouds = [[0.2, 0.16, 0.09], [0.84, 0.36, 0.07]].map(([fx, fy, s]) => {
+        const drift = el("g", {}, place(svg, fx * W, fy * H));
+        const g = el("g", {}, drift);
+        g.drift = drift;
+        el("path", { d: cloudD(s * u), fill: C.white, opacity: 0.95 }, g);
+        return g;
+      });
+
+      // Choose the layout: girl under the message in tall frames, beside it in wide ones.
+      const probe = el("text", { class: "kp-letter", "font-size": FS, x: 0, y: 0 }, svg);
+      const measure = (line) => { probe.textContent = line; return probe.getComputedTextLength(); };
+      const options = [[text]];
+      const split = twoLines(text);
+      if (split) options.push(split);
+      const m = u * 0.05, gap = u * 0.025, aw = W - m * 2, ah = H - m * 2, TAIL = 22;
+      const clH = CL.bottom - CL.top;
+      let best = null;
+      for (const lines of options) {
+        const tw = Math.max(...lines.map(measure));
+        const bw = tw + FS * 1.3, bh = lines.length * FS * 1.2 + FS * 0.9;
+        for (const mode of ["stack", "side"]) {
+          let sb, sc;
+          if (mode === "stack") {
+            sb = Math.min(aw / bw, (ah * 0.36) / (bh + TAIL));
+            sc = Math.min((ah - (bh + TAIL) * sb - gap) / clH, aw / CL.w);
+          } else {
+            sc = Math.min(ah / clH, (aw * 0.5) / CL.w);
+            sb = Math.min((aw - CL.w * sc - gap) / (bw + TAIL), (ah * 0.62) / bh);
+          }
+          sb = Math.min(sb, sc * 1.25);
+          const score = Math.sqrt(sc * sb);
+          if (sc > 0 && sb > 0 && (!best || score > best.score)) best = { lines, tw, bw, bh, mode, sb, sc, score };
+        }
+      }
+      const { lines, bw, bh, mode, sb, sc } = best;
+
+      // Positions: girl origin is at her feet, bubble origin at its centre.
+      let gx, gy, bx, by;
+      if (mode === "stack") {
+        const total = (bh + TAIL) * sb + gap + clH * sc;
+        const top = (H - total) / 2;
+        bx = W / 2;
+        by = top + (bh / 2) * sb;
+        gx = W / 2;
+        gy = top + (bh + TAIL) * sb + gap - CL.top * sc;
+      } else {
+        const total = CL.w * sc + gap + (bw + TAIL) * sb;
+        const left = (W - total) / 2;
+        gx = left + (CL.w / 2) * sc;
+        gy = H / 2 + ((CL.bottom - CL.top) / 2 - CL.bottom) * sc;
+        bx = left + CL.w * sc + gap + (TAIL + bw / 2) * sb;
+        by = Math.max(m + (bh / 2) * sb, Math.min(H - m - (bh / 2) * sb, gy - 190 * sc));
+      }
+
+      // Floating hearts, sparkles and stars around the edges
+      const floatSpots = [
+        [0.08, 0.1, "heart", C.pink], [0.93, 0.14, "sparkle", C.butter], [0.05, 0.5, "sparkle", C.lilac],
+        [0.95, 0.56, "heart", C.lilac], [0.1, 0.86, "star", C.butter], [0.9, 0.9, "sparkle", C.mint],
+        [0.5, 0.04, "sparkle", C.pink], [0.5, 0.96, "heart", C.peach], [0.28, 0.3, "dot", C.mint], [0.74, 0.72, "dot", C.pink],
+      ];
+      const floaters = floatSpots.map(([fx, fy, kind, fill], i) => {
+        const s = u * (kind === "dot" ? 0.012 : 0.03 + (i % 3) * 0.006);
+        const g = place(svg, fx * W, fy * H);
+        const pop = el("g", {}, g);
+        const d = kind === "heart" ? heartD(s) : kind === "star" ? starD(s * 1.1) : kind === "dot" ? circleD(0, 0, s) : sparkleD(s * 1.3);
+        el("path", { d, fill, stroke: kind === "sparkle" ? "none" : fill, "stroke-width": s * 0.25, "stroke-linejoin": "round" }, pop);
+        return { g, pop };
+      });
+
+      // The girl and her stickers
+      const cluster = place(svg, gx, gy, sc);
+      const stickerSpots = [
+        [-122, -250, -14, (g) => { sticker(g, heartD(30), C.pink, 12); tinyFace(g, 22, -4); }],
+        [128, -200, 12, (g) => { sticker(g, starD(36), C.butter, 12); tinyFace(g, 18, 2); }],
+        [-128, -96, -6, (g) => { sticker(g, cloudD(46), C.mint, 12); tinyFace(g, 20, 4); }],
+      ];
+      const stickers = stickerSpots.map(([x, y, rot, draw]) => {
+        const g = el("g", { transform: `translate(${x} ${y}) rotate(${rot})` }, cluster);
+        const float = el("g", {}, g);
+        const pop = el("g", {}, float);
+        draw(pop);
+        return { float, pop };
+      });
+      const girl = drawGirl(cluster);
+
+      // Speech bubble with the message, letter by letter
+      const bubble = place(svg, bx, by, sb);
+      const bpop = el("g", {}, bubble);
+      const r = Math.min(bh / 2, FS * 1.1);
+      const tail = mode === "stack"
+        ? `M${n(-bw * 0.12 - 16)} ${n(bh / 2 - 6)} Q${n(-bw * 0.12 + 4)} ${n(bh / 2 + TAIL * 0.4)} ${n(-bw * 0.12 - 4)} ${n(bh / 2 + TAIL)} Q${n(-bw * 0.12 + 18)} ${n(bh / 2 + 8)} ${n(-bw * 0.12 + 16)} ${n(bh / 2 - 6)}Z`
+        : `M${n(-bw / 2 + 6)} ${n(bh * 0.05 - 14)} Q${n(-bw / 2 - TAIL * 0.4)} ${n(bh * 0.05 - 6)} ${n(-bw / 2 - TAIL)} ${n(bh * 0.05 + 10)} Q${n(-bw / 2 - 4)} ${n(bh * 0.05 + 14)} ${n(-bw / 2 + 6)} ${n(bh * 0.05 + 14)}Z`;
+      const rect = `M${n(-bw / 2 + r)} ${n(-bh / 2)} H${n(bw / 2 - r)} A${n(r)} ${n(r)} 0 0 1 ${n(bw / 2)} ${n(-bh / 2 + r)} V${n(bh / 2 - r)} A${n(r)} ${n(r)} 0 0 1 ${n(bw / 2 - r)} ${n(bh / 2)} H${n(-bw / 2 + r)} A${n(r)} ${n(r)} 0 0 1 ${n(-bw / 2)} ${n(bh / 2 - r)} V${n(-bh / 2 + r)} A${n(r)} ${n(r)} 0 0 1 ${n(-bw / 2 + r)} ${n(-bh / 2)}Z`;
+      const bg = el("g", { filter: "url(#kp-shadow)" }, bpop);
+      // Outline both parts first, then fill them, so the tail joins the bubble without a seam.
+      el("path", { d: `${rect} ${tail}`, fill: "none", stroke: C.pink, "stroke-width": 10, "stroke-linejoin": "round" }, bg);
+      el("path", { d: rect, fill: C.white }, bg);
+      el("path", { d: tail, fill: C.white }, bg);
+      el("path", { d: sparkleD(9), transform: `translate(${n(bw / 2 - r * 0.45)} ${n(-bh / 2 + r * 0.45)})`, fill: C.butter }, bpop);
+      el("path", { d: heartD(6), transform: `translate(${n(-bw / 2 + r * 0.42)} ${n(bh / 2 - r * 0.42)})`, fill: C.pink }, bpop);
+
+      const letters = [];
+      let ci = 0;
+      lines.forEach((ln, li) => {
+        probe.textContent = ln;
+        const lw = probe.getComputedTextLength();
+        const y = (li - (lines.length - 1) / 2) * FS * 1.2 + FS * 0.36;
+        [...ln].forEach((ch, k) => {
+          if (ch === " ") return;
+          const x = -lw / 2 + probe.getStartPositionOfChar(k).x;
+          const g = el("g", {}, bpop);
+          const t1 = el("text", { class: "kp-letter", x: n(x), y: n(y + 3), "font-size": FS, fill: "#ffd3e1" }, g);
+          const t2 = el("text", { class: "kp-letter", x: n(x), y: n(y), "font-size": FS, fill: letterColors[ci++ % letterColors.length] }, g);
+          t1.textContent = t2.textContent = ch;
+          letters.push(g);
+        });
+      });
+      probe.remove();
+
+      // Sparkle burst around the bubble
+      const burst = [];
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * Math.PI * 2 + 0.2;
+        const g = el("g", {}, bubble);
+        const s = i % 3 === 0 ? 10 : 14;
+        el("path", { d: i % 3 === 0 ? heartD(s) : sparkleD(s), fill: [C.butter, C.pink, C.lilac, C.mint][i % 4] }, g);
+        burst.push({ g, x0: Math.cos(a) * bw * 0.3, y0: Math.sin(a) * bh * 0.3, x1: Math.cos(a) * (bw / 2 + 34), y1: Math.sin(a) * (bh / 2 + 34) });
+      }
+
+      // Timeline: 10 seconds, ends exactly where it starts.
+      tl = gsap.timeline({ repeat: -1, paused: true });
+      const center = { transformOrigin: "50% 50%" };
+      gsap.set([...blobs, ...clouds, ...floaters.map((f) => f.pop), ...stickers.map((s) => s.pop), bpop, ...letters, ...burst.map((b) => b.g)], center);
+      gsap.set(letters, { transformOrigin: "50% 90%" });
+      gsap.set(girl.body, { svgOrigin: "0 0" });
+      gsap.set(girl.head, { svgOrigin: "0 -104" });
+      gsap.set(girl.armUp, { svgOrigin: "30 -90" });
+      gsap.set(girl.eyes, { svgOrigin: "0 -155" });
+      gsap.set(girl.shadow, { svgOrigin: "0 2" });
+
+      // Background pops in
+      tl.fromTo(blobs, { scale: 0 }, { scale: 1, duration: 0.8, ease: "back.out(1.6)", stagger: 0.08 }, 0);
+      tl.fromTo(clouds, { scale: 0 }, { scale: 1, duration: 0.6, ease: "back.out(2.5)", stagger: 0.15 }, 0.2);
+      clouds.forEach((c, i) => tl.fromTo(c.drift, { x: 0 }, { x: (i ? -1 : 1) * u * 0.03, duration: 2.5, repeat: 3, yoyo: true, ease: "sine.inOut" }, 0));
+
+      // The girl drops in and lands with a squash
+      const B = girl.body;
+      tl.set(B, { autoAlpha: 0, y: -480 }, 0).set(B, { autoAlpha: 1 }, 0.45);
+      tl.fromTo(B, { y: -480, scaleX: 0.9, scaleY: 1.12 }, { y: 0, duration: 0.45, ease: "power2.in" }, 0.45);
+      tl.fromTo(girl.shadow, { scale: 0.2, opacity: 0 }, { scale: 1, opacity: 0.35, duration: 0.45, ease: "power2.in" }, 0.45);
+      tl.to(B, { scaleX: 1.2, scaleY: 0.8, duration: 0.09, ease: "power1.out" }, 0.9);
+      tl.to(B, { scaleX: 1, scaleY: 1, duration: 0.6, ease: "elastic.out(1.1, 0.35)" }, 0.99);
+
+      // A hop with squash and stretch
+      const hop = (t, h) => {
+        tl.to(B, { scaleX: 1.12, scaleY: 0.88, duration: 0.1, ease: "power1.out" }, t)
+          .to(B, { y: -h, scaleX: 0.94, scaleY: 1.08, duration: 0.24, ease: "power2.out" }, t + 0.1)
+          .to(B, { y: 0, scaleX: 1, scaleY: 1, duration: 0.22, ease: "power2.in" }, t + 0.34)
+          .to(B, { scaleX: 1.12, scaleY: 0.88, duration: 0.08, ease: "power1.out" }, t + 0.56)
+          .to(B, { scaleX: 1, scaleY: 1, duration: 0.35, ease: "back.out(3)" }, t + 0.64)
+          .to(girl.shadow, { scale: 0.7, duration: 0.24, ease: "power2.out" }, t + 0.1)
+          .to(girl.shadow, { scale: 1, duration: 0.22, ease: "power2.in" }, t + 0.34);
+      };
+      hop(4.6, 38);
+      hop(5.35, 30);
+      hop(6.7, 44);
+
+      // Waving: arm up, wiggle, arm down
+      const wave = (t, count) => {
+        const end = t + 0.3 + count * 0.17 + 0.1;
+        tl.set(girl.armR, { attr: { opacity: 0 } }, t).set(girl.armUp, { attr: { opacity: 1 } }, t);
+        tl.fromTo(girl.armUp, { rotation: 90 }, { rotation: 0, duration: 0.3, ease: "back.out(2)", immediateRender: false }, t);
+        for (let i = 0; i < count; i++) tl.to(girl.armUp, { rotation: i % 2 ? -4 : 16, duration: 0.17, ease: "sine.inOut" }, t + 0.3 + i * 0.17);
+        tl.to(girl.armUp, { rotation: 90, duration: 0.25, ease: "power2.in" }, end);
+        tl.set(girl.armR, { attr: { opacity: 1 } }, end + 0.25).set(girl.armUp, { attr: { opacity: 0 } }, end + 0.25);
+      };
+      wave(1.2, 6);
+      wave(6.75, 4);
+
+      // Head tilts and blinks
+      tl.to(girl.head, { rotation: 8, duration: 0.5, ease: "sine.inOut" }, 1.3)
+        .to(girl.head, { rotation: 0, duration: 0.5, ease: "sine.inOut" }, 2.7)
+        .to(girl.head, { rotation: -7, duration: 0.5, ease: "sine.inOut" }, 3.4)
+        .to(girl.head, { rotation: 0, duration: 0.5, ease: "sine.inOut" }, 4.4)
+        .to(girl.head, { rotation: 6, duration: 0.4, ease: "sine.inOut" }, 6.8)
+        .to(girl.head, { rotation: 0, duration: 0.5, ease: "sine.inOut" }, 8.1);
+      for (const t of [2.2, 4.1, 5.95]) tl.to(girl.eyes, { scaleY: 0.1, duration: 0.07, yoyo: true, repeat: 1, ease: "power1.inOut" }, t);
+      tl.set(girl.eyes, { autoAlpha: 0 }, 6.8).set(girl.happy, { attr: { opacity: 1 } }, 6.8)
+        .set(girl.eyes, { autoAlpha: 1 }, 8.0).set(girl.happy, { attr: { opacity: 0 } }, 8.0);
+
+      // Stickers and floaters pop in, bob gently, then pop out
+      stickers.forEach((s, i) => {
+        tl.fromTo(s.pop, { scale: 0, rotation: -40 }, { scale: 1, rotation: 0, duration: 0.6, ease: "back.out(2.4)" }, 1.7 + i * 0.18);
+        tl.fromTo(s.float, { y: 0 }, { y: i % 2 ? 7 : -7, duration: 1.25, repeat: 7, yoyo: true, ease: "sine.inOut" }, 0);
+        tl.to(s.pop, { scale: 0, rotation: 30, duration: 0.35, ease: "back.in(2)" }, 8.55 + i * 0.08);
+      });
+      floaters.forEach((f, i) => {
+        tl.fromTo(f.pop, { scale: 0 }, { scale: 1, duration: 0.5, ease: "back.out(3)" }, 1.5 + i * 0.12);
+        const d = [1.25, 1, 1.666666][i % 3], reps = Math.round(LOOP / d) - 1;
+        tl.fromTo(f.g, { y: 0, rotation: 0 }, { y: -u * 0.02 * (i % 2 ? 1 : -1), rotation: i % 2 ? 10 : -10, duration: d, repeat: reps, yoyo: true, ease: "sine.inOut" }, 0);
+        tl.to(f.pop, { scale: 0, duration: 0.3, ease: "back.in(2)" }, 8.6 + i * 0.04);
+      });
+
+      // The message bubbles in, letters bounce in one by one
+      tl.fromTo(bpop, { scale: 0, rotation: -8 }, { scale: 1, rotation: 0, duration: 0.55, ease: "back.out(2)" }, 3.0);
+      tl.fromTo(letters, { y: -50, scale: 0 }, { y: 0, scale: 1, duration: 0.5, ease: "back.out(3)", stagger: Math.min(0.07, 1 / letters.length) }, 3.25);
+      tl.to(letters, { y: -12, duration: 0.15, yoyo: true, repeat: 1, ease: "sine.out", stagger: 0.04 }, 5.4);
+
+      // Sparkle burst
+      burst.forEach((b, i) => {
+        tl.fromTo(b.g, { x: b.x0, y: b.y0, scale: 0, rotation: 0 }, { x: b.x1, y: b.y1, scale: 1, rotation: 90, duration: 0.7, ease: "power3.out" }, 6.8 + (i % 3) * 0.04);
+        tl.to(b.g, { scale: 0, duration: 0.35, ease: "power2.in" }, 7.55 + (i % 3) * 0.05);
+      });
+      tl.to(letters, { y: -14, duration: 0.15, yoyo: true, repeat: 1, ease: "sine.out", stagger: 0.03 }, 6.85);
+
+      // Bounce out, back to the empty start
+      tl.to(letters, { scale: 0, duration: 0.25, ease: "back.in(2)", stagger: { each: 0.025, from: "end" } }, 8.45);
+      tl.to(bpop, { scale: 0, rotation: 8, duration: 0.35, ease: "back.in(2)" }, 8.8);
+      tl.to(B, { scaleX: 1.15, scaleY: 0.85, duration: 0.1, ease: "power1.out" }, 8.95)
+        .to(B, { y: -520, scaleX: 0.9, scaleY: 1.12, duration: 0.45, ease: "power2.in" }, 9.05)
+        .to(girl.shadow, { scale: 0.2, opacity: 0, duration: 0.4, ease: "power2.in" }, 9.05)
+        .set(B, { autoAlpha: 0 }, 9.5);
+      tl.to(clouds, { scale: 0, duration: 0.35, ease: "back.in(2)", stagger: 0.1 }, 9.2);
+      tl.to(blobs, { scale: 0, duration: 0.45, ease: "back.in(1.6)", stagger: 0.06 }, 9.3);
+      tl.set({}, {}, LOOP);
+
+      tl.time(keep % LOOP);
+      if (reduce.matches) tl.pause(STILL);
+      else tl.play();
+    }
+
+    // Reduced motion: one still frame with everything in place.
+    reduce.addEventListener("change", () => {
+      if (!tl) return;
+      if (reduce.matches) tl.pause(STILL);
+      else tl.play();
+    });
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(build, 150);
+    });
+
+    // Wait briefly for the font so the letters are measured in the right face.
+    Promise.race([
+      document.fonts.load('1em "Mochiy Pop One"'),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(build);
+  </script>
+</body>
+</html>

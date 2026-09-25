@@ -1,0 +1,19 @@
+Make my video in this style: Tech noir.
+
+Look and motion
+- A dark, cinematic tech film, like the product videos from Apple or Linear. The background is a very dark warm brown, almost black, with a soft vignette at the edges.
+- Turn my topic into three or four short scenes of glowing line-art diagrams. For example: a dotted globe with glowing arcs flying out from a pulsing "you" dot; simple devices drawn in thin isometric lines, joined by a cable with lights running along it; a circuit board with a chip whose cells flicker on, while small code words drift up and fade.
+- Everything is thin grey line work on barely-there dark fills. Only the parts that are active glow, in one warm amber colour.
+- Add tiny lowercase labels in a monospace font next to things, with a short leader line, like "laptop" or "offline". Use a middle dot between parts of a label, never a dash.
+- The camera never stops: it slowly rotates, tilts, drifts and zooms. Calm and smooth, never fast.
+- Move between scenes with soft crossfades and a gentle push in.
+- End on my key line as a large serif headline made of glowing particles: they fly in to form the words, hold for a moment, then dissolve into drifting dust as the video loops back to the start.
+
+Type and colour
+- A light, elegant serif (like Instrument Serif) for the particle headline, and a small monospace font (like JetBrains Mono) for labels and code words.
+- Use my brand colours if I give them (one accent colour on a very dark background). Otherwise use warm black #120c09, muted grey #6b635c for lines, amber #ff8a3d and soft amber #ffb070 for the glow.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as a 3D scene in HTML (for example with Three.js) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

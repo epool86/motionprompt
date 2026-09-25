@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Podcast audiogram demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/bricolage-grotesque@5.3.0/500.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/bricolage-grotesque@5.3.0/800.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=f3eee4&ink=16140f&accent=ff4a1c&accent2=ffd6c2 */
+    :root {
+      --bg: #f3eee4;
+      --ink: #16140f;
+      --accent: #ff4a1c;
+      --accent2: #ffd6c2;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    .stage {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    .stage > * { position: absolute; }
+
+    /* Show name and episode label */
+    .head {
+      display: flex;
+      align-items: center;
+      gap: 0.55em;
+      white-space: nowrap;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .head svg { width: 1.2em; height: 1.2em; flex: none; }
+    .head .ep {
+      padding: 0.25em 0.6em 0.2em;
+      border-radius: 99em;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.85em;
+    }
+
+    /* Round speaker portrait with a ring that pulses with the voice */
+    .avatar { border-radius: 50%; }
+    .avatar svg { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; }
+    .ring {
+      position: absolute;
+      inset: -9%;
+      border-radius: 50%;
+      border: 0.35em solid var(--accent);
+    }
+    .ring.echo { border-width: 0.12em; opacity: 0; }
+
+    .who { line-height: 1.1; white-space: nowrap; }
+    .who b { display: block; font-weight: 800; letter-spacing: -0.01em; }
+    .who span { display: block; margin-top: 0.2em; font-size: 0.6em; font-weight: 500; opacity: 0.6; }
+
+    /* Karaoke captions */
+    .caps { overflow: visible; }
+    .page {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      font-weight: 800;
+      line-height: 1.08;
+      letter-spacing: -0.02em;
+    }
+    .page p { margin: 0; width: 100%; }
+    .page .w {
+      position: relative;
+      display: inline-block;
+      padding: 0 0.1em;
+      margin: 0 -0.02em;
+    }
+    .pill {
+      position: absolute;
+      left: 0;
+      top: 0;
+      border-radius: 0.18em;
+      background: var(--accent);
+    }
+
+    /* Progress bar and time */
+    .prog { display: flex; align-items: center; gap: 0.8em; font-weight: 500; font-variant-numeric: tabular-nums; }
+    .track { position: relative; flex: 1; height: 0.35em; border-radius: 1em; background: color-mix(in srgb, var(--ink) 14%, transparent); }
+    .fill { position: absolute; inset: 0 auto 0 0; border-radius: 1em; background: var(--accent); }
+    .knob { position: absolute; top: 50%; width: 0.95em; height: 0.95em; margin: -0.475em 0 0 -0.475em; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0.22em var(--bg); }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage" role="img">
+    <div class="head" id="head">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="8" y="2.5" width="8" height="12.5" rx="4" fill="currentColor" stroke="none"/><path d="M4.5 11a7.5 7.5 0 0 0 15 0M12 18.5v3"/></svg>
+      <span id="show"></span>
+      <span class="ep" id="ep"></span>
+    </div>
+    <div class="avatar" id="avatar">
+      <span class="ring echo" id="echo"></span>
+      <span class="ring" id="ring"></span>
+    </div>
+    <div class="who" id="who"><b id="speaker"></b><span id="role"></span></div>
+    <canvas id="wave"></canvas>
+    <div class="caps" id="caps"><span class="pill" id="pill"></span></div>
+    <div class="prog" id="prog">
+      <span id="now">0:00</span>
+      <span class="track"><span class="fill" id="fill"></span><span class="knob" id="knob"></span></span>
+      <span id="total">0:12</span>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const root = document.documentElement;
+    for (const key of ["bg", "ink", "accent", "accent2"]) {
+      const value = params.get(key);
+      if (/^[0-9a-f]{6}$/i.test(value ?? "")) root.style.setProperty(`--${key}`, `#${value}`);
+    }
+    const color = (name) => getComputedStyle(root).getPropertyValue(`--${name}`).trim();
+    const $ = (id) => document.getElementById(id);
+    const stage = $("stage"), caps = $("caps"), pill = $("pill"), canvas = $("wave"), ctx = canvas.getContext("2d");
+
+    $("show").textContent = "Small Shop Talk";
+    $("ep").textContent = "EP 24";
+    $("speaker").textContent = "Aisha Rahman";
+    $("role").textContent = "Founder, Loop Studio";
+
+    const L = 12; // loop length in seconds
+
+    // The spoken line, split into caption pages. Timing is spread over the loop like real speech.
+    const fallback = "The best advice I ever got? | Start small, and ship it this week. | Let your customers teach you the rest. | Honestly, it changed everything.";
+    const source = (params.get("text") || fallback).trim().slice(0, 160);
+    let pages = source.includes("|")
+      ? source.split("|").map((p) => p.trim().split(/\s+/).filter(Boolean))
+      : source.split(/\s+/).reduce((acc, w) => {
+        const cur = acc[acc.length - 1];
+        if (!cur || cur.length >= 6 || /[.?!]$/.test(cur[cur.length - 1])) acc.push([w]); else cur.push(w);
+        return acc;
+      }, []);
+    pages = pages.filter((p) => p.length);
+    stage.setAttribute("aria-label", `A podcast audiogram: a round speaker portrait, sound bars that move with the voice and word by word captions: "${pages.map((p) => p.join(" ")).join(" ")}"`);
+
+    // Give every word a start and end time. Longer words take longer, pages end with a pause.
+    const SPEECH_START = 0.45, SPEECH_END = 11.1;
+    const syllables = (w) => Math.max(1, (w.toLowerCase().match(/[aeiouy]+/g) || []).length);
+    const weights = pages.map((p) => p.map((w) => 0.55 + 0.45 * syllables(w) + (/[,]$/.test(w) ? 0.5 : 0)));
+    const PAUSE = 1.1; // pause after each page, in word units
+    const units = weights.reduce((s, p) => s + p.reduce((a, b) => a + b, 0) + PAUSE, 0) - PAUSE;
+    const unit = (SPEECH_END - SPEECH_START) / units;
+    const words = [];
+    let clock = SPEECH_START;
+    pages.forEach((p, pi) => {
+      p.forEach((w, wi) => {
+        const len = weights[pi][wi] * unit;
+        words.push({ text: w, page: pi, start: clock, end: clock + len * 0.88, syl: syllables(w) });
+        clock += len;
+      });
+      clock += PAUSE * unit;
+    });
+    const pageStart = pages.map((_, pi) => words.find((w) => w.page === pi).start);
+
+    // Build the caption pages.
+    const pageEls = pages.map((p, pi) => {
+      const el = document.createElement("div");
+      el.className = "page";
+      const para = document.createElement("p");
+      words.filter((w) => w.page === pi).forEach((w, i) => {
+        const span = document.createElement("span");
+        span.className = "w";
+        span.textContent = w.text;
+        w.el = span;
+        if (i) para.append(" ");
+        para.append(span);
+      });
+      el.append(para);
+      caps.append(el);
+      return el;
+    });
+
+    // Stylised portrait: shoulders, head, hair and headphones on a soft circle.
+    $("avatar").insertAdjacentHTML("afterbegin", `<svg viewBox="0 0 100 100">
+      <rect width="100" height="100" fill="var(--accent2)"/>
+      <path d="M26 50c-4-22 8-35 24-35s28 13 24 35l2 30H24z" fill="#2a1c17"/>
+      <path d="M14 104c2-18 16-27 36-27s34 9 36 27z" fill="var(--ink)"/>
+      <path d="M43 62h14v14c-3 3-11 3-14 0z" fill="#b8795a"/>
+      <ellipse cx="50" cy="48" rx="15" ry="18" fill="#c98b69"/>
+      <path d="M34 44c1-12 8-18 17-18 9 0 15 6 16 16-8-1-16-5-21-11-2 6-6 10-12 13z" fill="#2a1c17"/>
+      <circle cx="44" cy="49" r="1.6" fill="#2a1c17"/><circle cx="56" cy="49" r="1.6" fill="#2a1c17"/>
+      <ellipse id="mouth" cx="50" cy="58" rx="3.6" ry="1" fill="#5a2418"/>
+      <path d="M31 48c0-15 8-24 19-24s19 9 19 24" fill="none" stroke="var(--ink)" stroke-width="3.2" stroke-linecap="round"/>
+      <rect x="27" y="43" width="8" height="13" rx="3.5" fill="var(--accent)"/>
+      <rect x="65" y="43" width="8" height="13" rx="3.5" fill="var(--accent)"/>
+    </svg>`);
+    const mouth = $("mouth");
+
+    // Voice loudness over time: bumps for each syllable, quiet between words.
+    function level(t) {
+      let v = 0;
+      for (const w of words) {
+        if (t < w.start - 0.05 || t > w.end + 0.08) continue;
+        const f = gsap.utils.clamp(0, 1, (t - w.start) / (w.end - w.start));
+        const body = Math.pow(Math.sin(Math.PI * f), 0.5);
+        const syl = 0.55 + 0.45 * Math.abs(Math.sin(Math.PI * w.syl * f));
+        v = Math.max(v, body * syl);
+      }
+      return 0.06 + 0.94 * v * (0.85 + 0.15 * Math.sin(t * 31));
+    }
+
+    // Layout: stacked in tall frames, a row in medium frames, two columns in wide ones.
+    let W, H, box = {}, mode, capAlign;
+    const place = (el, r) => Object.assign(el.style, { left: `${r.x}px`, top: `${r.y}px`, width: r.w != null ? `${r.w}px` : "", height: r.h != null ? `${r.h}px` : "" });
+    function layout() {
+      W = innerWidth; H = innerHeight;
+      const a = W / H, m = Math.min(W, H);
+      const pad = m * 0.075;
+      mode = a < 0.72 ? "tall" : a < 1.3 ? "mid" : "wide";
+      let head, av, who, wave, capBox, prog, small;
+      if (mode === "tall") {
+        small = W * 0.042;
+        const cw = W - pad * 2;
+        head = { x: pad, y: pad * 1.1 };
+        const d = Math.min(W * 0.38, H * 0.2);
+        av = { x: (W - d) / 2, y: H * 0.13, w: d, h: d };
+        who = { x: pad, y: av.y + d * 1.18, w: cw, center: true };
+        wave = { x: pad, y: who.y + small * 3.6, w: cw, h: H * 0.075 };
+        prog = { x: pad, y: H - pad - small * 1.4, w: cw, h: small * 1.4 };
+        capBox = { x: pad, y: wave.y + wave.h + H * 0.03, w: cw, h: prog.y - (wave.y + wave.h) - H * 0.06 };
+        capAlign = "center";
+      } else if (mode === "mid") {
+        small = m * 0.042;
+        const cw = W - pad * 2;
+        head = { x: pad, y: pad };
+        const d = Math.min(W * 0.22, H * 0.2);
+        av = { x: pad + d * 0.09, y: pad + small * 2.6, w: d, h: d };
+        who = { x: av.x + d * 1.25, y: av.y + d / 2 - small * 1.7, w: cw - d * 1.3 };
+        wave = { x: pad, y: av.y + d * 1.2, w: cw, h: H * 0.09 };
+        prog = { x: pad, y: H - pad - small * 1.4, w: cw, h: small * 1.4 };
+        capBox = { x: pad, y: wave.y + wave.h + H * 0.03, w: cw, h: prog.y - (wave.y + wave.h) - H * 0.06 };
+        capAlign = "left";
+      } else {
+        small = H * 0.042;
+        const left = W * 0.34;
+        head = { x: pad, y: pad };
+        const d = Math.min(left * 0.62, H * 0.42);
+        av = { x: pad + (left - pad - d) / 2 + d * 0.05, y: H * 0.26, w: d, h: d };
+        who = { x: pad, y: av.y + d * 1.2, w: left - pad, center: true };
+        const rx = left + W * 0.04, rw = W - rx - pad;
+        prog = { x: rx, y: H - pad - small * 1.4, w: rw, h: small * 1.4 };
+        wave = { x: rx, y: prog.y - H * 0.04 - H * 0.12, w: rw, h: H * 0.12 };
+        const capTop = pad + small * 2.4;
+        capBox = { x: rx, y: capTop, w: rw, h: wave.y - capTop - H * 0.04 };
+        capAlign = "left";
+      }
+      root.style.fontSize = `${small}px`;
+      place($("head"), head);
+      $("head").style.fontSize = `${small * 0.95}px`;
+      place($("avatar"), av);
+      $("avatar").style.fontSize = `${av.w / 12}px`;
+      place($("who"), { x: who.x, y: who.y, w: who.w });
+      $("who").style.fontSize = `${small * (mode === "tall" ? 1.6 : 1.45)}px`;
+      $("who").style.textAlign = who.center ? "center" : "left";
+      place($("prog"), prog);
+      $("prog").style.fontSize = `${small * 0.9}px`;
+      place(caps, capBox);
+      pageEls.forEach((el) => (el.style.textAlign = capAlign));
+      box = { wave, capBox };
+
+      // Canvas for the bars, sharp but capped at 2x.
+      const dpr = Math.min(devicePixelRatio || 1, 2);
+      place(canvas, wave);
+      canvas.width = Math.round(wave.w * dpr);
+      canvas.height = Math.round(wave.h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // Largest caption size where every page fits the box.
+      let lo = 8, hi = Math.min(capBox.h * 0.42, W * (mode === "wide" ? 0.075 : 0.13));
+      const fits = () => pageEls.every((el) => {
+        const p = el.firstChild;
+        return p.scrollHeight <= capBox.h && [...p.children].every((s) => s.offsetWidth <= capBox.w);
+      });
+      for (let i = 0; i < 14; i++) {
+        const mid = (lo + hi) / 2;
+        caps.style.fontSize = `${mid}px`;
+        if (fits()) lo = mid; else hi = mid;
+      }
+      caps.style.fontSize = `${lo}px`;
+      // Word boxes inside the caption area, for the pill.
+      words.forEach((w) => (w.rect = { x: w.el.offsetLeft, y: w.el.offsetTop, w: w.el.offsetWidth, h: w.el.offsetHeight }));
+    }
+
+    let inkColor, accentColor;
+    const out = gsap.parseEase("power3.out"), back = gsap.parseEase("back.out(2.2)");
+    const clamp01 = gsap.utils.clamp(0, 1);
+    const fmt = (s) => `0:${String(Math.floor(s)).padStart(2, "0")}`;
+
+    // Draw one moment. Everything is a function of time, so the loop is seamless.
+    function render(t) {
+      const lv = level(t);
+
+      // Sound bars, mirrored around the middle line.
+      const { w: ww, h: wh } = box.wave;
+      ctx.clearRect(0, 0, ww, wh);
+      const n = Math.max(18, Math.min(64, Math.round(ww / (mode === "tall" ? 9 : 11))));
+      const gap = ww / n, bw = Math.max(1.5, gap * 0.52);
+      ctx.fillStyle = accentColor;
+      for (let i = 0; i < n; i++) {
+        const c = i / (n - 1) - 0.5;
+        const shape = 0.35 + 0.65 * Math.cos(c * Math.PI * 0.95);
+        const wobble = 0.45 + 0.55 * Math.abs(Math.sin(i * 1.93 + t * 7.1) * Math.cos(i * 0.61 - t * 4.3));
+        const h = Math.max(bw, wh * lv * shape * wobble);
+        const x = i * gap + (gap - bw) / 2;
+        ctx.beginPath();
+        ctx.roundRect(x, (wh - h) / 2, bw, h, bw / 2);
+        ctx.fill();
+      }
+
+      // Portrait ring and mouth follow the voice.
+      gsap.set("#ring", { scale: 1 + lv * 0.07 });
+      const echo = (t * 1.1) % 1;
+      gsap.set("#echo", { scale: 1 + echo * 0.35, opacity: (1 - echo) * 0.5 * Math.min(1, lv * 2.5) });
+      mouth.setAttribute("ry", (0.8 + lv * 3.2).toFixed(2));
+
+      // Captions: past words solid, the current word on an accent pill, the next ones faint.
+      let cur = -1;
+      words.forEach((w, i) => { if (t >= w.start) cur = i; });
+      const curPage = cur < 0 ? 0 : words[cur].page;
+      const nextStart = pageStart[curPage + 1] ?? L;
+      const leave = clamp01((t - (nextStart - 0.28)) / 0.22);
+      const loopOut = curPage === pages.length - 1 ? clamp01((t - (L - 0.6)) / 0.3) : 0;
+      pageEls.forEach((el, pi) => {
+        const show = pi === curPage;
+        el.style.visibility = show ? "visible" : "hidden";
+        if (!show) return;
+        const gone = Math.max(leave, loopOut);
+        el.style.opacity = 1 - gone;
+        el.style.transform = `translateY(${-gone * 0.3}em)`;
+      });
+      // The pill glides from word to word. The word under it turns white.
+      const w = words[cur];
+      const gone = Math.max(leave, loopOut);
+      let lit = null;
+      if (w && w.page === curPage && t < w.end + 0.6) {
+        const prev = words[cur - 1] && words[cur - 1].page === curPage ? words[cur - 1] : null;
+        const k = out(clamp01((t - w.start) / 0.16));
+        const fade = 1 - Math.max(gone, clamp01((t - w.end - 0.4) / 0.2));
+        const from = prev ? prev.rect : w.rect;
+        const r = {
+          x: gsap.utils.interpolate(from.x, w.rect.x, k),
+          y: gsap.utils.interpolate(from.y, w.rect.y, k),
+          w: gsap.utils.interpolate(from.w, w.rect.w, k),
+        };
+        lit = fade < 0.5 ? null : prev ? (k > 0.5 ? w : prev) : (k > 0.35 ? w : null);
+        gsap.set(pill, {
+          x: r.x, y: w.rect.y + w.rect.h * 0.08 - gone * 0.3 * parseFloat(caps.style.fontSize),
+          width: r.w, height: w.rect.h * 0.9,
+          opacity: fade * (prev ? 1 : Math.min(1, k * 2)),
+          scale: prev ? 1.04 : 0.6 + 0.44 * k,
+        });
+      } else {
+        gsap.set(pill, { opacity: 0 });
+      }
+      const enter = pageStart[curPage] - 0.35;
+      words.filter((w) => w.page === curPage).forEach((w, i) => {
+        const k = back(clamp01((t - enter - i * 0.035) / 0.4));
+        w.el.style.opacity = (t >= w.start ? 1 : 0.22) * clamp01(k * 1.5);
+        w.el.style.transform = `translateY(${(1 - k) * 0.35}em) scale(${w === lit ? 1.04 : 1})`;
+        w.el.style.color = w === lit ? "#fff" : inkColor;
+      });
+
+      // Progress bar and time counter.
+      const p = t / L;
+      $("fill").style.width = `${p * 100}%`;
+      $("knob").style.left = `${p * 100}%`;
+      $("now").textContent = fmt(t);
+    }
+
+    let tl;
+    function build(time = 0) {
+      if (tl) tl.kill();
+      inkColor = color("ink");
+      accentColor = color("accent");
+      layout();
+      tl = gsap.timeline({ repeat: -1, onUpdate: () => render(tl.time()) });
+      tl.set({}, {}, L);
+      $("total").textContent = fmt(L);
+      applyMotion(time);
+    }
+
+    // Reduced motion: a still frame mid sentence.
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    function applyMotion(time = tl.time()) {
+      if (reduce.matches) tl.pause(words[Math.min(words.length - 1, 9)].start + 0.1);
+      else tl.play(time);
+      render(tl.time());
+    }
+    reduce.addEventListener("change", () => applyMotion());
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => build(tl ? tl.time() : 0), 120);
+    });
+
+    // Wait briefly for the font so captions are measured in the right face.
+    Promise.race([
+      Promise.all(["500", "800"].map((w) => document.fonts.load(`${w} 1em "Bricolage Grotesque"`))),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(() => build(0));
+  </script>
+</body>
+</html>

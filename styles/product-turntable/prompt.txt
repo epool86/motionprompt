@@ -1,0 +1,18 @@
+Make my video in this style: Product turntable.
+
+Look and motion
+- A premium 3D product shot. My product from my request stands on a round pedestal with a turntable top. If I attach product photos, match its shape, colour and label.
+- The turntable turns slowly and smoothly, and slows down a little while the front of the product faces the camera.
+- Soft studio lighting: a warm key light, gentle reflections on the product, a soft glow on the backdrop and a soft shadow on the floor. A bright light glint sweeps across the product once or twice.
+- The key features from my request pop out as small callouts, one after another: a dot on the product, a thin leader line that draws itself outwards, then a short label.
+- A clean card with the product name and price slides up into view. At the end the callouts fold away and the card fades out.
+- Clean, minimal and calm, like a luxury ad. Keep the product in the middle and everything easy to read.
+
+Type and colour
+- An elegant serif for the product name (like Cormorant Garamond) and a clean sans serif in small capitals with wide letter spacing for the callouts (like Inter Tight).
+- Use my brand colours if I give them. Otherwise use a warm sand backdrop #ece4da, an ivory pedestal #f4efe8, espresso text #2b2420, gold details #c9a36b and an amber product colour #e0892f.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as a 3D scene in HTML (for example with Three.js) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

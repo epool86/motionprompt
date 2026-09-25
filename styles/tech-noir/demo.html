@@ -1,0 +1,1066 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tech noir demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/instrument-serif@5.3.0/400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5.3.0/400.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=120c09&ink=6b635c&accent=ff8a3d&accent2=ffb070 */
+    :root {
+      --bg: #120c09;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="film" role="img" aria-label="A dark cinematic tech film: a dotted globe sends glowing amber arcs from a you marker, a line-art laptop streams data to a small device, a circuit board chip lights up, and a glowing serif headline forms from particles and drifts away as dust"></canvas>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const colors = { bg: hex("bg", "120c09"), ink: hex("ink", "6b635c"), accent: hex("accent", "ff8a3d"), accent2: hex("accent2", "ffb070") };
+    document.documentElement.style.setProperty("--bg", `#${colors.bg}`);
+    const headline = (params.get("text") || "Make it move").trim().slice(0, 40);
+
+    // Colour helpers: every tone is a mix of the four base colours.
+    const toRgb = (h) => [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+    const mix = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
+    const css = (c, a = 1) => `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a})`;
+    const BG = toRgb(colors.bg), INK = toRgb(colors.ink), AMBER = toRgb(colors.accent), GLOW = toRgb(colors.accent2);
+    const WHITE = [255, 255, 255], BLACK = [0, 0, 0];
+    const LINE = css(INK);
+    const LINE_DIM = css(mix(BG, INK, 0.5));
+    const LABEL = css(mix(INK, WHITE, 0.32));
+    const FILL_SIDE = css(mix(BG, INK, 0.07));
+    const FILL_FRONT = css(mix(BG, INK, 0.1));
+    const FILL_TOP = css(mix(BG, INK, 0.14));
+    const HOT = mix(GLOW, WHITE, 0.45);
+
+    // Small maths helpers.
+    const TAU = Math.PI * 2, DEG = Math.PI / 180;
+    const clamp01 = (x) => Math.max(0, Math.min(1, x));
+    const smooth = (a, b, x) => {
+      const u = clamp01((x - a) / (b - a));
+      return u * u * (3 - 2 * u);
+    };
+    const easeOut = (u) => 1 - Math.pow(1 - clamp01(u), 3);
+    const easeInOut = (u) => {
+      u = clamp01(u);
+      return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(2 - 2 * u, 3) / 2;
+    };
+    const frac = (x) => x - Math.floor(x);
+    const hash = (n) => frac(Math.sin(n * 127.1 + 311.7) * 43758.5453);
+    function seeded(seed) {
+      return () => {
+        seed = (seed + 0x6d2b79f5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+    const mul = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+
+    const canvas = document.getElementById("film");
+    const ctx = canvas.getContext("2d");
+    let W = 1, H = 1, U = 1, dpr = 1, lw = 1, fs = 10;
+    let SA = 1; // alpha of the scene being drawn
+    const alpha = (a) => (ctx.globalAlpha = Math.max(0, Math.min(1, a * SA)));
+
+    // A soft amber glow, drawn as a sprite (much cheaper than canvas blur).
+    const glowImg = document.createElement("canvas");
+    glowImg.width = glowImg.height = 64;
+    {
+      const g = glowImg.getContext("2d");
+      const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+      grad.addColorStop(0, css(HOT, 1));
+      grad.addColorStop(0.18, css(GLOW, 0.75));
+      grad.addColorStop(0.45, css(AMBER, 0.22));
+      grad.addColorStop(1, css(AMBER, 0));
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 64, 64);
+    }
+    function glow(x, y, r, a) {
+      alpha(a);
+      ctx.drawImage(glowImg, x - r, y - r, r * 2, r * 2);
+    }
+
+    // A simple perspective camera: yaw, then pitch, then divide by depth.
+    function camera(yaw, pitch, dist) {
+      const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+      const cam = {
+        k: 1, ox: 0, oy: 0, dist,
+        v(p) {
+          const x1 = p[0] * cy - p[2] * sy, z1 = p[0] * sy + p[2] * cy;
+          return [x1, p[1] * cp - z1 * sp, p[1] * sp + z1 * cp];
+        },
+        p(p) {
+          const [x, y, z] = cam.v(p);
+          const s = (dist / (dist - z)) * cam.k;
+          return [cam.ox + x * s, cam.oy - y * s, z, s];
+        },
+        // Scale and centre so a set of points fills the given box.
+        fit(points, bw, bh, cx, cy) {
+          cam.k = 1; cam.ox = cam.oy = 0;
+          let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+          for (const q of points) {
+            const [x, y] = cam.p(q);
+            x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+          }
+          cam.k = Math.min(bw / (x1 - x0), bh / (y1 - y0));
+          cam.ox = cx - ((x0 + x1) / 2) * cam.k;
+          cam.oy = cy - ((y0 + y1) / 2) * cam.k;
+        },
+      };
+      return cam;
+    }
+
+    function path(pts, close) {
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      if (close) ctx.closePath();
+    }
+    function stroke(pts, color, width, a = 1, close = false) {
+      path(pts, close);
+      alpha(a);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.stroke();
+    }
+    // Many polylines in one path, so they cost a single stroke.
+    function strokeMany(lines, color, width, a = 1, close = false) {
+      ctx.beginPath();
+      for (const pts of lines) {
+        ctx.moveTo(pts[0][0], pts[0][1]);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+        if (close) ctx.closePath();
+      }
+      alpha(a);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.stroke();
+    }
+    const line3 = (cam, a, b, color, width, al = 1) => stroke([cam.p(a), cam.p(b)], color, width, al);
+    function circle3(cam, c, e1, e2, r, n = 36) {
+      const pts = [];
+      for (let i = 0; i <= n; i++) {
+        const a = (i / n) * TAU;
+        pts.push(cam.p(add(c, add(mul(e1, Math.cos(a) * r), mul(e2, Math.sin(a) * r)))));
+      }
+      return pts;
+    }
+
+    // A box from a corner and three edge vectors. Draws its visible faces as dark
+    // panels with thin grey edges, like line art.
+    const FACES = [
+      [0, 1, 3, 2], [4, 5, 7, 6], [0, 1, 5, 4], [2, 3, 7, 6], [0, 2, 6, 4], [1, 3, 7, 5],
+    ];
+    function box(o, u, v, w) {
+      const c = [];
+      for (let i = 0; i < 8; i++) c.push(add(add(add(o, i & 1 ? u : [0, 0, 0]), i & 2 ? v : [0, 0, 0]), i & 4 ? w : [0, 0, 0]));
+      return { o, u, v, w, c, center: add(o, mul(add(add(u, v), w), 0.5)) };
+    }
+    function drawBox(cam, b, edge = LINE) {
+      const view = b.c.map((p) => cam.v(p));
+      const pts = b.c.map((p) => cam.p(p));
+      const cv = cam.v(b.center);
+      FACES.forEach((f, i) => {
+        let fx = 0, fy = 0, fz = 0;
+        for (const k of f) { fx += view[k][0] / 4; fy += view[k][1] / 4; fz += view[k][2] / 4; }
+        const n = [fx - cv[0], fy - cv[1], fz - cv[2]];
+        if (n[0] * -fx + n[1] * -fy + n[2] * (cam.dist - fz) <= 0) return;
+        path(f.map((k) => pts[k]), true);
+        alpha(1);
+        ctx.fillStyle = i === 3 ? FILL_TOP : i === 1 ? FILL_FRONT : FILL_SIDE;
+        ctx.fill();
+        ctx.strokeStyle = edge;
+        ctx.lineWidth = lw;
+        ctx.lineJoin = "round";
+        ctx.stroke();
+      });
+      return pts;
+    }
+
+    // Tiny lowercase monospace labels with a short leader line.
+    function label(x, y, text, up, icon) {
+      const lead = fs * 1.5;
+      const ty = up ? y - lead : y + lead;
+      stroke([[x, y], [x, ty + (up ? fs * 0.35 : -fs * 0.35)]], LINE_DIM, Math.max(0.6, lw * 0.8), 0.9);
+      alpha(0.9);
+      ctx.fillStyle = LABEL;
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(1, lw * 1.3), 0, TAU);
+      ctx.fill();
+      ctx.font = `${fs}px "JetBrains Mono", ui-monospace, Menlo, monospace`;
+      ctx.textBaseline = up ? "bottom" : "top";
+      const tw = ctx.measureText(text).width;
+      const iw = icon ? fs * 1.35 : 0;
+      const x0 = x - (tw + iw) / 2;
+      ctx.textAlign = "left";
+      alpha(0.95);
+      ctx.fillText(text, x0 + iw, ty);
+      if (icon) icon(x0 + fs * 0.45, up ? ty - fs * 0.5 : ty + fs * 0.5);
+    }
+    // A wifi symbol with a slash through it, for "offline".
+    function wifiOff(x, y) {
+      const s = fs * 0.9;
+      ctx.strokeStyle = LABEL;
+      ctx.lineWidth = Math.max(0.7, fs / 11);
+      ctx.lineCap = "round";
+      alpha(0.9);
+      for (const r of [0.28, 0.52, 0.76]) {
+        ctx.beginPath();
+        ctx.arc(x, y + s * 0.4, r * s, -Math.PI * 0.78, -Math.PI * 0.22);
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.arc(x, y + s * 0.34, ctx.lineWidth * 0.8, 0, TAU);
+      ctx.fillStyle = LABEL;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x - s * 0.5, y - s * 0.45);
+      ctx.lineTo(x + s * 0.5, y + s * 0.5);
+      ctx.stroke();
+      ctx.lineCap = "butt";
+    }
+
+    // ---------------------------------------------------------------
+    // Scene A: a dotted globe with arcs flying out from "you".
+    // Land mask: 240 x 100 bits (1.5 degree cells, 90N to 60S), made from Natural Earth land.
+    const MASK = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAX4ABf/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf//P///58AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP//z/////gAAA/AAkCAAAeAAAAAAAAAAAAAAAAGOT/8/////+AAANoAAAAAAAH8AAAAAAAAAAAAAADEAMfwf////8AAADMAAAAEAAAOAAAAAAAAAAAAAAE/rr/gAP///+AAAAAAAAH4AB//8AAPIAAAAAAAAAfMAPfAAD///+AAAAAAAA8AAH//wAACAAAAAAAAAAf+zu/8AB///4AAAAAAABgDC/////wHAAAAAAGAAAJ/4M/+gBf//4AAAAAAABwHf/////7/+cAAAB//4XM/8fH/4A///wAAAA/8AAFn//////////8+f8AAAAAfPoY+H/gAH////8AAP+wEQAAAAAAAAAAAF/AAAAAAAAL+AfAAf////4ABHQABgAAAAAAAAAAAE3//////////8/f4//////3/3//////////////4AA////////mA+AP4ADgAA/3////////////////+AD///////8CPIAHwAAAAD/P///////////////v+AD///////4APgADgAAAAF/H//////////////w/gAA/QH////4APzAAAAAAAH/H/////////////7hgAAAHAB////8AH/gAAAAAMAOD////////////8AHAAAAQAAv////wH/gAAAAAOAuP////////////wAPgAABAAAX////+f/4AAAAA2Ahf////////////gAPAAAAAAAH/////f/+AAAABzH//////////////9AMAAAAAAAB/////f/+AAAAAnn///////////////AIAAAAAAAA///////yAAAAAAf//////////////9AAAAAAAAAAv/////+HgAAAAH///////////////+AAAAAAAAAAf/////+AAAAAAD///////////////6AAAAAAAAAAf//////wAAAAAB///2fx/////////wAAAAAAAAAAf/////6AAAAAAB/z/gPj/////////jgAAAAAAAAAf/////gAAAAAA/wZ/gHx////////+HgAAAAAAAAAf/////gAAAAAA/wGfv/4////////4AAAAAAAAAAAf////+AAAAAAA/BiZ//5///////3gGAAAAAAAAAAP////8AAAAAAA/AEM//4///////hwMAAAAAAAAAAP////4AAAAAAAufkA//////////44cAAAAAAAAAAH////4AAAAAAAP/gAA/////////wz4AAAAAAAAAAB////wAAAAAAAf/gAA/////////wFgAAAAAAAAAAA////AAAAAAAA//8MB/////////4EAAAAAAAAAAAA3///AAAAAAAB///f//////////4AAAAAAAAAAAAAX/7BAAAAAAAB//////z///////4AAAAAAAAAAAAAL/gBAAAAAAAH//////7///////4AAAAAAAAAAAAAF/gBgAAAAAAH////+/8P//////wAAAAAAAAAAAAAE/gAAAAAAAAP////+f8QH/////gAAAAAAAAAAAAAAfgBgAAAAAAf/////P/4D/////IAAAAAAAAAAAAAAPgQ4AAAAAAf/////v/8D//f/4AAAAAAAAAAAAAAAPhwMAAAAAAf/////n/4A/8P+QAAAAAAAAAAAAAAAH7gB0AAAAAf/////n/wA/wH+gAAAAAAAAAAAAAAAB/gAAAAAAAf/////z/gAfgH+AMAAAAAAAAAAAAAAAT8AAAAAAAf/////z+AAfAB/AIAAAAAAAAAAAAAAAB+AAAAAAAf/////94AAfAB/gKAAAAAAAAAAAAAAAAMAAAAAAAf//////AAAPAAvgKAAAAAAAAAAAAAAAAEDQAAAAAP/////+cAAOAAngAAAAAAAAAAAAAAAAACH/wAAAAH//////8AAGAACABAAAAAAAAAAAAAAAADv/wAAAAH//////4AAFAAgADAAAAAAAAAAAAAAAAAP/4AAAAD//////4AABgAQADAAAAAAAAAAAAAAAAAP//gAAAA/H////wAAAACYBgAAAAAAAAAAAAAAAAAP//wAAAAAA////wAAAADYDgAAAAAAAAAAAAAAAAAP//wAAAAAA////gAAAAB4PgAAAAAAAAAAAAAAAAAf//4AAAAAA///+AAAAAA4/gQAAAAAAAAAAAAAAAA///+AAAAAA///8AAAAAAYfEGAAAAAAAAAAAAAAAA////gAAAAA///4AAAAAAefZDcAAAAAAAAAAAAAAA////8AAAAAf//4AAAAAAOCcp/AAAAAAAAAAAAAAA/////AAAAAP//wAAAAAAEAQAfmAAAAAAAAAAAAAA/////gAAAAP//wAAAAAAB8AAPwAAAAAAAAAAAAAAf////gAAAAH//wAAAAAAAOMgPYAAAAAAAAAAAAAAP////AAAAAH//4AAAAAAAACAAMAAAAAAAAAAAAAAP///+AAAAAH//4AAAAAAAAAAAAAAAAAAAAAAAAAAH///8AAAAAH//4IAAAAAAAAHjAAAAAAAAAAAAAAAH///8AAAAAP//4MAAAAAAAAvjAAAAAAAAAAAAAAAD///8AAAAAP//44AAAAAAAB/jgAAAAAAAAAAAAAAA///8AAAAAP//x4AAAAAAAH//gAAAAAAAAAAAAAAAf//8AAAAAP//B4AAAAAAAH//wAAAAAAAAAAAAAAAf//4AAAAAH/+B4AAAAAAAf//4AAAAAAAAAAAAAAAf//4AAAAAH//BwAAAAAAB///8AAAAAAAAAAAAAAAf//gAAAAAH//BwAAAAAAD///+AAAAAAAAAAAAAAAf/8AAAAAAD/+BgAAAAAAD////AAAAAAAAAAAAAAAf/8AAAAAAD/8AAAAAAAAH////AAAAAAAAAAAAAAA//8AAAAAAD/8AAAAAAAAD////AAAAAAAAAAAAAAA//4AAAAAAB/4AAAAAAAAD////AAAAAAAAAAAAAAA//wAAAAAAA/wAAAAAAAAB////AAAAAAAAAAAAAAA//gAAAAAAA/gAAAAAAAAB/j//AAAAAAAAAAAAAAA//AAAAAAAA/AAAAAAAAAB8A/+AAAAAAAAAAAAAAA/8AAAAAAAAAAAAAAAAAAAgAP8AAAAAAAAAAAAAAB/8AAAAAAAAAAAAAAAAAAAAAH8AAIAAAAAAAAAAAB/4AAAAAAAAAAAAAAAAAAAAADwAAOAAAAAAAAAAAB/gAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAB/AAAAAAAAAAAAAAAAAAAAAAA4AAQAAAAAAAAAAAD+AAAAAAAAAAAAAAAAAAAAAAAYAAwAAAAAAAAAAAB+AAAAAAAAAAAAAAAAAAAAAAAAADgAAAAAAAAAAAD4AAAAAAAAAAAAAAAAAAAAAAAAAHAAAAAAAAAAAAD8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADwIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    const landDots = [];
+    {
+      const bytes = atob(MASK);
+      const bit = (i, j) => (bytes.charCodeAt((j * 240 + i) >> 3) >> (7 - ((j * 240 + i) & 7))) & 1;
+      for (let j = 0; j < 100; j++) {
+        const lat = (90 - (j + 0.5) * 1.5) * DEG;
+        const n = Math.max(1, Math.round(240 * Math.cos(lat)));
+        for (let k = 0; k < n; k++) {
+          const lon = -180 + ((k + 0.5) * 360) / n;
+          const i = Math.min(239, Math.floor((lon + 180) / 1.5));
+          if (bit(i, j)) landDots.push(Math.cos(lat) * Math.sin(lon * DEG), Math.sin(lat), Math.cos(lat) * Math.cos(lon * DEG));
+        }
+      }
+    }
+    const dotCount = landDots.length / 3;
+    const dotX = new Float32Array(dotCount), dotY = new Float32Array(dotCount), dotB = new Int8Array(dotCount);
+    const geo = (lat, lon) => [Math.cos(lat * DEG) * Math.sin(lon * DEG), Math.sin(lat * DEG), Math.cos(lat * DEG) * Math.cos(lon * DEG)];
+    const YOU = geo(3.14, 101.69);
+    const nearYou = new Float32Array(dotCount);
+    for (let i = 0; i < dotCount; i++) {
+      const d = landDots[i * 3] * YOU[0] + landDots[i * 3 + 1] * YOU[1] + landDots[i * 3 + 2] * YOU[2];
+      nearYou[i] = smooth(Math.cos(16 * DEG), Math.cos(2 * DEG), d);
+    }
+    const ARCS = [[35.68, 139.69], [-33.87, 151.21], [19.08, 72.88], [39.9, 116.4], [25.2, 55.27]].map(([lat, lon], i) => {
+      const b = geo(lat, lon);
+      const omega = Math.acos(YOU[0] * b[0] + YOU[1] * b[1] + YOU[2] * b[2]);
+      return { b, omega, h: 0.05 + 0.2 * omega, start: 0.55 + i * 0.32 };
+    });
+    function arcPoint(arc, u) {
+      const s = Math.sin(arc.omega);
+      const ka = Math.sin((1 - u) * arc.omega) / s, kb = Math.sin(u * arc.omega) / s;
+      const r = 1 + arc.h * Math.sin(Math.PI * u);
+      return [(YOU[0] * ka + arc.b[0] * kb) * r, (YOU[1] * ka + arc.b[1] * kb) * r, (YOU[2] * ka + arc.b[2] * kb) * r];
+    }
+
+    function drawGlobe(l, len) {
+      const R = (H > W * 1.15 ? W * 0.4 : U * 0.37) * (0.95 + 0.08 * easeInOut(l / len));
+      const cx = W / 2 + U * 0.02 * Math.sin(l * 0.4 - 0.6);
+      const cy = H / 2 + U * 0.015 * Math.cos(l * 0.5);
+      const lon0 = (124 - l * 6) * DEG, lat0 = (10 + l * 1.2) * DEG;
+      const c0 = Math.cos(lon0), s0 = Math.sin(lon0), c1 = Math.cos(lat0), s1 = Math.sin(lat0);
+      const rot = (x, y, z) => {
+        const x1 = x * c0 - z * s0, z1 = x * s0 + z * c0;
+        return [x1, y * c1 - z1 * s1, y * s1 + z1 * c1];
+      };
+      const toScreen = (p) => {
+        const [x, y, z] = rot(p[0], p[1], p[2]);
+        return [cx + x * R, cy - y * R, z, Math.hypot(x, y) > 1 || z > 0];
+      };
+
+      // Warm atmosphere, dark body and a thin rim.
+      ctx.globalCompositeOperation = "lighter";
+      const halo = ctx.createRadialGradient(cx, cy, R * 0.9, cx, cy, R * 1.35);
+      halo.addColorStop(0, css(AMBER, 0.1));
+      halo.addColorStop(1, css(AMBER, 0));
+      alpha(1);
+      ctx.fillStyle = halo;
+      ctx.fillRect(cx - R * 1.4, cy - R * 1.4, R * 2.8, R * 2.8);
+      ctx.globalCompositeOperation = "source-over";
+      const body = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.4, 0, cx, cy, R);
+      body.addColorStop(0, css(mix(BG, INK, 0.13)));
+      body.addColorStop(1, css(mix(BG, BLACK, 0.2)));
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, 0, TAU);
+      ctx.fillStyle = body;
+      ctx.fill();
+      ctx.strokeStyle = css(mix(BG, INK, 0.6));
+      ctx.lineWidth = lw;
+      ctx.stroke();
+
+      // Land dots, grouped by brightness so each group is one fill.
+      for (let i = 0; i < dotCount; i++) {
+        const [x, y, z] = rot(landDots[i * 3], landDots[i * 3 + 1], landDots[i * 3 + 2]);
+        if (z < 0.03) { dotB[i] = -1; continue; }
+        dotX[i] = cx + x * R;
+        dotY[i] = cy - y * R;
+        const lit = Math.min(1, z * 1.25) * (0.8 + 0.2 * (y * 0.6 - x * 0.4 + 0.5));
+        dotB[i] = nearYou[i] > 0.15 ? 6 + Math.min(2, Math.floor(nearYou[i] * 3)) : Math.min(5, Math.floor(lit * 6));
+      }
+      const ds = Math.max(0.9, R * 0.0105);
+      for (let b = 0; b < 9; b++) {
+        ctx.beginPath();
+        for (let i = 0; i < dotCount; i++) {
+          if (dotB[i] !== b) continue;
+          ctx.rect(dotX[i] - ds / 2, dotY[i] - ds / 2, ds, ds);
+        }
+        if (b < 6) {
+          alpha(0.18 + b * 0.13);
+          ctx.fillStyle = css(mix(INK, WHITE, 0.12));
+        } else {
+          alpha(0.55 + (b - 6) * 0.2);
+          ctx.fillStyle = css(mix(INK, AMBER, 0.45 + (b - 6) * 0.2));
+        }
+        ctx.fill();
+      }
+
+      // Arcs: a glowing comet flies out, then leaves a faint trace behind.
+      const you = toScreen(YOU);
+      ctx.globalCompositeOperation = "lighter";
+      ctx.lineCap = "round";
+      const N = 40;
+      for (const arc of ARCS) {
+        const pts = [];
+        for (let i = 0; i <= N; i++) pts.push(toScreen(arcPoint(arc, i / N)));
+        const q = l - arc.start;
+        if (q <= 0) continue;
+        const head = easeInOut(q / 1.15), tail = easeInOut((q - 0.35) / 1.15);
+        // faint trace of where it has been
+        const traced = Math.min(head, 1) * N;
+        ctx.beginPath();
+        let open = false;
+        for (let i = 0; i <= traced; i++) {
+          if (!pts[i][3]) { open = false; continue; }
+          if (open) ctx.lineTo(pts[i][0], pts[i][1]);
+          else ctx.moveTo(pts[i][0], pts[i][1]);
+          open = true;
+        }
+        alpha(0.28);
+        ctx.strokeStyle = css(AMBER);
+        ctx.lineWidth = lw;
+        ctx.stroke();
+        // bright comet between tail and head
+        if (tail < 1) {
+          const bands = [[], [], [], [], []];
+          for (let i = Math.floor(tail * N); i < Math.ceil(head * N) && i < N; i++) {
+            const a = pts[i], b = pts[i + 1];
+            if (!a[3] || !b[3]) continue;
+            const k = clamp01(((i + 1) / N - tail) / Math.max(0.001, head - tail));
+            bands[Math.min(4, Math.floor(k * 5))].push([a, b]);
+          }
+          bands.forEach((segs, k) => {
+            if (!segs.length) return;
+            strokeMany(segs, css(AMBER), lw * 4.5, 0.12 * (k + 1) / 5);
+            strokeMany(segs, css(HOT), lw * 1.5, 0.9 * (k + 1) / 5);
+          });
+          const hp = pts[Math.min(N, Math.round(head * N))];
+          if (hp[3] && head < 1) glow(hp[0], hp[1], U * 0.028, 0.9);
+        }
+        // landing ping
+        const end = pts[N];
+        if (end[2] > 0) {
+          const land = q - 1.15;
+          const pr = land > 0 ? easeOut(land / 0.9) : 0;
+          alpha(0.9);
+          ctx.fillStyle = land > 0 ? css(GLOW) : LABEL;
+          ctx.beginPath();
+          ctx.arc(end[0], end[1], Math.max(1, lw * 1.4), 0, TAU);
+          ctx.fill();
+          if (land > 0) {
+            glow(end[0], end[1], U * 0.02, 0.6);
+            if (pr < 1) {
+              ctx.beginPath();
+              ctx.arc(end[0], end[1], U * 0.005 + pr * U * 0.035, 0, TAU);
+              alpha(0.7 * (1 - pr));
+              ctx.strokeStyle = css(GLOW);
+              ctx.lineWidth = lw;
+              ctx.stroke();
+            }
+          }
+        }
+      }
+
+      // The "you" marker: a pulsing amber dot with a ring.
+      glow(you[0], you[1], U * 0.05, 0.8);
+      for (let k = 0; k < 2; k++) {
+        const p = frac(l / 1.6 + k / 2);
+        ctx.beginPath();
+        ctx.arc(you[0], you[1], U * 0.008 + p * U * 0.04, 0, TAU);
+        alpha(0.75 * (1 - p));
+        ctx.strokeStyle = css(AMBER);
+        ctx.lineWidth = lw;
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.arc(you[0], you[1], U * 0.014, 0, TAU);
+      alpha(0.9);
+      ctx.strokeStyle = css(GLOW);
+      ctx.lineWidth = lw;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(you[0], you[1], Math.max(1.5, U * 0.006), 0, TAU);
+      alpha(1);
+      ctx.fillStyle = css(HOT);
+      ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
+      ctx.lineCap = "butt";
+      // label, up and to the left of the dot
+      const lx = you[0] - U * 0.05, ly = you[1] - U * 0.05;
+      stroke([[you[0] - U * 0.016, you[1] - U * 0.016], [lx, ly]], LINE_DIM, Math.max(0.6, lw * 0.8), 0.9);
+      ctx.font = `${fs}px "JetBrains Mono", ui-monospace, Menlo, monospace`;
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      alpha(0.95);
+      ctx.fillStyle = css(GLOW);
+      ctx.fillText("you", lx - fs * 0.35, ly);
+    }
+
+    // ---------------------------------------------------------------
+    // Scene B: isometric line-art hardware, a laptop streaming to a small box.
+    // Side by side on wide screens, one behind the other on tall ones.
+    const TILT = 0.24;
+    const UP = [0, Math.cos(TILT), -Math.sin(TILT)], FWD = [0, Math.sin(TILT), Math.cos(TILT)];
+    let LAP, DEV, hinge, lapBase, lapScreen, device, cableCurve, cable, offlineAt, hardwarePoints;
+    const screenAt = (s, r) => add(add(add(hinge, [1.6 * s, 0, 0]), mul(UP, 1.02 * (1 - r))), mul(FWD, 0.004));
+    const bezier = (P, u) => {
+      const a = (1 - u) ** 3, b = 3 * u * (1 - u) ** 2, c = 3 * u * u * (1 - u), d = u ** 3;
+      return [0, 1, 2].map((i) => P[0][i] * a + P[1][i] * b + P[2][i] * c + P[3][i] * d);
+    };
+    function layoutHardware(tall) {
+      LAP = tall ? [-1.05, 0, -0.95] : [-1.2, 0, 0.35];
+      DEV = tall ? [1.35, 0, 1.1] : [1.3, 0, -0.35];
+      hinge = [LAP[0] - 0.8, 0.07, LAP[2] - 0.49];
+      lapBase = box([LAP[0] - 0.8, 0, LAP[2] - 0.525], [1.6, 0, 0], [0, 0.07, 0], [0, 0, 1.05]);
+      lapScreen = box(add(hinge, mul(FWD, -0.045)), [1.6, 0, 0], mul(UP, 1.02), mul(FWD, 0.045));
+      device = box([DEV[0] - 0.65, 0, DEV[2] - 0.475], [1.3, 0, 0], [0, 0.82, 0], [0, 0, 0.95]);
+      const p0 = [LAP[0] + 0.8, 0.035, LAP[2] + (tall ? 0.3 : 0.12)], p3 = [DEV[0] - 0.65, 0.12, DEV[2] + (tall ? 0.36 : 0.22)];
+      cableCurve = tall
+        ? [p0, [p0[0] + 0.45, 0.01, p0[2] + 0.2], [p3[0] - 0.75, 0.01, p3[2] + 0.1], p3]
+        : [p0, [p0[0] + 0.65, 0.01, p0[2] + 0.43], [p3[0] - 0.65, 0.01, p3[2] + 0.53], p3];
+      cable = Array.from({ length: 41 }, (_, i) => bezier(cableCurve, i / 40));
+      offlineAt = screenAt(0.5, -0.02);
+      hardwarePoints = [...lapBase.c, ...lapScreen.c, ...device.c];
+    }
+    const SCREEN_ROWS = [[0.3, 0.46], [0.41, 0.78], [0.52, 0.62], [0.66, 0.82, true], [0.8, 0.54]];
+
+    function drawHardware(l, len) {
+      const cam = camera((34 - l * 3.2) * DEG, (27 + l * 1.3) * DEG, 11);
+      const room = fs * 5.2;
+      cam.fit(hardwarePoints, W * 0.84, Math.max(H * 0.4, H * 0.86 - room), W / 2, H / 2 + fs * 0.4);
+      const zoom = 0.93 + 0.07 * easeInOut(l / len);
+      cam.k *= zoom;
+      cam.ox = W / 2 + (cam.ox - W / 2) * zoom;
+      cam.oy = H / 2 + (cam.oy - H / 2) * zoom;
+
+      // floor: a faint dot grid that fades out with distance
+      ctx.fillStyle = css(mix(INK, WHITE, 0.1));
+      for (let g = 0; g < 4; g++) {
+        ctx.beginPath();
+        for (let i = -9; i <= 9; i++) {
+          for (let j = -7; j <= 7; j++) {
+            const x = i * 0.36, z = j * 0.36;
+            const f = 1 - Math.hypot(x / 3.4, z / 2.6);
+            if (f <= 0 || Math.min(3, Math.floor(f * 4)) !== g) continue;
+            const p = cam.p([x, 0, z]);
+            ctx.rect(p[0] - lw * 0.6, p[1] - lw * 0.6, lw * 1.2, lw * 1.2);
+          }
+        }
+        alpha(0.35 * (g + 0.5) / 4);
+        ctx.fill();
+      }
+
+      // cable on the floor
+      stroke(cable.map((p) => cam.p(p)), LINE, lw * 1.3);
+
+      const drawLaptop = () => {
+        drawBox(cam, lapBase);
+        // keyboard and trackpad
+        ctx.beginPath();
+        for (let r = 0; r < 4; r++) {
+          for (let c = 0; c < 12; c++) {
+            const x = LAP[0] - 0.68 + c * 0.115, z = LAP[2] - 0.43 + r * 0.115;
+            const q = [[x, 0.071, z], [x + 0.09, 0.071, z], [x + 0.09, 0.071, z + 0.09], [x, 0.071, z + 0.09]].map((p) => cam.p(p));
+            ctx.moveTo(q[0][0], q[0][1]);
+            for (let k = 1; k < 4; k++) ctx.lineTo(q[k][0], q[k][1]);
+            ctx.closePath();
+          }
+        }
+        alpha(0.8);
+        ctx.strokeStyle = LINE_DIM;
+        ctx.lineWidth = Math.max(0.5, lw * 0.7);
+        ctx.stroke();
+        stroke([[-0.26, 0.1], [0.26, 0.1], [0.26, 0.42], [-0.26, 0.42]].map(([x, z]) => cam.p([LAP[0] + x, 0.071, LAP[2] + z])), LINE_DIM, lw * 0.8, 0.9, true);
+
+        drawBox(cam, lapScreen);
+        // the dim display
+        const d = [[0.05, 0.07], [0.95, 0.07], [0.95, 0.93], [0.05, 0.93]].map(([s, r]) => cam.p(screenAt(s, r)));
+        path(d, true);
+        alpha(1);
+        ctx.fillStyle = css(mix(BG, AMBER, 0.035));
+        ctx.fill();
+        // window dots
+        for (let i = 0; i < 3; i++) {
+          const p = cam.p(screenAt(0.1 + i * 0.035, 0.16));
+          alpha(0.7);
+          ctx.fillStyle = LINE;
+          ctx.beginPath();
+          ctx.arc(p[0], p[1], Math.max(0.8, cam.k * 0.012), 0, TAU);
+          ctx.fill();
+        }
+        // text lines type in, and an amber bar fills up
+        const thick = Math.max(0.8, cam.p(screenAt(0.5, 0.5))[3] * 0.028);
+        ctx.lineCap = "round";
+        SCREEN_ROWS.forEach(([r, end, bar], k) => {
+          const shown = easeOut((l - 0.35 - k * 0.22) / 0.4);
+          if (bar) {
+            stroke([cam.p(screenAt(0.1, r)), cam.p(screenAt(end, r))], LINE_DIM, thick * 1.3, 0.8 * shown);
+            const fill = 0.1 + (end - 0.1) * 0.85 * easeInOut((l - 1.0) / 2.4);
+            if (shown > 0) {
+              const a = cam.p(screenAt(0.1, r)), b = cam.p(screenAt(fill, r));
+              ctx.globalCompositeOperation = "lighter";
+              stroke([a, b], css(AMBER), thick * 3, 0.12 * shown);
+              stroke([a, b], css(GLOW), thick * 1.3, shown);
+              ctx.globalCompositeOperation = "source-over";
+            }
+          } else if (shown > 0) {
+            stroke([cam.p(screenAt(0.1, r)), cam.p(screenAt(0.1 + (end - 0.1) * shown, r))], LINE, thick, 0.85);
+          }
+        });
+        // blinking cursor
+        if (frac(l * 1.4) < 0.55) {
+          const a = cam.p(screenAt(0.58, 0.77)), b = cam.p(screenAt(0.58, 0.83));
+          stroke([a, b], LABEL, thick * 1.2, 0.9);
+        }
+        ctx.lineCap = "butt";
+      };
+
+      const drawDevice = () => {
+        drawBox(cam, device);
+        const zf = DEV[2] + 0.476;
+        // two fans on the front
+        for (const s of [0.3, 0.7]) {
+          const c = [DEV[0] - 0.65 + 1.3 * s, 0.4, zf];
+          stroke(circle3(cam, c, [1, 0, 0], [0, 1, 0], 0.2), LINE, lw);
+          stroke(circle3(cam, c, [1, 0, 0], [0, 1, 0], 0.17), LINE_DIM, lw * 0.8);
+          const hub = circle3(cam, c, [1, 0, 0], [0, 1, 0], 0.045, 16);
+          path(hub, true);
+          alpha(1);
+          ctx.fillStyle = FILL_TOP;
+          ctx.fill();
+          ctx.strokeStyle = LINE;
+          ctx.lineWidth = lw * 0.8;
+          ctx.stroke();
+          const spin = l * 2.2 + s * 3;
+          const blades = [];
+          for (let b = 0; b < 7; b++) {
+            const pts = [];
+            for (let k = 0; k <= 4; k++) {
+              const t = k / 4, a = spin + (b / 7) * TAU + t * 0.7, r = 0.05 + t * 0.11;
+              pts.push(cam.p([c[0] + Math.cos(a) * r, c[1] + Math.sin(a) * r, zf]));
+            }
+            blades.push(pts);
+          }
+          strokeMany(blades, LINE_DIM, lw * 0.8, 0.9);
+        }
+        // vents on top
+        const vents = [];
+        for (let i = 0; i < 8; i++) {
+          const x = DEV[0] - 0.45 + i * 0.09;
+          vents.push([cam.p([x, 0.821, DEV[2] - 0.3]), cam.p([x, 0.821, DEV[2] + 0.05])]);
+        }
+        strokeMany(vents, LINE_DIM, lw * 0.9, 0.9);
+        // status light
+        const led = cam.p([DEV[0] + 0.5, 0.7, zf]);
+        const pulse = 0.65 + 0.35 * Math.sin(l * 4);
+        ctx.globalCompositeOperation = "lighter";
+        glow(led[0], led[1], U * 0.03, 0.7 * pulse);
+        ctx.globalCompositeOperation = "source-over";
+        alpha(1);
+        ctx.fillStyle = css(HOT);
+        ctx.beginPath();
+        ctx.arc(led[0], led[1], Math.max(1, cam.k * 0.018), 0, TAU);
+        ctx.fill();
+      };
+
+      // data travelling along the cable
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 4; i++) {
+        const u = frac(l * 0.36 + i / 4);
+        const fade = smooth(0, 0.08, u) * (1 - smooth(0.92, 1, u));
+        for (let k = 5; k >= 0; k--) {
+          const p = cam.p(bezier(cableCurve, Math.max(0, u - k * 0.012)));
+          if (k === 0) glow(p[0], p[1], U * 0.03, 0.9 * fade);
+          else {
+            alpha(0.5 * fade * (1 - k / 6));
+            ctx.fillStyle = css(GLOW);
+            ctx.beginPath();
+            ctx.arc(p[0], p[1], Math.max(0.8, lw * 1.3), 0, TAU);
+            ctx.fill();
+          }
+        }
+      }
+      ctx.globalCompositeOperation = "source-over";
+
+      // farther object first
+      if (cam.v(LAP)[2] < cam.v(DEV)[2]) { drawLaptop(); drawDevice(); }
+      else { drawDevice(); drawLaptop(); }
+
+
+      const a = cam.p([LAP[0], 0, LAP[2] + 0.525]);
+      label(a[0], a[1] + fs * 0.2, "laptop", false);
+      const b = cam.p(offlineAt);
+      label(b[0], b[1], "offline", true, wifiOff);
+      const c = cam.p([DEV[0], 0.82, DEV[2] - 0.475]);
+      label(c[0], c[1], "device · 16 GB", true);
+    }
+
+    // ---------------------------------------------------------------
+    // Scene C: a circuit board, a chip that lights up, pulses on the traces.
+    const BOARD = { w: 4.2, d: 3 };
+    const boardOutline = (() => {
+      const pts = [], r = 0.18, hw = BOARD.w / 2 - r, hd = BOARD.d / 2 - r;
+      const corners = [[hw, hd, 0], [-hw, hd, 0.25], [-hw, -hd, 0.5], [hw, -hd, 0.75]];
+      for (const [x, z, a0] of corners) {
+        for (let i = 0; i <= 6; i++) {
+          const a = (a0 + (i / 6) * 0.25) * TAU;
+          pts.push([x + Math.cos(a) * r, 0, z + Math.sin(a) * r]);
+        }
+      }
+      return pts;
+    })();
+    const MODULES = [
+      [-1.45, -0.82, 0.72, 0.5, 0.09], [1.45, -0.85, 0.6, 0.62, 0.12], [-1.5, 0.78, 0.56, 0.56, 0.1],
+      [1.4, 0.82, 0.78, 0.42, 0.07], [0, -1.12, 1.0, 0.22, 0.05], [0, 1.12, 0.6, 0.22, 0.05],
+    ].map(([x, z, w, d, h]) => box([x - w / 2, 0, z - d / 2], [w, 0, 0], [0, h, 0], [0, 0, d]));
+    // Traces: [x, z] corners with 45 degree bends, chip edge to module edge.
+    const TRACES = [
+      [[-0.58, -0.3], [-0.85, -0.3], [-1.12, -0.57]],
+      [[-0.58, -0.1], [-0.95, -0.1], [-1.25, -0.4], [-1.25, -0.57]],
+      [[-0.58, 0.15], [-0.9, 0.15], [-1.3, 0.5]],
+      [[-0.58, 0.32], [-0.75, 0.32], [-1.1, 0.67], [-1.22, 0.67]],
+      [[0.58, -0.28], [0.85, -0.28], [1.2, -0.63], [1.2, -0.54]],
+      [[0.58, -0.08], [1.0, -0.08], [1.45, -0.53]],
+      [[0.58, 0.2], [0.9, 0.2], [1.2, 0.5], [1.2, 0.61]],
+      [[0.58, 0.36], [0.72, 0.36], [1.0, 0.64], [1.0, 0.61]],
+      [[-0.2, -0.58], [-0.2, -0.75], [-0.3, -0.85], [-0.3, -1.01]],
+      [[0.2, -0.58], [0.2, -0.75], [0.3, -0.85], [0.3, -1.01]],
+      [[-0.1, 0.58], [-0.1, 1.01]],
+      [[0.15, 0.58], [0.15, 0.8], [0.2, 0.85], [0.2, 1.01]],
+    ].map((pts, i) => {
+      const lens = [0];
+      for (let k = 1; k < pts.length; k++) lens.push(lens[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]));
+      return { pts, lens, total: lens[lens.length - 1], phase: hash(i + 3), speed: 0.55 + hash(i + 11) * 0.35 };
+    });
+    const traceAt = (tr, u) => {
+      const d = u * tr.total;
+      let k = 1;
+      while (k < tr.pts.length - 1 && tr.lens[k] < d) k++;
+      const t = (d - tr.lens[k - 1]) / (tr.lens[k] - tr.lens[k - 1] || 1);
+      return [tr.pts[k - 1][0] + (tr.pts[k][0] - tr.pts[k - 1][0]) * t, 0.005, tr.pts[k - 1][1] + (tr.pts[k][1] - tr.pts[k - 1][1]) * t];
+    };
+    const chip = box([-0.5, 0, -0.5], [1, 0, 0], [0, 0.08, 0], [0, 0, 1]);
+    const WORDS = [["json", -1.1, -0.05, 0.1], ["weights", 0.95, -0.5, 0.55], ["kv", -1.2, 0.35, 1.0], ["$data", 1.1, 0.35, 1.4], ["0.82", 0.1, -0.85, 0.75, true]];
+    const CELLS = 6;
+    const boardPoints = boardOutline.filter((_, i) => i % 7 === 0);
+
+    function drawBoard(l, len) {
+      const cam = camera(((H > W * 1.15 ? 68 : -22) + l * 5) * DEG, (60 - l * 3.2) * DEG, 6.5);
+      cam.fit([...boardPoints, [0, 1.1, 0]], W * 0.9, H * 0.8, W / 2, H / 2);
+      const zoom = 0.94 + 0.08 * easeInOut(l / len);
+      cam.k *= zoom;
+      cam.ox = W / 2 + (cam.ox - W / 2) * zoom;
+      cam.oy = H / 2 + (cam.oy - H / 2) * zoom;
+
+      // board plane with a faint dot pattern
+      const outline = boardOutline.map((p) => cam.p(p));
+      path(outline, true);
+      alpha(1);
+      ctx.fillStyle = css(mix(BG, INK, 0.06));
+      ctx.fill();
+      ctx.strokeStyle = LINE;
+      ctx.lineWidth = lw;
+      ctx.stroke();
+      ctx.fillStyle = css(INK);
+      ctx.beginPath();
+      for (let i = -9; i <= 9; i++) {
+        for (let j = -6; j <= 6; j++) {
+          const p = cam.p([i * 0.2, 0, j * 0.2]);
+          ctx.rect(p[0] - lw * 0.5, p[1] - lw * 0.5, lw, lw);
+        }
+      }
+      alpha(0.28);
+      ctx.fill();
+      // mounting holes
+      strokeMany([[-1.85, -1.25], [1.85, -1.25], [-1.85, 1.25], [1.85, 1.25]].map(([x, z]) => circle3(cam, [x, 0, z], [1, 0, 0], [0, 0, 1], 0.08, 20)), LINE, lw);
+
+      // traces
+      ctx.lineJoin = "round";
+      strokeMany(TRACES.map((tr) => tr.pts.map(([x, z]) => cam.p([x, 0, z]))), LINE_DIM, lw * 1.1);
+      strokeMany(TRACES.map((tr) => {
+        const e = tr.pts[tr.pts.length - 1];
+        return circle3(cam, [e[0], 0, e[1]], [1, 0, 0], [0, 0, 1], 0.03, 10);
+      }), LINE, lw * 0.9);
+      // chip pins
+      const pins = [];
+      for (let i = 0; i < 9; i++) {
+        const o = -0.4 + i * 0.1;
+        pins.push([[-0.5, 0, o], [-0.58, 0, o]], [[0.5, 0, o], [0.58, 0, o]], [[o, 0, -0.5], [o, 0, -0.58]], [[o, 0, 0.5], [o, 0, 0.58]]);
+      }
+      strokeMany(pins.map((pair) => pair.map((p) => cam.p(p))), LINE, lw);
+
+      // modules and chip, back to front
+      const parts = [...MODULES, chip].sort((a, b) => cam.v(a.center)[2] - cam.v(b.center)[2]);
+      for (const m of parts) {
+        drawBox(cam, m);
+        if (m === chip) continue;
+        // a little detail line on each module
+        const y = m.v[1] + 0.001;
+        const a = add(m.o, [m.u[0] * 0.18, y, m.w[2] * 0.5]), b = add(m.o, [m.u[0] * 0.6, y, m.w[2] * 0.5]);
+        line3(cam, a, b, LINE_DIM, lw, 0.9);
+      }
+
+      // chip grid: cells flicker on in amber, spreading from the middle
+      const top = 0.081, inset = 0.14, cell = (1 - inset * 2) / CELLS;
+      let lit = 0;
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < CELLS; i++) {
+        for (let j = 0; j < CELLS; j++) {
+          const k = i * CELLS + j;
+          const dist = Math.hypot(i - 2.5, j - 2.5) / 3.5;
+          const on = 0.35 + dist * 1.0 + hash(k) * 0.8;
+          let v = 0;
+          if (l > on) v = hash(k * 13 + Math.floor(l * 7)) > 0.94 ? 0.35 : 0.75 + 0.25 * hash(k * 5 + Math.floor(l * 10));
+          else if (l > on - 0.3) v = hash(k * 7 + Math.floor(l * 22)) > 0.5 ? 0.8 : 0;
+          const x = -0.5 + inset + i * cell, z = -0.5 + inset + j * cell, g = cell * 0.14;
+          const q = [[x + g, z + g], [x + cell - g, z + g], [x + cell - g, z + cell - g], [x + g, z + cell - g]].map(([a, b]) => cam.p([a, top, b]));
+          path(q, true);
+          if (v > 0) {
+            lit += v;
+            alpha(0.85 * v);
+            ctx.fillStyle = css(AMBER);
+            ctx.fill();
+            const c = cam.p([x + cell / 2, top, z + cell / 2]);
+            glow(c[0], c[1], cam.k * cell * 1.1, 0.35 * v);
+          } else {
+            alpha(0.7);
+            ctx.strokeStyle = LINE_DIM;
+            ctx.lineWidth = lw * 0.8;
+            ctx.stroke();
+          }
+        }
+      }
+      const cc = cam.p([0, top, 0]);
+      glow(cc[0], cc[1], cam.k * 1.1, 0.22 * (lit / (CELLS * CELLS)));
+
+      // pulses running along the traces
+      ctx.lineCap = "round";
+      for (const tr of TRACES) {
+        const u = frac(l * tr.speed + tr.phase);
+        const fade = smooth(0, 0.1, u) * (1 - smooth(0.85, 1, u));
+        const trail = [];
+        for (let s = 0; s <= 6; s++) trail.push(cam.p(traceAt(tr, Math.max(0, u - s * 0.025))));
+        stroke(trail, css(AMBER), lw * 1.6, 0.6 * fade);
+        glow(trail[0][0], trail[0][1], U * 0.022, 0.8 * fade);
+      }
+      ctx.lineCap = "butt";
+      ctx.globalCompositeOperation = "source-over";
+
+      // code words drift up above the board and fade
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      for (const [word, x, z, t0, hot] of WORDS) {
+        const u = (l - t0) / 2.4;
+        if (u <= 0 || u >= 1) continue;
+        const p = cam.p([x + u * 0.12, 0.35 + u * 0.5, z]);
+        const size = Math.max(7, Math.min(fs * 1.9, p[3] * 0.14));
+        ctx.font = `${size}px "JetBrains Mono", ui-monospace, Menlo, monospace`;
+        alpha(Math.sin(Math.PI * u) ** 1.5 * (hot ? 1 : 0.85));
+        ctx.fillStyle = hot ? css(GLOW) : LABEL;
+        ctx.fillText(word, p[0], p[1]);
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // Scene D: a serif headline made of glowing particles, then dust.
+    let particles = null, textGlow = null, textFont = 0;
+    function buildText() {
+      const family = '"Instrument Serif", "Playfair Display", Georgia, serif';
+      const words = headline.split(/\s+/);
+      const tc = document.createElement("canvas");
+      tc.width = Math.ceil(W);
+      tc.height = Math.ceil(H);
+      const g = tc.getContext("2d");
+      let size = Math.min(W * 0.22, H * 0.24), lines = [];
+      for (; size > 8; size *= 0.94) {
+        g.font = `400 ${size}px ${family}`;
+        lines = [];
+        let cur = "";
+        for (const w of words) {
+          const next = cur ? `${cur} ${w}` : w;
+          if (g.measureText(next).width > W * 0.84 && cur) { lines.push(cur); cur = w; }
+          else cur = next;
+        }
+        lines.push(cur);
+        const widest = Math.max(...lines.map((s) => g.measureText(s).width));
+        if (widest <= W * 0.84 && lines.length * size * 1.02 <= H * 0.56 && lines.length <= 3) break;
+      }
+      textFont = size;
+      g.fillStyle = "#fff";
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      const lh = size * 1.02;
+      lines.forEach((s, i) => g.fillText(s, W / 2, H / 2 + (i - (lines.length - 1) / 2) * lh));
+
+      // Sample the letters, then keep a random share so the count stays light.
+      const img = g.getImageData(0, 0, tc.width, tc.height).data;
+      const step = Math.max(1, Math.round(size / 90));
+      const ink = [];
+      for (let y = 0; y < tc.height; y += step) {
+        for (let x = 0; x < tc.width; x += step) if (img[(y * tc.width + x) * 4 + 3] > 140) ink.push(x, y);
+      }
+      const ps = Math.max(1, size / 80);
+      const want = Math.min(4200, Math.max(700, (ink.length / 2) * step * step / (ps * ps * 3.2)));
+      const keep = want / (ink.length / 2);
+      const rnd = seeded(7);
+      particles = [];
+      for (let i = 0; i < ink.length; i += 2) {
+        if (rnd() > keep) continue;
+        const tx = ink[i] + (rnd() - 0.5) * step, ty = ink[i + 1] + (rnd() - 0.5) * step;
+        const fx = rnd() * W, fy = H * (0.2 + rnd() * 0.6);
+        particles.push({
+          tx, ty,
+          sx: tx + (fx - tx) * 0.7, sy: ty + (fy - ty) * 0.7,
+          d: (tx / W) * 0.35 + rnd() * 0.2,
+          e: (tx / W) * 0.35 + rnd() * 0.25,
+          vx: U * (0.15 + rnd() * 0.3), vy: U * (rnd() * 0.45 - 0.32),
+          ph: rnd() * TAU,
+          c: rnd() < 0.18 ? 2 : rnd() < 0.3 ? 0 : 1,
+          s: ps * (rnd() < 0.1 ? 1.6 : 1),
+        });
+      }
+      // a blurred copy of the words for the soft bloom behind the particles
+      textGlow = document.createElement("canvas");
+      textGlow.width = tc.width;
+      textGlow.height = tc.height;
+      const gg = textGlow.getContext("2d");
+      gg.font = `400 ${size}px ${family}`;
+      gg.textAlign = "center";
+      gg.textBaseline = "middle";
+      gg.shadowColor = css(AMBER, 1);
+      gg.shadowBlur = size * 0.25;
+      gg.fillStyle = css(GLOW, 0.5);
+      lines.forEach((s, i) => gg.fillText(s, W / 2, H / 2 + (i - (lines.length - 1) / 2) * lh));
+    }
+
+    const TINTS = [css(AMBER), css(GLOW), css(HOT)];
+    const bucket = Array.from({ length: 15 }, () => []);
+    function drawHeadline(l, len) {
+      if (!particles) return;
+      const hold = smooth(1.0, 1.5, l) * (1 - smooth(1.9, 2.4, l));
+      ctx.globalCompositeOperation = "lighter";
+      alpha(0.55 * hold);
+      ctx.drawImage(textGlow, 0, 0, W, H);
+      alpha(0.1 * hold);
+      ctx.drawImage(textGlow, 0, 0, W, H);
+
+      for (const b of bucket) b.length = 0;
+      for (const p of particles) {
+        let x, y, a;
+        const u = (l - 0.05 - p.d) / 0.95;
+        if (u <= 0) continue;
+        const k = easeOut(u);
+        const swirl = Math.sin(Math.PI * clamp01(u)) * U * 0.04;
+        x = p.sx + (p.tx - p.sx) * k + Math.cos(p.ph) * swirl;
+        y = p.sy + (p.ty - p.sy) * k + Math.sin(p.ph) * swirl;
+        a = 0.25 + 0.75 * clamp01(u * 1.3);
+        const q = l - 2.0 - p.e;
+        if (q > 0) {
+          const m = q ** 1.3;
+          x += p.vx * m + Math.sin(q * 2.2 + p.ph) * U * 0.03 * q;
+          y += p.vy * m + Math.cos(q * 1.8 + p.ph) * U * 0.03 * q;
+          a *= 1 - smooth(0.1, 1.1, q);
+        } else {
+          a *= 0.8 + 0.2 * Math.sin(l * 5 + p.ph);
+        }
+        if (a <= 0.02) continue;
+        bucket[p.c * 5 + Math.min(4, Math.floor(a * 5))].push(x, y, p.s);
+      }
+      for (let i = 0; i < 15; i++) {
+        const list = bucket[i];
+        if (!list.length) continue;
+        ctx.beginPath();
+        for (let j = 0; j < list.length; j += 3) ctx.rect(list[j] - list[j + 2] / 2, list[j + 1] - list[j + 2] / 2, list[j + 2], list[j + 2]);
+        alpha(((i % 5) + 0.6) / 5);
+        ctx.fillStyle = TINTS[Math.floor(i / 5)];
+        ctx.fill();
+      }
+      ctx.globalCompositeOperation = "source-over";
+    }
+
+    // ---------------------------------------------------------------
+    // Timeline, in seconds. Each scene has a window in the 12 second loop, and
+    // neighbours overlap for a soft crossfade with a gentle push in.
+    const LOOP = 12;
+    const SCENES = [
+      { start: 11.4, len: 4.0, draw: drawGlobe },
+      { start: 2.7, len: 3.8, draw: drawHardware },
+      { start: 5.8, len: 3.8, draw: drawBoard },
+      { start: 8.9, len: 3.4, draw: drawHeadline, fadeIn: 0.3 },
+    ];
+
+    let bgLayer = null, vignette = null, grain = null;
+    function buildLayers() {
+      const make = () => {
+        const c = document.createElement("canvas");
+        c.width = canvas.width;
+        c.height = canvas.height;
+        return c;
+      };
+      const m = Math.max(W, H);
+      bgLayer = make();
+      let g = bgLayer.getContext("2d");
+      g.scale(dpr, dpr);
+      g.fillStyle = css(BG);
+      g.fillRect(0, 0, W, H);
+      let grad = g.createRadialGradient(W / 2, H * 0.45, 0, W / 2, H * 0.45, m * 0.6);
+      grad.addColorStop(0, css(mix(BG, AMBER, 0.05)));
+      grad.addColorStop(1, css(BG, 0));
+      g.fillStyle = grad;
+      g.fillRect(0, 0, W, H);
+
+      vignette = make();
+      g = vignette.getContext("2d");
+      g.scale(dpr, dpr);
+      grad = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.hypot(W, H) * 0.6);
+      grad.addColorStop(0, css(mix(BG, BLACK, 0.5), 0));
+      grad.addColorStop(1, css(mix(BG, BLACK, 0.5), 0.8));
+      g.fillStyle = grad;
+      g.fillRect(0, 0, W, H);
+
+      // fine film grain, tiled
+      const n = document.createElement("canvas");
+      n.width = n.height = 128;
+      g = n.getContext("2d");
+      const data = g.createImageData(128, 128), rnd = seeded(3);
+      for (let i = 0; i < data.data.length; i += 4) {
+        const v = rnd() * 255;
+        data.data[i] = data.data[i + 1] = data.data[i + 2] = v;
+        data.data[i + 3] = 255;
+      }
+      g.putImageData(data, 0, 0);
+      grain = ctx.createPattern(n, "repeat");
+    }
+
+    function render(t, still) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "source-over";
+      ctx.drawImage(bgLayer, 0, 0);
+
+      for (const s of SCENES) {
+        const l = (((t - s.start) % LOOP) + LOOP) % LOOP;
+        if (l >= s.len) continue;
+        const fin = s.fadeIn ?? 0.7;
+        SA = smooth(0, fin, l) * (1 - smooth(s.len - 0.7, s.len, l));
+        if (SA <= 0.001) continue;
+        // push in: arrive from slightly small, leave slightly large
+        const z = (0.965 + 0.035 * easeOut(l / 1.0)) * (1 + 0.05 * smooth(s.len - 0.9, s.len, l));
+        ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * (W / 2) * (1 - z), dpr * (H / 2) * (1 - z));
+        s.draw(l, s.len);
+      }
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "source-over";
+      ctx.drawImage(vignette, 0, 0);
+      ctx.globalAlpha = 0.035;
+      ctx.fillStyle = grain;
+      const ox = still ? 0 : Math.floor(Math.random() * 128), oy = still ? 0 : Math.floor(Math.random() * 128);
+      ctx.translate(-ox, -oy);
+      ctx.fillRect(0, 0, canvas.width + 128, canvas.height + 128);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = 1;
+    }
+
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = window.innerWidth;
+      H = window.innerHeight;
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
+      U = Math.min(W, H);
+      lw = Math.max(0.75, U / 620);
+      fs = Math.max(7, Math.min(15, U * 0.028));
+      layoutHardware(H > W * 1.15);
+      buildLayers();
+      buildText();
+    }
+
+    let frame = 0;
+    function loop(ms) {
+      render((ms / 1000) % LOOP, false);
+      frame = requestAnimationFrame(loop);
+    }
+
+    // Reduced motion: one still frame of the globe with its arcs out.
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    function still() {
+      cancelAnimationFrame(frame);
+      frame = 0;
+      render(2.35, true);
+    }
+    function apply() {
+      if (reduce.matches) still();
+      else if (!frame) frame = requestAnimationFrame(loop);
+    }
+
+    let resizeTimer;
+    window.addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        resize();
+        if (reduce.matches) still();
+      }, 150);
+    });
+    reduce.addEventListener("change", apply);
+
+    resize();
+    apply();
+    // Rebuild the headline once the fonts arrive (or after a short wait if they cannot load).
+    Promise.race([
+      Promise.all([document.fonts.load('400 64px "Instrument Serif"'), document.fonts.load('400 12px "JetBrains Mono"')]),
+      new Promise((r) => setTimeout(r, 2500)),
+    ]).then(() => {
+      buildText();
+      if (reduce.matches) still();
+    });
+  </script>
+</body>
+</html>

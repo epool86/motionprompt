@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Y2K chrome demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/unbounded@5.3.0/900.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=dcd6ff&ink=2b2f5c&accent=ff9ad8&accent2=8fd8ff */
+    :root {
+      --bg: #dcd6ff;
+      --accent: #ff9ad8;
+      --accent2: #8fd8ff;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      /* Pastel sky melting into silver */
+      background: linear-gradient(172deg,
+        color-mix(in srgb, var(--accent2) 45%, white) 0%,
+        var(--bg) 34%,
+        color-mix(in srgb, var(--accent) 38%, white) 58%,
+        #eef0f6 80%,
+        #c3c8d4 100%);
+    }
+
+    .stage {
+      position: fixed;
+      inset: 0;
+    }
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage" role="img">
+    <canvas id="back" aria-hidden="true"></canvas>
+    <canvas id="gl" aria-hidden="true"></canvas>
+    <canvas id="front" aria-hidden="true"></canvas>
+  </div>
+
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js";
+
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => "#" + (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const colors = { bg: hex("bg", "dcd6ff"), ink: hex("ink", "2b2f5c"), accent: hex("accent", "ff9ad8"), accent2: hex("accent2", "8fd8ff") };
+    for (const key of ["bg", "accent", "accent2"]) document.documentElement.style.setProperty(`--${key}`, colors[key]);
+    const text = (params.get("text") || "Stay shiny").trim().slice(0, 40).toUpperCase();
+    document.getElementById("stage").setAttribute("aria-label", `Y2K liquid chrome: a shiny morphing chrome blob with a chrome star, bubbles, holographic stickers, sparkles and the words ${text}`);
+
+    const LOOP = 10; // seconds
+    const TAU = Math.PI * 2;
+    const FONT = '900 100px Unbounded, "Arial Black", sans-serif';
+
+    const back = document.getElementById("back"), bctx = back.getContext("2d");
+    const front = document.getElementById("front"), fctx = front.getContext("2d");
+    const glCanvas = document.getElementById("gl");
+
+    // ---- Three.js: renderer, camera and a pastel studio to reflect ----
+    const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, alpha: true });
+    renderer.setClearColor(0x000000, 0);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
+    camera.position.set(0, 0, 10);
+
+    // A sky dome with a sharp bright horizon and a dark floor: the classic chrome look,
+    // plus soft coloured bands and a few bright panels for crisp highlights.
+    function makeEnvironment() {
+      const env = new THREE.Scene();
+      const c = (h) => new THREE.Color(h);
+      const sky = new THREE.ShaderMaterial({
+        side: THREE.BackSide,
+        uniforms: {
+          top: { value: c(colors.bg) }, low: { value: c(colors.accent) }, cool: { value: c(colors.accent2) },
+          dark: { value: c(colors.ink) }, floor: { value: c(colors.bg) },
+        },
+        vertexShader: "varying vec3 vDir; void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+        fragmentShader: `
+          uniform vec3 top, low, cool, dark, floor;
+          varying vec3 vDir;
+          void main() {
+            float y = vDir.y;
+            float az = atan(vDir.z, vDir.x);
+            // Sky: pastel near the horizon, bright white higher up.
+            vec3 band = mix(low, cool, 0.5 + 0.5 * sin(az * 2.0 + 0.6));
+            vec3 skyCol = mix(band * 1.1, vec3(1.3), smoothstep(0.2, 0.9, y));
+            // Big soft dark patches in the sky give chrome its contrast.
+            float patches = smoothstep(0.5, 0.95, 0.5 + 0.5 * sin(az * 2.0 - 1.2)) * smoothstep(0.08, 0.3, y) * smoothstep(0.9, 0.55, y);
+            skyCol = mix(skyCol, dark * 0.25, patches);
+            // Floor: a deep band under the horizon, then a soft pastel floor.
+            vec3 ground = mix(dark * 0.08, mix(floor, band, 0.45) * 0.85, smoothstep(-0.2, -0.75, y));
+            vec3 col = y > 0.0 ? skyCol : ground;
+            col += vec3(1.6) * smoothstep(0.03, 0.0, abs(y - 0.02));
+            gl_FragColor = vec4(col, 1.0);
+          }`,
+      });
+      env.add(new THREE.Mesh(new THREE.SphereGeometry(40, 64, 32), sky));
+      const panel = (w, h, color, strength, pos) => {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: c(color).multiplyScalar(strength), side: THREE.DoubleSide }));
+        m.position.set(...pos);
+        m.lookAt(0, 0, 0);
+        env.add(m);
+      };
+      panel(26, 3, "#ffffff", 5, [0, 15, 12]);
+      panel(3, 20, "#ffffff", 4, [-16, 4, 10]);
+      panel(2, 12, "#ffffff", 3, [12, 8, 12]);
+      panel(8, 14, colors.accent, 2.4, [16, 2, 6]);
+      panel(10, 6, colors.accent2, 2.4, [4, -3, 18]);
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      const target = pmrem.fromScene(env, 0.02);
+      pmrem.dispose();
+      return target.texture;
+    }
+    scene.environment = makeEnvironment();
+
+    // Chrome with a thin film of rainbow on top, for the holographic sheen.
+    const chrome = (tint, rough = 0.06) => new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color(tint), metalness: 1, roughness: rough,
+      iridescence: 1, iridescenceIOR: 1.6, iridescenceThicknessRange: [220, 680],
+    });
+
+    // ---- The liquid blob: a sphere pushed around by looping 3D noise on the GPU ----
+    const blobUniforms = { uPhase: { value: 0 }, uAmp: { value: 0.3 } };
+    const blobMat = chrome("#f4f0ff", 0.025);
+    blobMat.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, blobUniforms);
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", `#include <common>
+          uniform float uPhase;
+          uniform float uAmp;
+          vec3 blobPos;
+          vec4 permute(vec4 x) { return mod(((x * 34.0) + 1.0) * x, 289.0); }
+          vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+          float snoise(vec3 v) {
+            const vec2 C = vec2(1.0 / 6.0, 1.0 / 3.0);
+            const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+            vec3 i = floor(v + dot(v, C.yyy));
+            vec3 x0 = v - i + dot(i, C.xxx);
+            vec3 g = step(x0.yzx, x0.xyz);
+            vec3 l = 1.0 - g;
+            vec3 i1 = min(g.xyz, l.zxy);
+            vec3 i2 = max(g.xyz, l.zxy);
+            vec3 x1 = x0 - i1 + C.xxx;
+            vec3 x2 = x0 - i2 + 2.0 * C.xxx;
+            vec3 x3 = x0 - 1.0 + 3.0 * C.xxx;
+            i = mod(i, 289.0);
+            vec4 p = permute(permute(permute(i.z + vec4(0.0, i1.z, i2.z, 1.0)) + i.y + vec4(0.0, i1.y, i2.y, 1.0)) + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+            float n_ = 1.0 / 7.0;
+            vec3 ns = n_ * D.wyz - D.xzx;
+            vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+            vec4 x_ = floor(j * ns.z);
+            vec4 y_ = floor(j - 7.0 * x_);
+            vec4 x = x_ * ns.x + ns.yyyy;
+            vec4 y = y_ * ns.x + ns.yyyy;
+            vec4 h = 1.0 - abs(x) - abs(y);
+            vec4 b0 = vec4(x.xy, y.xy);
+            vec4 b1 = vec4(x.zw, y.zw);
+            vec4 s0 = floor(b0) * 2.0 + 1.0;
+            vec4 s1 = floor(b1) * 2.0 + 1.0;
+            vec4 sh = -step(h, vec4(0.0));
+            vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+            vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
+            vec3 p0 = vec3(a0.xy, h.x);
+            vec3 p1 = vec3(a0.zw, h.y);
+            vec3 p2 = vec3(a1.xy, h.z);
+            vec3 p3 = vec3(a1.zw, h.w);
+            vec4 norm = taylorInvSqrt(vec4(dot(p0, p0), dot(p1, p1), dot(p2, p2), dot(p3, p3)));
+            p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+            vec4 m = max(0.6 - vec4(dot(x0, x0), dot(x1, x1), dot(x2, x2), dot(x3, x3)), 0.0);
+            m = m * m;
+            return 42.0 * dot(m * m, vec4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
+          }
+          // The noise travels round a circle, so the shape comes back to the start every loop.
+          vec3 displaced(vec3 n) {
+            vec3 o1 = vec3(cos(uPhase), sin(uPhase), 0.0) * 0.6;
+            vec3 o2 = vec3(0.0, cos(uPhase * 2.0), sin(uPhase * 2.0)) * 0.35;
+            float d = snoise(n * 0.6 + o1) * 0.7 + snoise(n * 0.9 + o2 + 4.0) * 0.3;
+            return n * (1.0 + uAmp * d);
+          }`)
+        .replace("#include <beginnormal_vertex>", `
+          vec3 n0 = normalize(position);
+          vec3 tng = normalize(cross(n0, abs(n0.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+          vec3 btg = cross(n0, tng);
+          blobPos = displaced(n0);
+          vec3 pa = displaced(normalize(n0 + tng * 0.01));
+          vec3 pb = displaced(normalize(n0 + btg * 0.01));
+          vec3 objectNormal = normalize(cross(pa - blobPos, pb - blobPos));`)
+        .replace("#include <begin_vertex>", "vec3 transformed = blobPos;");
+    };
+    let blobGeo = null;
+    const blob = new THREE.Mesh(new THREE.BufferGeometry(), blobMat);
+    scene.add(blob);
+
+    // A chunky chrome star.
+    function starShape(r, inner) {
+      const s = new THREE.Shape();
+      for (let i = 0; i < 10; i++) {
+        const a = Math.PI / 2 + (i / 10) * TAU;
+        const k = i % 2 ? r * inner : r;
+        i ? s.lineTo(Math.cos(a) * k, Math.sin(a) * k) : s.moveTo(Math.cos(a) * k, Math.sin(a) * k);
+      }
+      return s;
+    }
+    const starGeo = new THREE.ExtrudeGeometry(starShape(1, 0.48), { depth: 0.28, bevelEnabled: true, bevelThickness: 0.2, bevelSize: 0.14, bevelSegments: 6, curveSegments: 4 });
+    starGeo.center();
+    const star3d = new THREE.Mesh(starGeo, chrome("#e8eeff", 0.08));
+    scene.add(star3d);
+
+    // A pink chrome ring that orbits the blob, and a few bubbles.
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1, 0.36, 32, 72), chrome(colors.accent, 0.1));
+    scene.add(ring);
+    const bubbleGeo = new THREE.SphereGeometry(1, 48, 32);
+    const bubbles = [colors.accent2, "#ffffff", colors.bg].map((c) => {
+      const m = new THREE.Mesh(bubbleGeo, chrome(c, 0.05));
+      scene.add(m);
+      return m;
+    });
+
+    // ---- Layout: everything is placed in pixels, then turned into world units ----
+    let W = 0, H = 0, U = 0, dpr = 1, ppu = 1, L = null, head = null;
+
+    const toWorld = (x, y) => [(x - W / 2) / ppu, -(y - H / 2) / ppu];
+    const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
+
+    function layout() {
+      W = innerWidth; H = innerHeight; U = Math.min(W, H);
+      dpr = Math.min(devicePixelRatio || 1, 2);
+      renderer.setPixelRatio(dpr);
+      renderer.setSize(W, H, false);
+      camera.aspect = W / H;
+      camera.updateProjectionMatrix();
+      ppu = H / (2 * 10 * Math.tan(THREE.MathUtils.degToRad(15)));
+      for (const c of [back, front]) {
+        c.width = Math.round(W * dpr);
+        c.height = Math.round(H * dpr);
+      }
+
+      const a = W / H;
+      const rb = a < 0.8 ? Math.min(W * 0.36, H * 0.24) : Math.min(W * 0.34, H * (a > 1.3 ? 0.3 : 0.25));
+      const cx = W / 2, cy = a < 0.8 ? H * 0.41 : H * 0.4;
+      const m = U * 0.06;
+      L = { cx, cy, rb, a };
+
+      // Blob mesh detail follows the size on screen.
+      const seg = rb * dpr > 220 ? 150 : 96;
+      if (!blobGeo || blobGeo.userData.seg !== seg) {
+        if (blobGeo) blobGeo.dispose();
+        blobGeo = new THREE.SphereGeometry(1, seg, Math.round(seg * 0.75));
+        blobGeo.userData.seg = seg;
+        blob.geometry = blobGeo;
+      }
+
+      // Supporting shapes around the blob, kept inside the frame.
+      const sr = rb * 0.3;
+      L.star = { x: clamp(cx + rb * 1.3, sr * 1.4 + m, W - sr * 1.4 - m), y: clamp(cy - rb * 0.95, sr * 1.4 + m, H), r: sr };
+      L.ringR = rb * 0.17;
+      L.bubbles = [
+        { x: cx - rb * 1.25, y: cy + rb * 0.15, r: rb * 0.15 },
+        { x: cx + rb * 1.12, y: cy + rb * 0.05, r: rb * 0.09 },
+        { x: cx - rb * 0.7, y: cy - rb * 1.12, r: rb * 0.07 },
+      ].map((b) => ({ ...b, x: clamp(b.x, b.r + m * 0.5, W - b.r - m * 0.5), y: clamp(b.y, b.r + m * 0.5, H - b.r - m * 0.5) }));
+
+      head = buildHeadline();
+
+      // Stickers: a butterfly up top and a star down below.
+      const bs = Math.max(14, rb * 0.36);
+      L.butterfly = { x: clamp(cx - rb * 1.25, bs * 1.2 + m * 0.5, W - bs * 1.2), y: clamp(cy - rb * 0.9, bs + m * 0.5, H), s: bs };
+      const ss = Math.max(12, rb * 0.26);
+      const below = head.bottom + ss * 1.4;
+      L.sticker = a < 0.8 && below < H - ss - m * 0.5
+        ? { x: cx + rb * 0.85, y: below, s: ss }
+        : { x: clamp(cx + rb * 1.55, ss + m, W - ss - m * 0.5), y: clamp(cy + rb * 0.75, ss, H - ss - m * 0.5), s: ss };
+
+      drawBack();
+    }
+
+    // ---- Background: soft glow, a perspective grid and the blob's shadow ----
+    function drawBack() {
+      const g = bctx;
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, W, H);
+      const { cx, cy, rb } = L;
+      const glow = g.createRadialGradient(cx, cy, rb * 0.2, cx, cy, rb * 2.2);
+      glow.addColorStop(0, "rgba(255, 255, 255, 0.85)");
+      glow.addColorStop(1, "rgba(255, 255, 255, 0)");
+      g.fillStyle = glow;
+      g.fillRect(0, 0, W, H);
+
+      const horizon = Math.min(H * 0.8, cy + rb * 0.55);
+      const floorH = H - horizon;
+      g.save();
+      g.beginPath();
+      g.rect(0, horizon, W, floorH);
+      g.clip();
+      g.lineWidth = Math.max(0.7, U / 450);
+      const fade = g.createLinearGradient(0, horizon, 0, H);
+      fade.addColorStop(0, "rgba(255, 255, 255, 0)");
+      fade.addColorStop(1, "rgba(255, 255, 255, 0.95)");
+      g.strokeStyle = fade;
+      g.beginPath();
+      for (let k = 1; k < 30; k++) {
+        const y = horizon + floorH / (k * 0.45);
+        if (y < horizon + 1) break;
+        g.moveTo(0, y);
+        g.lineTo(W, y);
+      }
+      const gap = U * 0.14;
+      for (let i = -24; i <= 24; i++) {
+        g.moveTo(W / 2 + i * gap * 0.25, horizon);
+        g.lineTo(W / 2 + i * gap * 1.8, H + floorH);
+      }
+      g.stroke();
+      g.restore();
+
+      const shadow = g.createRadialGradient(cx, 0, 0, cx, 0, rb * 1.1);
+      shadow.addColorStop(0, "rgba(60, 50, 110, 0.28)");
+      shadow.addColorStop(1, "rgba(60, 50, 110, 0)");
+      g.save();
+      g.translate(0, cy + rb * 1.28);
+      g.scale(1, 0.16);
+      g.fillStyle = shadow;
+      g.fillRect(cx - rb * 1.2, -rb * 1.2, rb * 2.4, rb * 2.4);
+      g.restore();
+    }
+
+    function makeCanvas(w, h) {
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(w * dpr));
+      c.height = Math.max(1, Math.round(h * dpr));
+      const g = c.getContext("2d");
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return [c, g];
+    }
+
+    // ---- The chrome headline, drawn once per size ----
+    function buildHeadline() {
+      const { cx, cy, rb, a } = L;
+      fctx.font = FONT;
+      const widthOf = (s) => fctx.measureText(s).width / 100;
+      const words = text.split(/\s+/).filter(Boolean);
+      const options = [[words.join(" ")]];
+      for (let i = 1; i < words.length; i++) options.push([words.slice(0, i).join(" "), words.slice(i).join(" ")]);
+      const maxW = W * 0.88;
+      const top = cy + rb * (a > 1.3 ? 0.45 : 0.62);
+      const maxH = Math.min(H * 0.94 - top, rb * (a < 0.8 ? 1.45 : 1.25));
+      let best = null;
+      for (const lines of options) {
+        const size = Math.min(maxW / (Math.max(...lines.map(widthOf)) * 1.04), maxH / (lines.length * 1.08), U * 0.2);
+        if (!best || size > best.size * 1.05) best = { lines, size };
+      }
+      const { lines, size } = best;
+      const lh = size * 1.08;
+      const pad = size * 0.35;
+      const bw = Math.max(...lines.map(widthOf)) * size * 1.04 + pad * 2;
+      const bh = lines.length * lh + pad * 2;
+      const [c, g] = makeCanvas(bw, bh);
+      const [mask, gm] = makeCanvas(bw, bh);
+      const font = FONT.replace("100px", `${size}px`);
+      for (const ctx of [g, gm]) {
+        ctx.font = font;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "alphabetic";
+      }
+      const cap = g.measureText("H").actualBoundingBoxAscent;
+      const base = (i) => pad + lh * i + (lh + cap) / 2;
+      const each = (fn) => lines.forEach((line, i) => fn(line, base(i)));
+
+      // Soft coloured shadow and a short extrusion for depth.
+      const depth = Math.max(2, Math.round(size * 0.07));
+      each((line, y) => {
+        g.save();
+        g.shadowColor = "rgba(70, 50, 140, 0.45)";
+        g.shadowBlur = size * 0.25;
+        g.shadowOffsetY = size * 0.1;
+        g.fillStyle = colors.ink;
+        g.fillText(line, bw / 2, y + depth);
+        g.restore();
+        for (let d = depth; d > 0; d--) {
+          g.fillStyle = d > depth / 2 ? colors.ink : "#6d6aa8";
+          g.fillText(line, bw / 2, y + d);
+        }
+      });
+      // Dark outline, then a bright silver rim, then the mirror fill.
+      each((line, y) => {
+        g.lineJoin = "round";
+        g.lineWidth = size * 0.12;
+        g.strokeStyle = colors.ink;
+        g.strokeText(line, bw / 2, y);
+        const rim = g.createLinearGradient(0, y - cap, 0, y);
+        rim.addColorStop(0, "#ffffff");
+        rim.addColorStop(0.5, "#aab3cc");
+        rim.addColorStop(1, "#ffffff");
+        g.lineWidth = size * 0.07;
+        g.strokeStyle = rim;
+        g.strokeText(line, bw / 2, y);
+        const fill = g.createLinearGradient(0, y - cap, 0, y);
+        fill.addColorStop(0, "#ffffff");
+        fill.addColorStop(0.25, "#e4ecff");
+        fill.addColorStop(0.47, colors.accent2);
+        fill.addColorStop(0.5, colors.ink);
+        fill.addColorStop(0.56, "#7a64b8");
+        fill.addColorStop(0.78, colors.accent);
+        fill.addColorStop(1, "#fff6fb");
+        g.fillStyle = fill;
+        g.fillText(line, bw / 2, y);
+        gm.fillText(line, bw / 2, y);
+      });
+      // Faint rainbow film over the letters.
+      const [film, gf] = makeCanvas(bw, bh);
+      const rainbow = gf.createLinearGradient(0, 0, bw, 0);
+      ["#ffb3e6", "#c9b6ff", "#9fe7ff", "#b8ffd9", "#fff3a8", "#ffb3e6"].forEach((col, i, arr) => rainbow.addColorStop(i / (arr.length - 1), col));
+      gf.fillStyle = rainbow;
+      gf.fillRect(0, 0, bw, bh);
+      gf.globalCompositeOperation = "destination-in";
+      gf.setTransform(1, 0, 0, 1, 0, 0);
+      gf.drawImage(mask, 0, 0);
+      g.save();
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.globalAlpha = 0.28;
+      g.globalCompositeOperation = "overlay";
+      g.drawImage(film, 0, 0);
+      g.restore();
+
+      const [sweep, gs] = makeCanvas(bw, bh);
+      const textTop = base(0) - cap, textBottom = base(lines.length - 1);
+      return { c, mask, sweep, gs, w: bw, h: bh, x: cx - bw / 2, y: top - pad, bottom: top + lines.length * lh, size, cap, textTop, textBottom, lines };
+    }
+
+    // ---- Small 2D pieces: glints and holographic stickers ----
+    function glint(g, x, y, s, spin) {
+      g.save();
+      g.translate(x, y);
+      g.rotate(spin);
+      const halo = g.createRadialGradient(0, 0, 0, 0, 0, s * 0.9);
+      halo.addColorStop(0, "rgba(255, 255, 255, 0.9)");
+      halo.addColorStop(1, "rgba(255, 255, 255, 0)");
+      g.fillStyle = halo;
+      g.beginPath();
+      g.arc(0, 0, s * 0.9, 0, TAU);
+      g.fill();
+      g.fillStyle = "#ffffff";
+      g.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * TAU;
+        const r = i % 2 ? s * 0.12 : s * (i % 4 ? 0.7 : 1.25);
+        g.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      g.closePath();
+      g.fill();
+      g.restore();
+    }
+
+    function holo(g, s, t) {
+      const a = t * TAU * 0.1;
+      const grad = g.createLinearGradient(-Math.cos(a) * s, -Math.sin(a) * s, Math.cos(a) * s, Math.sin(a) * s);
+      ["#ffb3e6", "#c9b6ff", "#9fe7ff", "#b8ffd9", "#fff3a8", "#ffb3e6"].forEach((col, i, arr) => grad.addColorStop(i / (arr.length - 1), col));
+      return grad;
+    }
+
+    // Draw a sticker: a white die-cut border with a soft shadow, a holographic face and a gloss.
+    function sticker(g, s, t, path) {
+      g.lineJoin = "round";
+      g.save();
+      g.shadowColor = "rgba(60, 40, 120, 0.3)";
+      g.shadowBlur = s * 0.25;
+      g.shadowOffsetY = s * 0.08;
+      path();
+      g.lineWidth = s * 0.22;
+      g.strokeStyle = "#ffffff";
+      g.stroke();
+      g.restore();
+      path();
+      g.lineWidth = s * 0.22;
+      g.strokeStyle = "#ffffff";
+      g.stroke();
+      g.fillStyle = holo(g, s, t);
+      g.fill();
+      g.lineWidth = Math.max(1, s * 0.04);
+      g.strokeStyle = colors.ink;
+      g.globalAlpha = 0.55;
+      g.stroke();
+      g.globalAlpha = 1;
+    }
+
+    function butterfly(g, x, y, s, t, phase) {
+      const flap = 0.72 + 0.28 * Math.cos(phase * 6);
+      g.save();
+      g.translate(x, y + Math.sin(phase * 2) * s * 0.12);
+      g.rotate(-0.25 + Math.sin(phase) * 0.08);
+      const wings = () => {
+        g.beginPath();
+        for (const side of [1, -1]) {
+          const k = side * flap * s;
+          g.moveTo(0, -0.05 * s);
+          g.bezierCurveTo(0.25 * k, -0.95 * s, 1.05 * k, -1.0 * s, 0.98 * k, -0.4 * s);
+          g.bezierCurveTo(0.95 * k, -0.08 * s, 0.5 * k, 0.02 * s, 0.1 * k, 0.04 * s);
+          g.bezierCurveTo(0.6 * k, 0.1 * s, 0.85 * k, 0.45 * s, 0.62 * k, 0.72 * s);
+          g.bezierCurveTo(0.42 * k, 0.95 * s, 0.1 * k, 0.6 * s, 0, 0.12 * s);
+          g.closePath();
+        }
+      };
+      sticker(g, s, t, wings);
+      g.fillStyle = colors.ink;
+      g.beginPath();
+      g.ellipse(0, 0.08 * s, 0.07 * s, 0.46 * s, 0, 0, TAU);
+      g.fill();
+      g.lineWidth = Math.max(1, s * 0.045);
+      g.strokeStyle = colors.ink;
+      g.lineCap = "round";
+      g.beginPath();
+      g.moveTo(-0.02 * s, -0.34 * s);
+      g.quadraticCurveTo(-0.12 * s, -0.62 * s, -0.26 * s, -0.66 * s);
+      g.moveTo(0.02 * s, -0.34 * s);
+      g.quadraticCurveTo(0.12 * s, -0.62 * s, 0.26 * s, -0.66 * s);
+      g.stroke();
+      g.restore();
+    }
+
+    function starSticker(g, x, y, s, t, phase) {
+      g.save();
+      g.translate(x, y);
+      g.rotate(0.2 + Math.sin(phase) * 0.12);
+      sticker(g, s, t + 3, () => {
+        g.beginPath();
+        for (let i = 0; i < 10; i++) {
+          const a = -Math.PI / 2 + (i / 10) * TAU;
+          const r = i % 2 ? s * 0.48 : s;
+          g.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+        }
+        g.closePath();
+      });
+      g.restore();
+    }
+
+    // When and where the star glints appear (times in seconds, spots around the blob and words).
+    const glints = [
+      { t: 0.6, spot: () => [L.cx - L.rb * 0.42, L.cy - L.rb * 0.5], k: 0.34 },
+      { t: 2.1, spot: () => [head.x + head.w * 0.84, head.y + head.textTop], k: 0.3 },
+      { t: 3.4, spot: () => [L.star.x + L.star.r * 0.5, L.star.y - L.star.r * 0.6], k: 0.26 },
+      { t: 5.2, spot: () => [L.cx + L.rb * 0.5, L.cy - L.rb * 0.62], k: 0.3 },
+      { t: 6.9, spot: () => [head.x + head.w * 0.15, head.y + head.textTop], k: 0.26 },
+      { t: 8.3, spot: () => [L.bubbles[0].x - L.bubbles[0].r * 0.3, L.bubbles[0].y - L.bubbles[0].r * 0.4], k: 0.22 },
+    ];
+
+    // ---- One frame at time t (seconds, 0 to LOOP) ----
+    function render(t) {
+      const phase = (t / LOOP) * TAU;
+      const { cx, cy, rb } = L;
+      const bob = Math.sin(phase * 2) * rb * 0.04;
+
+      // Blob: slow full turn, a squishy morph and a gentle bob.
+      blobUniforms.uPhase.value = phase;
+      blobUniforms.uAmp.value = 0.3 + 0.06 * Math.sin(phase * 2);
+      const [bx, by] = toWorld(cx, cy + bob);
+      blob.position.set(bx, by, 0);
+      blob.scale.setScalar(rb / ppu);
+      blob.rotation.set(0.25 * Math.sin(phase), phase, 0);
+
+      const [sx, sy] = toWorld(L.star.x, L.star.y + Math.sin(phase * 2 + 1) * L.star.r * 0.15);
+      star3d.position.set(sx, sy, 0);
+      star3d.scale.setScalar(L.star.r / ppu);
+      star3d.rotation.set(0.35 + Math.sin(phase * 2) * 0.15, Math.sin(phase) * 0.75, 0.15 + Math.sin(phase + 1) * 0.2);
+
+      // Ring orbits once per loop, passing behind the blob.
+      const o = phase + 0.8;
+      const [rx, ry] = toWorld(cx + Math.cos(o) * rb * 1.42, cy - Math.sin(o) * rb * 0.35 + bob);
+      ring.position.set(rx, ry, (Math.sin(o) * rb * 1.2) / ppu);
+      ring.scale.setScalar(L.ringR / ppu);
+      ring.rotation.set(1.1 + Math.sin(phase) * 0.3, phase * 2, 0.4);
+
+      bubbles.forEach((m, i) => {
+        const b = L.bubbles[i];
+        const [x, y] = toWorld(b.x, b.y + Math.sin(phase * (i + 1) + i * 2) * b.r * 0.6);
+        m.position.set(x, y, 0);
+        m.scale.setScalar(b.r / ppu);
+      });
+      renderer.render(scene, camera);
+
+      // Front layer: stickers, headline with a shine sweep, glints.
+      const g = fctx;
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, W, H);
+      butterfly(g, L.butterfly.x, L.butterfly.y, L.butterfly.s, t, phase);
+      starSticker(g, L.sticker.x, L.sticker.y, L.sticker.s, t, phase);
+
+      const hy = head.y + Math.sin(phase * 2 + 0.6) * head.size * 0.04;
+      g.drawImage(head.c, head.x, hy, head.w, head.h);
+      // A bright band sweeps across the letters twice per loop.
+      const p = ((t % 5) / 1.4);
+      if (p < 1) {
+        const gs = head.gs;
+        gs.setTransform(dpr, 0, 0, dpr, 0, 0);
+        gs.globalCompositeOperation = "source-over";
+        gs.clearRect(0, 0, head.w, head.h);
+        const band = head.w * 0.18;
+        const x = -band * 2 + (head.w + band * 4) * p;
+        const lg = gs.createLinearGradient(x - band, 0, x + band, head.h * 0.3);
+        lg.addColorStop(0, "rgba(255, 255, 255, 0)");
+        lg.addColorStop(0.5, "rgba(255, 255, 255, 0.95)");
+        lg.addColorStop(1, "rgba(255, 255, 255, 0)");
+        gs.fillStyle = lg;
+        gs.fillRect(0, 0, head.w, head.h);
+        gs.globalCompositeOperation = "destination-in";
+        gs.setTransform(1, 0, 0, 1, 0, 0);
+        gs.drawImage(head.mask, 0, 0);
+        g.globalCompositeOperation = "screen";
+        g.drawImage(head.sweep, head.x, hy, head.w, head.h);
+        g.globalCompositeOperation = "source-over";
+      }
+
+      for (const gl of glints) {
+        let d = t - gl.t;
+        if (d < 0) d += LOOP;
+        if (d > 1.1) continue;
+        const k = Math.sin((d / 1.1) * Math.PI);
+        const [x, y] = gl.spot();
+        glint(g, x, y, rb * gl.k * k, d * 1.2);
+      }
+    }
+
+    // ---- Run ----
+    let start = 0;
+    function frame(now) {
+      if (!start) start = now;
+      render(((now - start) / 1000) % LOOP);
+    }
+
+    // Reduced motion: one still frame with a glint on the blob.
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    function apply() {
+      if (reduce.matches) {
+        renderer.setAnimationLoop(null);
+        render(5.75);
+      } else {
+        start = 0;
+        renderer.setAnimationLoop(frame);
+      }
+    }
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        layout();
+        if (reduce.matches) render(5.75);
+      }, 100);
+    });
+    reduce.addEventListener("change", apply);
+
+    // Wait briefly for the font so the headline is drawn in the right face.
+    Promise.race([
+      document.fonts.load(FONT),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(() => {
+      layout();
+      apply();
+    });
+  </script>
+</body>
+</html>

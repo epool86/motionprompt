@@ -1,0 +1,18 @@
+Make my video in this style: Claymation.
+
+Look and motion
+- A soft 3D world that looks handmade from modelling clay, like a stop motion film. Everything is rounded and a little lumpy, with a matte finish and faint fingerprints pressed into the surface.
+- Build a small scene that fits my topic on a clay ground: objects and characters made of clay, chunky and friendly. Add a cute clay character (for example a round blob with dot eyes, rosy cheeks and a small smile) who reacts to what happens.
+- Warm, soft light from one side, with gentle soft shadows under everything.
+- Everything moves with squash and stretch: pieces squish up out of the ground or drop in and land with a jelly wobble, and the character crouches before each hop, stretches in the air and squashes when it lands.
+- Make it feel like real stop motion: step the motion at about 12 frames per second, and nudge every piece a tiny bit on each frame, as if moved by hand.
+- Put my headline on a clay sign or in clay letters, with the letters looking rolled and pressed into place. At the end, the character hops away and everything squishes back into the ground, so the video can loop.
+
+Type and colour
+- A rounded, chunky bold font (like Baloo 2) for the headline, so it looks like soft clay letters.
+- Use my brand colours if I give them. Otherwise use warm cream sky #f8e4cc, soft green ground #93cf7f, orange clay #ff9457, raspberry lettering #e24e5c, sunny yellow #ffc84a and a cream sign #fff2dd.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as a 3D scene in HTML (for example with Three.js) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

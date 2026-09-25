@@ -1,0 +1,19 @@
+Make my video in this style: Y2K chrome.
+
+Look and motion
+- A late 90s, early 2000s liquid chrome look on a soft pastel to silver gradient, with a faint perspective grid fading in at the bottom.
+- The hero is a shiny 3D chrome blob that slowly turns and morphs like liquid metal. Its mirror surface shows bright highlights, a dark horizon band and soft rainbow, holographic tints.
+- My message is a big chrome headline across the lower part of the blob: silver to pastel mirror gradient, a dark outline, a bright rim and a short 3D extrusion. A bright shine sweeps across the letters every few seconds.
+- If I have a product or logo, show it in the same chrome finish, floating next to the blob.
+- Around it float smaller chrome shapes: a chunky star, a little ring that orbits behind the blob, and glossy bubbles, all gently bobbing.
+- Add holographic stickers with a white die-cut border, like a butterfly that flaps its wings and a star, plus sparkly four point star glints that twinkle on the chrome and the words.
+- Keep the motion smooth and dreamy, with no hard cuts. Keep the headline short so it reads at a glance.
+
+Type and colour
+- A wide, heavy rounded font (like Unbounded), all capitals, with the chrome treatment described above.
+- Use my brand colours if I give them. Otherwise use lilac #dcd6ff, baby pink #ff9ad8, baby blue #8fd8ff, deep navy #2b2f5c for outlines and silver #c3c8d4.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with Three.js) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

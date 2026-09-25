@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Deepavali demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/rozha-one@5.3.0/400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/poppins@5.3.0/500.css">
+  <style>
+    /* Colours can be set from the URL: ?text=Title|Small line&bg=2a0a35&ink=ffe9c7&accent=f5c04a&accent2=d6246e */
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #2a0a35;
+    }
+
+    svg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .title {
+      font-family: "Rozha One", Georgia, serif;
+      font-weight: 400;
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+
+    .sub {
+      font-family: "Poppins", "Trebuchet MS", system-ui, sans-serif;
+      font-weight: 500;
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+  </style>
+</head>
+<body>
+  <svg id="scene" role="img" xmlns="http://www.w3.org/2000/svg"></svg>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => "#" + (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const C = {
+      bg: hex("bg", "2a0a35"),
+      ink: hex("ink", "ffe9c7"),
+      gold: hex("accent", "f5c04a"),
+      magenta: hex("accent2", "d6246e"),
+      orange: "#f28c28",
+      yellow: "#f9c80e",
+      teal: "#1fb5ac",
+      line: "#fff4e0",
+      goldLight: "#fff3c8",
+      goldDeep: "#c98a1e",
+      leaf: "#2f8f4e",
+      night: "#12031a",
+    };
+    document.body.style.background = C.bg;
+
+    // ?text=Title|Small line. The default is an English greeting with a Malay line under it.
+    const raw = (params.get("text") || "").trim();
+    const [title, subtitle] = raw
+      ? [raw.split("|")[0].trim().slice(0, 40), (raw.split("|")[1] || "").trim().slice(0, 50)]
+      : ["Happy Deepavali", "Selamat Hari Deepavali"];
+
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.getElementById("scene");
+    svg.setAttribute("aria-label", `Deepavali greeting: marigold garlands swing in, a colourful kolam draws itself and fills with colour, and a row of clay oil lamps lights up one by one under the title ${title}`);
+
+    function el(name, attrs, parent) {
+      const node = document.createElementNS(NS, name);
+      for (const k in attrs) node.setAttribute(k, attrs[k]);
+      if (parent) parent.append(node);
+      return node;
+    }
+
+    // Small geometry helpers. Shapes are drawn in local units and scaled into place.
+    const TAU = Math.PI * 2;
+    const rad = (d) => (d * Math.PI) / 180;
+    const n3 = (v) => +v.toFixed(3);
+    const P = (p) => `${n3(p[0])} ${n3(p[1])}`;
+    const polar = (r, deg, c = [0, 0]) => [c[0] + r * Math.cos(rad(deg)), c[1] + r * Math.sin(rad(deg))];
+    const circle = (x, y, r) => `M${P([x - r, y])}a${n3(r)} ${n3(r)} 0 1 0 ${n3(r * 2)} 0a${n3(r)} ${n3(r)} 0 1 0 ${n3(-r * 2)} 0Z`;
+    // A teardrop from (x, y), pointing along deg.
+    const drop = (x, y, len, deg, w = 0.35) =>
+      `M${P([x, y])}` + [[0.3, -w], [0.8, -w * 0.6], [1, 0], [0.8, w * 0.6], [0.3, w], [0, 0]]
+        .map((q, i) => (i % 3 === 0 ? "C" : "") + P(polar(Math.hypot(q[0], q[1]) * len, deg + (Math.atan2(q[1], q[0]) * 180) / Math.PI, [x, y])) + " ")
+        .join("") + "Z";
+    const poly = (pts, close) => pts.map((p, i) => (i ? "L" : "M") + P(p)).join("") + (close ? "Z" : "");
+    // Seeded random, so sparkles land in the same places after a resize.
+    let seed = 7;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+
+    // A loop is 12 seconds; every flicker and sway repeats a whole number of times per loop.
+    const LOOP = 12, STILL = 7.5;
+    const wave = (t, cycles, phase = 0) => Math.sin(TAU * (t * cycles) / LOOP + phase);
+
+    let W, H, u, tl, S, R, defs;
+
+    // Where everything goes for tall, square-ish and wide windows.
+    function layout() {
+      const r = W / H, L = {};
+      if (r < 0.75) {
+        L.swags = 2; L.sag = H * 0.07; L.ball = W * 0.03; L.strand = 4;
+        L.title = { x: W / 2, y: H * 0.235, w: W * 0.88, fs: W * 0.14 };
+        L.kolam = { x: W / 2, y: H * 0.535, r: Math.min(W * 0.42, H * 0.22) };
+        L.diyas = { n: 5, y: H * 0.875, w: W * 0.15, x0: W * 0.12, x1: W * 0.88 };
+      } else if (r < 1.3) {
+        L.swags = 3; L.sag = H * 0.075; L.ball = u * 0.024; L.strand = 3;
+        L.title = { x: W / 2, y: H * 0.225, w: W * 0.8, fs: u * 0.115 };
+        L.kolam = { x: W / 2, y: H * 0.565, r: Math.min(W * 0.32, H * 0.205) };
+        L.diyas = { n: 5, y: H * 0.9, w: u * 0.11, x0: W * 0.1, x1: W * 0.9 };
+      } else {
+        L.swags = 4; L.sag = H * 0.1; L.ball = H * 0.028; L.strand = 3;
+        L.title = { x: W * 0.68, y: H * 0.47, w: W * 0.5, fs: H * 0.15 };
+        L.kolam = { x: W * 0.28, y: H * 0.52, r: H * 0.27 };
+        L.diyas = { n: 7, y: H * 0.9, w: H * 0.12, x0: W * 0.06, x1: W * 0.94 };
+      }
+      return L;
+    }
+
+    // ---------- Kolam: dots first, then lines from the centre outward, then colour ----------
+    function buildKolam(parent) {
+      const g = el("g", {}, parent);
+      const fillsG = el("g", {}, g);
+      const linesG = el("g", { fill: "none", stroke: C.line, "stroke-width": 0.013, "stroke-linecap": "round", "stroke-linejoin": "round" }, g);
+      const dotsG = el("g", { fill: C.line }, g);
+      const shapes = [], dots = [];
+      const add = (d, fill, ring, attrs = {}) => {
+        const f = fill ? el("path", { d, fill, "fill-opacity": 0, ...attrs }, fillsG) : null;
+        const l = el("path", { d, pathLength: 1, "stroke-dasharray": "1 1", "stroke-dashoffset": 1 }, linesG);
+        shapes.push({ f, l, ring });
+      };
+      const dot = (x, y, r, ring) => dots.push({ c: el("circle", { cx: n3(x), cy: n3(y), r: 0 }, dotsG), r, ring });
+
+      // Ring 0: a small flower in the centre.
+      for (let k = 0; k < 8; k++) add(drop(...polar(0.07, k * 45), 0.17, k * 45, 0.44), C.magenta, 0);
+      add(circle(0, 0, 0.075), C.yellow, 0);
+      // Ring 1: big orange petals with thin yellow petals between them.
+      for (let k = 0; k < 8; k++) {
+        add(drop(...polar(0.2, k * 45), 0.34, k * 45, 0.38), C.orange, 1);
+        add(drop(...polar(0.2, k * 45 + 22.5), 0.25, k * 45 + 22.5, 0.3), C.yellow, 1);
+      }
+      for (let k = 0; k < 8; k++) dot(...polar(0.25, k * 45 + 22.5 + 11), 0.014, 1);
+      // Ring 2: a turquoise band and a ring of dots.
+      add(circle(0, 0, 0.63) + circle(0, 0, 0.57), C.teal, 2, { "fill-rule": "evenodd" });
+      for (let k = 0; k < 16; k++) dot(...polar(0.68, k * 22.5 + 11.25), 0.018, 2);
+      // Ring 3: lotus petals, each with a yellow heart, and small turquoise drops between.
+      for (let k = 0; k < 8; k++) {
+        const a = k * 45;
+        const outer = [polar(0.72, a - 15), polar(0.86, a - 13), polar(1.04, a)], back = [polar(0.86, a + 13), polar(0.72, a + 15)];
+        add(`M${P(outer[0])}Q${P(outer[1])} ${P(outer[2])}Q${P(back[0])} ${P(back[1])}Q${P(polar(0.76, a))} ${P(outer[0])}Z`, C.magenta, 3);
+        add(`M${P(polar(0.78, a - 7))}Q${P(polar(0.86, a - 7))} ${P(polar(0.96, a))}Q${P(polar(0.86, a + 7))} ${P(polar(0.78, a + 7))}Q${P(polar(0.8, a))} ${P(polar(0.78, a - 7))}Z`, C.yellow, 3);
+        add(drop(...polar(0.72, a + 22.5), 0.17, a + 22.5, 0.4), C.teal, 3);
+        dot(...polar(0.96, a + 22.5), 0.02, 3);
+      }
+      // Ring 4: a scalloped line around the outside, a dot in every scallop and orange tips between.
+      const loop = [];
+      for (let i = 0; i <= 384; i++) {
+        const a = (i / 384) * 360;
+        loop.push(polar(1.04 + 0.1 * Math.abs(Math.sin(rad(a * 8))), a));
+      }
+      add(poly(loop, true), null, 4);
+      for (let k = 0; k < 16; k++) {
+        const a = k * 22.5;
+        dot(...polar(1.08, a + 11.25), 0.018, 4);
+        add(drop(...polar(1.05, a), 0.15, a, 0.42), C.orange, 4);
+      }
+      return { g, shapes, dots };
+    }
+
+    // ---------- Clay diya with a soft flame ----------
+    function buildDiya(parent, x, y, w, i) {
+      const g = el("g", { transform: `translate(${n3(x)} ${n3(y)}) scale(${n3(w)})` }, parent);
+      const glow = el("circle", { cx: 0, cy: -0.35, r: 1.15, fill: "url(#dv-glow)", opacity: 0 }, g);
+      el("path", { d: "M-0.17 0.34L0.17 0.34L0.13 0.46L-0.13 0.46Z", fill: "#7a3016" }, g);
+      el("path", { d: "M-0.52 0Q-0.46 0.4 0 0.4Q0.46 0.4 0.52 0Z", fill: "url(#dv-clay)" }, g);
+      // A painted band: a turquoise zigzag with yellow dots.
+      let zig = "M-0.4 0.12";
+      for (let k = 1; k <= 8; k++) zig += `L${n3(-0.4 + k * 0.1)} ${k % 2 ? 0.2 : 0.12}`;
+      el("path", { d: zig, fill: "none", stroke: C.teal, "stroke-width": 0.025, "stroke-linejoin": "round" }, g);
+      let dts = "";
+      for (let k = 0; k < 5; k++) dts += circle(-0.3 + k * 0.15, 0.28, 0.022);
+      el("path", { d: dts, fill: C.yellow }, g);
+      el("ellipse", { cx: 0, cy: 0, rx: 0.52, ry: 0.1, fill: "#e0874a" }, g);
+      el("ellipse", { cx: 0, cy: 0.005, rx: 0.45, ry: 0.07, fill: "#4a1a0a" }, g);
+      el("path", { d: "M0 0V-0.08", stroke: "#2a0e06", "stroke-width": 0.03, "stroke-linecap": "round" }, g);
+      const flame = el("g", {}, g);
+      el("path", { d: drop(0, 0, 0.56, -90, 0.42), fill: "url(#dv-flame)" }, flame);
+      el("path", { d: drop(0, -0.02, 0.34, -90, 0.4), fill: "#ffe07a" }, flame);
+      el("path", { d: drop(0, -0.03, 0.16, -90, 0.38), fill: "#fffbe8" }, flame);
+      return { g, glow, flame, x, y, w, i };
+    }
+
+    // ---------- Marigold garland across the top ----------
+    // Each flower is painted once into a small bitmap, so a garland of dozens stays light.
+    function buildMarigolds(ball) {
+      const k = Math.max(8, ball * Math.min(2, devicePixelRatio || 1) * 1.25);
+      const make = (id, stops, ruff) => {
+        const c = document.createElement("canvas");
+        c.width = c.height = Math.ceil(k * 2.1);
+        const g = c.getContext("2d");
+        g.setTransform(k, 0, 0, k, c.width / 2, c.height / 2);
+        const gr = g.createRadialGradient(-0.2, -0.3, 0, 0, 0, 1);
+        stops.forEach(([o, col]) => gr.addColorStop(o, col));
+        g.fillStyle = gr;
+        g.beginPath();
+        g.arc(0, 0, 1, 0, TAU);
+        g.fill();
+        // Ruffled petal edges, two rings deep.
+        g.strokeStyle = ruff;
+        g.globalAlpha = 0.75;
+        g.lineWidth = 0.07;
+        for (const [r0, r1, n] of [[0.8, 1, 14], [0.5, 0.68, 10]]) {
+          const pts = [];
+          for (let i = 0; i <= n * 6; i++) {
+            const q = i / (n * 6);
+            pts.push(polar(r0 + (r1 - r0) * Math.abs(Math.sin(Math.PI * q * n)), q * 360));
+          }
+          g.stroke(new Path2D(poly(pts, true)));
+        }
+        g.globalAlpha = 1;
+        g.fillStyle = ruff;
+        g.beginPath();
+        g.arc(0, 0, 0.16, 0, TAU);
+        g.fill();
+        const d = el("g", { id }, defs);
+        el("image", { href: c.toDataURL(), x: -1.05, y: -1.05, width: 2.1, height: 2.1 }, d);
+      };
+      make("dv-mo", [[0, "#ffd36b"], [0.6, "#f7931e"], [1, "#d9610c"]], "#b9480a");
+      make("dv-my", [[0, "#fff1a8"], [0.6, "#ffc21a"], [1, "#e09a00"]], "#c07a00");
+      const leaf = el("g", { id: "dv-leaf" }, defs);
+      el("path", { d: drop(0, 0, 1, 90, 0.3), fill: C.leaf }, leaf);
+      el("path", { d: "M0 0.05V0.85", stroke: "#1d5f33", "stroke-width": 0.05 }, leaf);
+    }
+
+    function buildGarland(parent, L) {
+      const g = el("g", {}, parent);
+      const anchors = Array.from({ length: L.swags + 1 }, (_, i) => (i / L.swags) * W);
+      const swags = [];
+      for (let i = 0; i < L.swags; i++) {
+        const a = anchors[i], b = anchors[i + 1];
+        const n = Math.max(6, Math.round(((b - a) * 1.08) / (L.ball * 1.75)));
+        const sg = el("g", {}, g);
+        const balls = Array.from({ length: n + 1 }, (_, k) => el("use", { href: k % 2 ? "#dv-my" : "#dv-mo" }, sg));
+        swags.push({ a, b, balls });
+      }
+      // Hanging strands and leaves at the inner anchors.
+      const strands = anchors.slice(1, -1).map((x, i) => {
+        const o = el("g", {}, g);
+        const inner = el("g", {}, o);
+        const r = L.ball;
+        el("path", { d: `M0 0V${n3(r * 1.7 * L.strand + r)}`, stroke: "#7a4a12", "stroke-width": Math.max(1, r * 0.08) }, inner);
+        for (let k = L.strand; k >= 1; k--) el("use", { href: k % 2 ? "#dv-mo" : "#dv-my", transform: `translate(0 ${n3(r * 1.7 * k)}) scale(${n3(r * (1 - k * 0.04))})` }, inner);
+        const tip = r * 1.7 * L.strand + r * 0.8;
+        el("use", { href: "#dv-leaf", transform: `translate(0 ${n3(tip)}) rotate(-18) scale(${n3(r * 1.3)})` }, inner);
+        el("use", { href: "#dv-leaf", transform: `translate(0 ${n3(tip)}) rotate(18) scale(${n3(r * 1.3)})` }, inner);
+        return { o, inner, x, i };
+      });
+      // A knot of leaves and a big yellow flower where the swags meet.
+      const knots = anchors.map((x) => {
+        const k = el("g", { transform: `translate(${n3(x)} ${n3(L.ball * 0.6)})` }, g);
+        for (const a of [-60, -20, 20, 60]) el("use", { href: "#dv-leaf", transform: `rotate(${a}) scale(${n3(L.ball * 1.5)})` }, k);
+        el("use", { href: "#dv-my", transform: `scale(${n3(L.ball * 1.35)})` }, k);
+        return k;
+      });
+      return { g, swags, strands, knots };
+    }
+
+    // ---------- Build the whole scene and its timeline ----------
+    function build() {
+      W = innerWidth;
+      H = innerHeight;
+      u = Math.min(W, H);
+      seed = 7;
+      svg.replaceChildren();
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      defs = el("defs", {}, svg);
+      const L = layout();
+      buildMarigolds(L.ball * 1.35);
+
+      const grad = (tag, id, attrs, stops) => {
+        const g = el(tag, { id, ...attrs }, defs);
+        stops.forEach(([o, c, a = 1]) => el("stop", { offset: o, "stop-color": c, "stop-opacity": a }, g));
+        return g;
+      };
+      grad("radialGradient", "dv-bg", { cx: 0.5, cy: 0.55, r: 0.8 }, [[0, "#4b1455"], [0.55, C.bg], [1, C.night]]);
+      grad("radialGradient", "dv-glow", {}, [[0, "#ffc861", 0.75], [0.35, "#ff9a3c", 0.3], [1, "#ff7a2a", 0]]);
+      grad("radialGradient", "dv-warm", {}, [[0, "#ff9a3c", 0.45], [0.5, "#e2572a", 0.16], [1, "#e2572a", 0]]);
+      grad("radialGradient", "dv-halo", {}, [[0, "#ffb85c", 0.22], [0.6, "#d6246e", 0.08], [1, "#d6246e", 0]]);
+      grad("linearGradient", "dv-clay", { x1: 0, y1: 0, x2: 0, y2: 1 }, [[0, "#d4743c"], [1, "#8a3a18"]]);
+      grad("linearGradient", "dv-flame", { x1: 0, y1: 1, x2: 0, y2: 0 }, [[0, "#ffb238"], [0.6, "#ff7a1a"], [1, "#e8491a"]]);
+
+      el("rect", { width: W, height: H, fill: "url(#dv-bg)" }, svg);
+      const warm = el("ellipse", { cx: W / 2, cy: L.diyas.y, rx: W * 0.75, ry: Math.max(H * 0.3, L.diyas.w * 3), fill: "url(#dv-warm)", opacity: 0 }, svg);
+      const K = L.kolam;
+      const halo = el("circle", { cx: K.x, cy: K.y, r: K.r * 1.6, fill: "url(#dv-halo)", opacity: 0 }, svg);
+
+      // Kolam, scaled so its outer tips reach K.r.
+      const kolWrap = el("g", { transform: `translate(${n3(K.x)} ${n3(K.y)}) scale(${n3(K.r / 1.3)})` }, svg);
+      const kolam = buildKolam(kolWrap);
+
+      // Sparkles scattered around the kolam and the title.
+      const sparkG = el("g", { fill: C.goldLight }, svg);
+      const star = "M0 -1Q0.12 -0.12 1 0Q0.12 0.12 0 1Q-0.12 0.12 -1 0Q-0.12 -0.12 0 -1Z";
+      const sparkles = [];
+      for (let i = 0; i < 16; i++) {
+        let x, y;
+        if (i % 2) { const p = polar(K.r * (1.08 + rand() * 0.35), rand() * 360, [K.x, K.y]); [x, y] = p; }
+        else { x = L.title.x + (rand() - 0.5) * L.title.w * 1.1; y = L.title.y + (rand() - 0.5) * L.title.fs * 3; }
+        sparkles.push({ p: el("path", { d: star }, sparkG), x, y, s: u * (0.012 + rand() * 0.014), c: 1 + Math.floor(rand() * 3), ph: rand() * TAU });
+      }
+
+      // Title in gold, a dark copy under it for depth, and the small line.
+      const probe = el("text", { class: "title", "font-size": 100 }, svg);
+      const widthOf = (s) => { probe.textContent = s; return probe.getComputedTextLength() / 100; };
+      const words = title.split(/\s+/).filter(Boolean);
+      let lines = [title];
+      let fs = Math.min(L.title.fs, L.title.w / widthOf(title));
+      const wide = W / H >= 1.3;
+      if ((fs < L.title.fs * 0.7 || (wide && words.length > 1)) && words.length > 1) {
+        let best = null;
+        for (let i = 1; i < words.length; i++) {
+          const pair = [words.slice(0, i).join(" "), words.slice(i).join(" ")];
+          const w = Math.max(...pair.map(widthOf));
+          if (!best || w < best.w) best = { pair, w };
+        }
+        lines = best.pair;
+        fs = Math.min(L.title.fs * (wide ? 1.05 : 0.9), L.title.w / best.w);
+      }
+      probe.remove();
+      const subFs = Math.max(7, fs * (wide ? 0.24 : 0.28));
+      const blockH = lines.length * fs * 1.05 + (subtitle ? subFs * 2.2 : 0);
+      const y0 = L.title.y - blockH / 2 + fs * 0.5;
+      const gold = grad("linearGradient", "dv-gold", { gradientUnits: "userSpaceOnUse", x1: L.title.x - L.title.w / 2, y1: 0, x2: L.title.x + L.title.w / 2, y2: fs * 0.6 },
+        [[0, C.gold], [0.42, C.gold], [0.5, C.goldLight], [0.58, C.gold], [1, C.gold]]);
+      const titleEls = lines.map((line, i) => {
+        const g = el("g", {}, svg);
+        const at = { class: "title", "font-size": n3(fs), x: n3(L.title.x), y: n3(y0 + i * fs * 1.05) };
+        el("text", { ...at, fill: C.night, opacity: 0.6, transform: `translate(${n3(fs * 0.02)} ${n3(fs * 0.04)})` }, g).textContent = line;
+        el("text", { ...at, fill: "url(#dv-gold)" }, g).textContent = line;
+        return g;
+      });
+      let sub = null;
+      if (subtitle) {
+        const sy = y0 + (lines.length - 1) * fs * 1.05 + fs * 0.62 + subFs * 1.1;
+        sub = el("g", {}, svg);
+        const t = el("text", { class: "sub", "font-size": n3(subFs), x: n3(L.title.x), y: n3(sy), fill: C.ink, "letter-spacing": `${n3(subFs * 0.12)}px` }, sub);
+        t.textContent = subtitle;
+        const sw = t.getComputedTextLength();
+        if (sw > L.title.w) t.setAttribute("font-size", n3((subFs * L.title.w) / sw));
+        const half = Math.min(sw, L.title.w) / 2 + subFs * 0.9;
+        // Tiny diamonds either side of the small line.
+        for (const side of [-1, 1]) el("path", { d: `M${n3(L.title.x + side * half)} ${n3(sy - subFs * 0.25)}l${n3(subFs * 0.25)} ${n3(subFs * 0.25)}l${n3(-subFs * 0.25)} ${n3(subFs * 0.25)}l${n3(-subFs * 0.25)} ${n3(-subFs * 0.25)}Z`, fill: C.gold }, sub);
+      }
+
+      // A row of diyas along the bottom.
+      const D = L.diyas;
+      const diyaG = el("g", {}, svg);
+      const diyas = Array.from({ length: D.n }, (_, i) => buildDiya(diyaG, D.x0 + ((D.x1 - D.x0) * i) / (D.n - 1), D.y, D.w, i));
+      // Embers drift up from the lamps.
+      const emberG = el("g", {}, svg);
+      const embers = [];
+      diyas.forEach((d, i) => {
+        for (let k = 0; k < 2; k++) embers.push({ c: el("circle", { r: n3(Math.max(0.8, D.w * 0.025)), fill: "#ffd27a" }, emberG), d, p: (i * 0.37 + k * 0.5) % 1, sp: 1 + k, sw: i * 1.3 + k });
+      });
+
+      const garland = buildGarland(svg, L);
+
+      S = {
+        gar: { y: 1, kick: 0 },
+        dots: kolam.dots.map(() => ({})),
+        halo: { o: 0 },
+        lamps: diyas.map(() => ({ s: 0 })),
+        warm: { o: 0 },
+        title: titleEls.map(() => ({ o: 0, y: 1 })),
+        sub: { o: 0 },
+        spark: { o: 0 },
+      };
+      R = { L, kolam, diyas, garland, titleEls, sub, sparkles, embers, warm, halo, gold, emberG, sparkG, D };
+
+      tl = gsap.timeline({ repeat: -1, onUpdate: update });
+      tl.set({}, {}, LOOP);
+      // 1. Garland swings down from the top.
+      tl.fromTo(S.gar, { y: 1 }, { y: 0, duration: 1.1, ease: "back.out(1.2)" }, 0.1)
+        .fromTo(S.gar, { kick: 1 }, { kick: 0, duration: 3.2, ease: "sine.out" }, 0.3)
+        .to(S.gar, { y: 1, duration: 0.8, ease: "power2.in" }, 10.9);
+      // 2. Kolam dots, then lines ring by ring, then colour.
+      for (const d of kolam.dots) {
+        tl.fromTo(d.c, { attr: { r: 0 } }, { attr: { r: d.r }, duration: 0.35, ease: "back.out(2.5)" }, 0.5 + d.ring * 0.22)
+          .to(d.c, { attr: { r: 0 }, duration: 0.3, ease: "power2.in" }, 11 - d.ring * 0.1);
+      }
+      for (const s of kolam.shapes) {
+        tl.fromTo(s.l, { attr: { "stroke-dashoffset": 1 } }, { attr: { "stroke-dashoffset": 0 }, duration: s.ring === 4 ? 1.1 : 0.7, ease: "sine.inOut" }, 1.0 + s.ring * 0.45)
+          .to(s.l, { attr: { "stroke-dashoffset": 1 }, duration: 0.6, ease: "sine.in" }, 10.2 + (4 - s.ring) * 0.15);
+        if (s.f) tl.fromTo(s.f, { attr: { "fill-opacity": 0 } }, { attr: { "fill-opacity": 1 }, duration: 0.6, ease: "sine.out" }, 2.9 + s.ring * 0.3)
+          .to(s.f, { attr: { "fill-opacity": 0 }, duration: 0.5, ease: "sine.in" }, 9.9 + (4 - s.ring) * 0.12);
+      }
+      tl.fromTo(S.halo, { o: 0 }, { o: 1, duration: 1.5 }, 3.0).to(S.halo, { o: 0, duration: 0.8 }, 10.2);
+      // 3. The diyas light one by one.
+      const step = 2.2 / D.n;
+      S.lamps.forEach((l, i) => {
+        tl.fromTo(l, { s: 0 }, { s: 1, duration: 0.6, ease: "back.out(2)" }, 2.1 + i * step)
+          .to(l, { s: 0, duration: 0.4, ease: "power2.in" }, 10.1 + (D.n - 1 - i) * 0.12);
+      });
+      tl.fromTo(S.warm, { o: 0 }, { o: 1, duration: 2.4, ease: "sine.inOut" }, 2.2).to(S.warm, { o: 0, duration: 1, ease: "sine.in" }, 10.2);
+      // 4. Title and small line.
+      tl.fromTo(S.title, { o: 0, y: 1 }, { o: 1, y: 0, duration: 0.9, ease: "power3.out", stagger: 0.18 }, 4.3)
+        .fromTo(S.sub, { o: 0 }, { o: 1, duration: 0.7, ease: "sine.out" }, 5.0)
+        .fromTo(S.spark, { o: 0 }, { o: 1, duration: 1 }, 4.4)
+        .to(S.spark, { o: 0, duration: 0.6 }, 9.8)
+        .to(S.sub, { o: 0, duration: 0.4 }, 9.7)
+        .to(S.title, { o: 0, y: -0.5, duration: 0.5, ease: "power2.in", stagger: 0.08 }, 9.8);
+    }
+
+    // Per-frame work: garland sway, flames, embers, sparkles and the gold glint.
+    // Only touch the DOM when a value really changes, so still parts are not redrawn.
+    const set = (node, name, v) => {
+      const key = "_" + name;
+      if (node[key] !== v) { node[key] = v; node.setAttribute(name, v); }
+    };
+
+    function update() {
+      const t = tl.time();
+      const { L, kolam, diyas, garland, titleEls, sub, sparkles, embers, warm, halo, gold, D } = R;
+      const show = (g, on) => set(g, "display", on ? "inline" : "none");
+
+      // Garland: the swags sag and swing a little; strands swing like pendulums.
+      const lift = S.gar.y * (L.sag * 2 + L.ball * 1.7 * (L.strand + 2));
+      show(garland.g, S.gar.y < 0.999);
+      set(garland.g, "transform", `translate(0 ${n3(-lift)})`);
+      const kick = S.gar.kick * Math.cos(TAU * t * 0.8);
+      garland.swags.forEach((s, i) => {
+        const sag = L.sag * (1 + 0.05 * wave(t, 4, i) + 0.25 * kick);
+        const mx = (s.a + s.b) / 2 + (s.b - s.a) * (0.04 * wave(t, 3, i * 1.3) + 0.08 * kick);
+        const n = s.balls.length - 1;
+        s.balls.forEach((b, k) => {
+          const q = k / n, m = 1 - q;
+          const x = m * m * s.a + 2 * m * q * mx + q * q * s.b, y = 2 * m * q * sag * 2 + L.ball * 0.5;
+          set(b, "transform", `translate(${n3(x)} ${n3(y)}) rotate(${n3(k * 37)}) scale(${n3(L.ball)})`);
+        });
+      });
+      garland.strands.forEach((s) => set(s.o, "transform", `translate(${n3(s.x)} ${n3(L.ball * 0.6)}) rotate(${n3(4 * wave(t, 3, s.i * 2) + 12 * kick)})`));
+
+      // Kolam lines: a line that has not started would still show a round cap dot.
+      for (const s of kolam.shapes) set(s.l, "visibility", +s.l.getAttribute("stroke-dashoffset") > 0.995 ? "hidden" : "visible");
+      set(halo, "opacity", n3(S.halo.o * (0.85 + 0.15 * wave(t, 3))));
+
+      // Flames flicker softly: slow stretches and sways, never a flash.
+      diyas.forEach((d, i) => {
+        const s = S.lamps[i].s;
+        show(d.flame, s > 0.01);
+        const fl = 1 + 0.06 * wave(t, 17, i * 1.7) + 0.04 * wave(t, 29, i);
+        set(d.flame, "transform", `translate(0 -0.07) rotate(${n3(3 * wave(t, 7, i * 2.1))}) scale(${n3(s * (1 - 0.03 * wave(t, 23, i)))} ${n3(s * fl)})`);
+        set(d.glow, "opacity", n3(Math.min(1, s) * (0.8 + 0.1 * wave(t, 13, i))));
+      });
+      set(warm, "opacity", n3(S.warm.o * (0.9 + 0.1 * wave(t, 5))));
+      embers.forEach((e) => {
+        const on = S.lamps[e.d.i].s;
+        const k = ((t / LOOP) * e.sp * 3 + e.p) % 1;
+        const x = e.d.x + D.w * 0.12 * Math.sin(k * 5 + e.sw), y = e.d.y - D.w * (0.5 + k * 1.6);
+        set(e.c, "transform", `translate(${n3(x)} ${n3(y)})`);
+        set(e.c, "opacity", n3(Math.min(1, on) * Math.sin(Math.PI * k) * 0.8));
+      });
+
+      titleEls.forEach((g, i) => {
+        set(g, "opacity", n3(S.title[i].o));
+        set(g, "transform", `translate(0 ${n3(S.title[i].y * L.title.fs * 0.5)})`);
+      });
+      if (sub) set(sub, "opacity", n3(S.sub.o));
+      const glint = ((t % 4) / 4) * 3 - 1.5;
+      set(gold, "gradientTransform", `translate(${n3(glint * L.title.w)} 0)`);
+
+      show(R.sparkG, S.spark.o > 0.01);
+      sparkles.forEach((s) => {
+        const k = Math.max(0, wave(t, s.c, s.ph)) ** 2;
+        set(s.p, "transform", `translate(${n3(s.x)} ${n3(s.y)}) rotate(${n3(45 * k)}) scale(${n3(s.s * k * S.spark.o + 0.001)})`);
+      });
+    }
+
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    // Reduced motion: one still frame with the kolam coloured and every lamp lit.
+    function apply() {
+      if (reduce.matches) tl.pause(STILL);
+      else tl.play();
+      update();
+    }
+    reduce.addEventListener("change", apply);
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        const at = tl.time();
+        tl.kill();
+        build();
+        tl.time(at);
+        apply();
+      }, 150);
+    });
+
+    // Wait briefly for the fonts so the title is measured in the right face.
+    Promise.race([
+      Promise.all([document.fonts.load("400 1em 'Rozha One'"), document.fonts.load("500 1em Poppins")]),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(() => { build(); apply(); });
+  </script>
+</body>
+</html>

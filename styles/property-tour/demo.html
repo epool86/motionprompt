@@ -1,0 +1,855 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Property tour demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/manrope@5.3.0/600.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/manrope@5.3.0/800.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=f3f1ec&ink=1f2a30&accent=0f7b6c */
+    :root {
+      --bg: #f3f1ec;
+      --ink: #1f2a30;
+      --accent: #0f7b6c;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: radial-gradient(120% 90% at 55% 50%, #ffffff 0%, var(--bg) 75%);
+      color: var(--ink);
+      font-family: Manrope, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .ui {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    /* Project name, top left */
+    .head {
+      position: absolute;
+      left: 5vmin;
+      top: 5vmin;
+    }
+
+    .eyebrow {
+      font-weight: 800;
+      font-size: 2.4vmin;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    .name {
+      font-weight: 800;
+      font-size: 5.4vmin;
+      line-height: 1.05;
+      margin-top: 1vmin;
+      max-width: 62vmin;
+    }
+
+    .wide .name {
+      max-width: 42vmin;
+    }
+
+    .meta {
+      font-weight: 600;
+      font-size: 2.8vmin;
+      margin-top: 1.2vmin;
+      opacity: 0.7;
+    }
+
+    /* Price card, bottom left */
+    .card {
+      position: absolute;
+      left: 5vmin;
+      bottom: 5vmin;
+      padding: 2.8vmin 3.8vmin 3.2vmin;
+      border-radius: 2.6vmin;
+      background: #ffffff;
+      box-shadow: 0 1.6vmin 4.5vmin rgba(31, 42, 48, 0.16);
+      opacity: 0;
+    }
+
+    .card small {
+      display: block;
+      font-weight: 800;
+      font-size: 2.2vmin;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      opacity: 0.5;
+    }
+
+    .price {
+      font-weight: 800;
+      font-size: 8vmin;
+      line-height: 1;
+      margin-top: 0.9vmin;
+      white-space: nowrap;
+    }
+
+    .chips {
+      display: flex;
+      gap: 1.2vmin;
+      margin-top: 1.8vmin;
+    }
+
+    .chip {
+      font-weight: 800;
+      font-size: 2.5vmin;
+      padding: 0.8vmin 1.9vmin;
+      border-radius: 99px;
+      background: var(--accent);
+      color: #ffffff;
+      white-space: nowrap;
+    }
+
+    .chip.soft {
+      background: color-mix(in srgb, var(--accent) 13%, #ffffff);
+      color: var(--accent);
+    }
+
+    /* Square frames: a smaller title and a one row price card, so the plan gets more room */
+    .compact .head {
+      top: 4vmin;
+      left: 4vmin;
+    }
+
+    .compact .name {
+      font-size: 4.6vmin;
+    }
+
+    .compact .card {
+      left: 4vmin;
+      bottom: 4vmin;
+      display: flex;
+      align-items: flex-end;
+      gap: 2.4vmin;
+      padding: 2.2vmin 3vmin 2.4vmin;
+    }
+
+    .compact .price {
+      font-size: 6.4vmin;
+    }
+
+    .compact .chips {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.8vmin;
+      margin: 0;
+    }
+
+    /* Room tags, placed over the 3D rooms */
+    .tag {
+      position: absolute;
+      left: 0;
+      top: 0;
+      padding: 0.8vmin 1.5vmin 0.9vmin;
+      border-left: 0.7vmin solid var(--accent);
+      border-radius: 1.3vmin;
+      background: rgba(255, 255, 255, 0.95);
+      box-shadow: 0 0.8vmin 2.2vmin rgba(31, 42, 48, 0.16);
+      font-size: 2.7vmin;
+      line-height: 1.2;
+      white-space: nowrap;
+      opacity: 0;
+    }
+
+    .tag b {
+      display: block;
+      font-weight: 800;
+    }
+
+    .tag span {
+      display: block;
+      font-weight: 600;
+      font-size: 0.88em;
+      opacity: 0.6;
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="scene" role="img"></canvas>
+  <div class="ui" aria-hidden="true">
+    <div class="head">
+      <div class="eyebrow">New launch</div>
+      <div class="name" id="name"></div>
+      <div class="meta">3 bed · 2 bath · 1,250 sq ft</div>
+    </div>
+    <div class="card" id="card">
+      <div><small>Selling from</small><div class="price">RM 650,000</div></div>
+      <div class="chips"><span class="chip">Freehold</span><span class="chip soft">Type B</span></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const colors = { bg: hex("bg", "f3f1ec"), ink: hex("ink", "1f2a30"), accent: hex("accent", "0f7b6c") };
+    const root = document.documentElement.style;
+    root.setProperty("--bg", `#${colors.bg}`);
+    root.setProperty("--ink", `#${colors.ink}`);
+    root.setProperty("--accent", `#${colors.accent}`);
+    const title = (params.get("text") || "Seri Indah Residences").trim().slice(0, 40);
+    document.getElementById("name").textContent = title;
+
+    const canvas = document.getElementById("scene");
+    canvas.setAttribute("aria-label", `A 3D floor plan of a 3 bedroom, 2 bathroom home builds itself room by room, furniture pops in, rooms are labelled with their sizes and a price card reads RM 650,000, Freehold. ${title}`);
+
+    const ACCENT = `#${colors.accent}`;
+    const INK = `#${colors.ink}`;
+    const tint = (c, amount) => `#${new THREE.Color(c).lerp(new THREE.Color("#ffffff"), amount).getHexString()}`;
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(30, 1, 0.5, 200);
+
+    // Soft daylight: sky light plus one sun for the shadows.
+    scene.add(new THREE.HemisphereLight(0xffffff, 0xe6dfd4, 1.9));
+    const sun = new THREE.DirectionalLight(0xfff3e2, 2.1);
+    sun.position.set(-7, 16, 9);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.camera.left = sun.shadow.camera.bottom = -11;
+    sun.shadow.camera.right = sun.shadow.camera.top = 11;
+    sun.shadow.camera.near = 2;
+    sun.shadow.camera.far = 40;
+    sun.shadow.radius = 4;
+    sun.shadow.intensity = 0.5;
+    sun.shadow.bias = -0.0006;
+    sun.shadow.normalBias = 0.03;
+    scene.add(sun);
+
+    const materials = new Map();
+    const mat = (color) => {
+      if (!materials.has(color)) materials.set(color, new THREE.MeshStandardMaterial({ color, roughness: 0.85, metalness: 0 }));
+      return materials.get(color);
+    };
+    const rb = (w, h, d, r = 0.04) => new RoundedBoxGeometry(w, h, d, 2, Math.min(r, w / 2, h / 2, d / 2) * 0.999);
+    const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+    function mesh(geometry, material, parent, x = 0, y = 0, z = 0) {
+      const m = new THREE.Mesh(geometry, typeof material === "string" ? mat(material) : material);
+      m.position.set(x, y, z);
+      m.castShadow = m.receiveShadow = true;
+      parent.add(m);
+      return m;
+    }
+
+    // ---- Textures drawn on canvases ----
+    function canvasTexture(size, draw, repeatX = 1, repeatY = 1) {
+      const c = document.createElement("canvas");
+      c.width = c.height = size;
+      draw(c.getContext("2d"), size);
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(repeatX, repeatY);
+      t.anisotropy = 4;
+      return t;
+    }
+    // Light oak planks: the texture covers 2 by 2 metres.
+    const wood = canvasTexture(512, (g, s) => {
+      const tones = ["#dcc09a", "#d6b88f", "#e0c6a2", "#d2b187", "#dabd96"];
+      const rows = 8, rh = s / rows;
+      for (let r = 0; r < rows; r++) {
+        let x = -((r * 173) % 300);
+        let i = r;
+        while (x < s) {
+          const len = 220 + ((i * 97) % 140);
+          g.fillStyle = tones[(i * 3 + r) % tones.length];
+          g.fillRect(x, r * rh, len, rh);
+          g.fillStyle = "rgba(120, 84, 48, 0.07)";
+          for (let k = 0; k < 4; k++) g.fillRect(x + 10, r * rh + 8 + k * 14 + (i % 3) * 3, len - 20, 1.5);
+          g.fillStyle = "rgba(110, 78, 45, 0.35)";
+          g.fillRect(x, r * rh, 2, rh);
+          x += len;
+          i++;
+        }
+        g.fillStyle = "rgba(110, 78, 45, 0.3)";
+        g.fillRect(0, r * rh, s, 2);
+      }
+    }, 7, 5);
+    // Pale stone tiles: 60 cm squares.
+    const tileTexture = (w, d) => canvasTexture(256, (g, s) => {
+      g.fillStyle = "#e4e2dd";
+      g.fillRect(0, 0, s, s);
+      g.fillStyle = "#cfcbc3";
+      g.fillRect(0, 0, s, 4);
+      g.fillRect(0, 0, 4, s);
+    }, w / 0.6, d / 0.6);
+
+    // ---- The plan, in metres. x runs left to right, z from back (-5) to front (+5). ----
+    const H = 1.7; // walls are cut at this height so the rooms stay visible
+    const SILL = 0.7;
+    const rooms = [
+      { id: "living", name: "Living & dining", size: "23 x 16 ft", x: [-7, 0], z: [0, 5], at: [-3.4, 2.1], color: "#ffd9a8" },
+      { id: "kitchen", name: "Kitchen", size: "11 x 16 ft", x: [-7, -3.5], z: [-5, 0], at: [-5.3, -2.7], color: "#bfe8d2", tiles: true },
+      { id: "bath2", x: [-3.5, -1.5], z: [-5, -1.5], tiles: true },
+      { id: "bed3", name: "Bedroom 3", size: "13 x 11 ft", x: [-1.5, 2.5], z: [-5, -1.5], at: [0.6, -3.0], color: "#cfe0ff" },
+      { id: "bed2", name: "Bedroom 2", size: "15 x 15 ft", x: [2.5, 7], z: [-5, -0.5], at: [4.2, -2.6], color: "#e2d6fb" },
+      { id: "master", name: "Master bedroom", size: "15 x 18 ft", x: [2.5, 7], z: [-0.5, 5], at: [4.3, 2.2], color: "#ffd3cc" },
+      { id: "bath1", x: [0, 2.5], z: [2, 5], tiles: true },
+    ];
+    const roomById = Object.fromEntries(rooms.map((r) => [r.id, r]));
+
+    // Walls: [room that raises it, axis, fixed coordinate, from, to, thickness, openings].
+    // Openings: window { c, w } or door { c, w, door: true, side } where side is the way it swings.
+    const EXT = 0.22, INT = 0.12;
+    const wallList = [
+      ["living", "x", 5, -7, 0, EXT, [{ c: -5.9, w: 1.3 }, { c: -2.0, w: 1.9 }]],
+      ["living", "z", -7, 0, 5, EXT, [{ c: 2.5, w: 1.8 }]],
+      ["kitchen", "x", -5, -7, -3.5, EXT, [{ c: -5.4, w: 1.6 }]],
+      ["kitchen", "z", -7, -5, 0, EXT, [{ c: -2.6, w: 1.4 }]],
+      ["kitchen", "x", 0, -7, -6.3, INT, []],
+      ["bath2", "x", -5, -3.5, -1.5, EXT, [{ c: -2.5, w: 0.7 }]],
+      ["bath2", "z", -3.5, -5, -1.5, INT, []],
+      ["bath2", "x", -1.5, -3.5, -1.5, INT, [{ c: -2.6, w: 0.8, door: true, side: -1 }]],
+      ["bed3", "x", -5, -1.5, 2.5, EXT, [{ c: 0.5, w: 1.7 }]],
+      ["bed3", "z", -1.5, -5, -1.5, INT, []],
+      ["bed3", "x", -1.5, -1.5, 2.5, INT, [{ c: 0.6, w: 0.9, door: true, side: -1 }]],
+      ["bed2", "x", -5, 2.5, 7, EXT, [{ c: 4.75, w: 1.8 }]],
+      ["bed2", "z", 7, -5, -0.5, EXT, [{ c: -2.6, w: 1.6 }]],
+      ["bed2", "z", 2.5, -5, -0.5, INT, [{ c: -1.0, w: 0.9, door: true, side: 1 }]],
+      ["master", "x", 5, 2.5, 7, EXT, [{ c: 4.75, w: 2.1 }]],
+      ["master", "z", 7, -0.5, 5, EXT, [{ c: 2.2, w: 2.0 }]],
+      ["master", "x", -0.5, 2.5, 7, INT, []],
+      ["master", "z", 2.5, -0.5, 5, INT, [{ c: 1.0, w: 0.9, door: true, side: 1 }]],
+      ["bath1", "x", 5, 0, 2.5, EXT, [{ c: 1.25, w: 0.7 }]],
+      ["bath1", "z", 0, 2, 5, INT, []],
+      ["bath1", "x", 2, 0, 2.5, INT, [{ c: 1.25, w: 0.8, door: true, side: 1 }]],
+    ];
+
+    // Wall sides are white, the cut tops are dark, like an architect's plan.
+    const wallSide = new THREE.MeshStandardMaterial({ color: "#fbfaf7", roughness: 0.9 });
+    const wallTop = new THREE.MeshStandardMaterial({ color: INK, roughness: 0.9 });
+    const wallMats = [wallSide, wallSide, wallTop, wallSide, wallSide, wallSide];
+
+    // Floor slab, wood floor, tiles and the soft room colours, all in one group that grows in.
+    const slab = new THREE.Group();
+    scene.add(slab);
+    const catcher = new THREE.Mesh(new THREE.PlaneGeometry(60, 60).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ color: INK, opacity: 0.12 }));
+    catcher.position.y = -0.36;
+    catcher.receiveShadow = true;
+    scene.add(catcher);
+    mesh(rb(14.7, 0.34, 10.7, 0.08), "#ebe8e2", slab, 0, -0.17, 0);
+    const floorMat = new THREE.MeshStandardMaterial({ map: wood, roughness: 0.95 });
+    const floor = mesh(new THREE.PlaneGeometry(14, 10).rotateX(-Math.PI / 2), floorMat, slab, 0, 0.002, 0);
+    floor.castShadow = false;
+    for (const r of rooms) {
+      const w = r.x[1] - r.x[0], d = r.z[1] - r.z[0];
+      const cx = (r.x[0] + r.x[1]) / 2, cz = (r.z[0] + r.z[1]) / 2;
+      if (r.tiles) {
+        const tiles = mesh(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: tileTexture(w, d), roughness: 0.6 }), slab, cx, 0.006, cz);
+        tiles.castShadow = false;
+      }
+      if (r.color) {
+        r.glowMat = new THREE.MeshBasicMaterial({ color: r.color, transparent: true, opacity: 0, depthWrite: false });
+        const glow = new THREE.Mesh(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), r.glowMat);
+        glow.position.set(cx, 0.012, cz);
+        glow.renderOrder = 1;
+        slab.add(glow);
+      }
+    }
+
+    // Build the walls, grouped by room so each room rises on its own.
+    const glassBase = new THREE.MeshStandardMaterial({ color: "#bfe2ee", roughness: 0.15, transparent: true, opacity: 0 });
+    const doorMat = mat("#d2b187");
+    const cuts = [];
+    for (const r of rooms) {
+      r.walls = new THREE.Group();
+      scene.add(r.walls);
+    }
+    for (const [roomId, axis, fixed, a, b, thick, openings] of wallList) {
+      const parent = roomById[roomId].walls;
+      // Place a box along the wall: u runs along the wall, y is height.
+      const piece = (u0, u1, y0, y1, material = wallMats, depth = thick) => {
+        const len = u1 - u0, u = (u0 + u1) / 2, y = (y0 + y1) / 2;
+        const geo = axis === "x" ? box(len, y1 - y0, depth) : box(depth, y1 - y0, len);
+        return axis === "x" ? mesh(geo, material, parent, u, y, fixed) : mesh(geo, material, parent, fixed, y, u);
+      };
+      const ext = thick / 2;
+      let u = a - ext;
+      const sorted = [...openings].sort((p, q) => p.c - q.c);
+      for (const o of sorted) {
+        const o0 = o.c - o.w / 2, o1 = o.c + o.w / 2;
+        piece(u, o0, 0, H);
+        u = o1;
+        const cut = { at: 0, o };
+        if (o.door) {
+          // A plug fills the doorway until it is cut, then the door swings open.
+          cut.plug = piece(o0, o1, 0, H);
+          const hinge = new THREE.Group();
+          if (axis === "x") hinge.position.set(o0 + 0.03, 0, fixed);
+          else hinge.position.set(fixed, 0, o0 + 0.03);
+          parent.add(hinge);
+          const leafLen = o.w - 0.06;
+          const leaf = axis === "x" ? box(leafLen, H - 0.08, 0.05) : box(0.05, H - 0.08, leafLen);
+          const m = mesh(leaf, doorMat, hinge, axis === "x" ? leafLen / 2 : 0, (H - 0.08) / 2, axis === "x" ? 0 : leafLen / 2);
+          m.castShadow = true;
+          cut.hinge = hinge;
+          cut.sign = axis === "x" ? -o.side : o.side;
+        } else {
+          piece(o0, o1, 0, SILL);
+          cut.plug = piece(o0, o1, SILL, H);
+          cut.glassMat = glassBase.clone();
+          const glass = piece(o0 + 0.02, o1 - 0.02, SILL, H - 0.06, cut.glassMat, 0.03);
+          glass.castShadow = false;
+        }
+        cuts.push(cut);
+      }
+      piece(u, b + ext, 0, H);
+    }
+    // Cut the openings in order around the plan.
+    cuts.forEach((c, i) => { c.at = 3.35 + i * 0.045; });
+
+    // ---- Furniture ----
+    const WOOD = "#c99d6e", WOOD_DARK = "#8a6446", WHITE = "#f7f5f1", FABRIC = "#c3c8cb", FABRIC_DARK = "#aab1b5", STONE = "#6c7176", LEAF = "#5d9b6d", LEAF_DARK = "#467f56", POT = "#e7e1d8";
+    const ACCENT_SOFT = tint(ACCENT, 0.35);
+    const items = [];
+    function item(roomId, x, z, rot = 0) {
+      const pivot = new THREE.Group();
+      pivot.position.set(x, 0, z);
+      pivot.rotation.y = rot;
+      pivot.visible = false;
+      scene.add(pivot);
+      const it = { pivot, room: roomId, start: 0 };
+      items.push(it);
+      return pivot;
+    }
+    const legs = (g, w, d, h, color = WOOD_DARK, inset = 0.06) => {
+      const geo = new THREE.CylinderGeometry(0.022, 0.022, h, 8);
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) mesh(geo, color, g, sx * (w / 2 - inset), h / 2, sz * (d / 2 - inset));
+    };
+
+    // Facing +z by default.
+    function sofa(g, len) {
+      mesh(rb(len, 0.3, 0.85, 0.06), FABRIC_DARK, g, 0, 0.22, 0);
+      mesh(rb(len, 0.5, 0.22, 0.08), FABRIC, g, 0, 0.5, -0.32);
+      for (const s of [-1, 1]) mesh(rb(0.2, 0.5, 0.85, 0.07), FABRIC, g, s * (len / 2 - 0.1), 0.32, 0);
+      const n = len > 1.4 ? 3 : 1, cw = (len - 0.4) / n;
+      for (let i = 0; i < n; i++) mesh(rb(cw - 0.04, 0.13, 0.6, 0.05), FABRIC, g, -len / 2 + 0.2 + cw * (i + 0.5), 0.43, 0.06);
+      if (len > 1.4) for (const s of [-1, 1]) {
+        const p = mesh(rb(0.36, 0.32, 0.1, 0.05), ACCENT, g, s * (len / 2 - 0.42), 0.62, -0.17);
+        p.rotation.x = -0.25;
+        p.rotation.z = s * 0.12;
+      }
+    }
+    function table(g, w, d, h, color = WOOD) {
+      mesh(rb(w, 0.05, d, 0.02), color, g, 0, h, 0);
+      legs(g, w, d, h);
+    }
+    function chair(g) {
+      mesh(rb(0.44, 0.06, 0.42, 0.03), WHITE, g, 0, 0.46, 0);
+      mesh(rb(0.44, 0.4, 0.05, 0.03), WHITE, g, 0, 0.7, -0.19);
+      legs(g, 0.42, 0.4, 0.44, WOOD_DARK, 0.04);
+    }
+    function plant(g, s = 1) {
+      mesh(new THREE.CylinderGeometry(0.2 * s, 0.15 * s, 0.38 * s, 18), POT, g, 0, 0.19 * s, 0);
+      const leafGeo = new THREE.IcosahedronGeometry(0.26 * s, 0);
+      [[0, 0.62, 0, LEAF], [0.13, 0.82, 0.05, LEAF_DARK], [-0.1, 0.9, -0.06, LEAF], [0.02, 1.08, 0.02, LEAF_DARK]].forEach(([x, y, z, c], i) => {
+        const m = mesh(leafGeo, new THREE.MeshStandardMaterial({ color: c, roughness: 0.8, flatShading: true }), g, x * s, y * s, z * s);
+        m.rotation.set(i, i * 1.3, 0);
+        m.scale.setScalar(1 - i * 0.12);
+      });
+    }
+    function counter(g, len, top = STONE) {
+      mesh(rb(len, 0.84, 0.6, 0.02), WHITE, g, 0, 0.42, 0);
+      mesh(box(len + 0.02, 0.05, 0.64), top, g, 0, 0.865, 0);
+    }
+    // Head towards -z, foot towards +z.
+    function bed(g, w, l, cover) {
+      mesh(rb(w + 0.1, 0.28, l, 0.05), WOOD, g, 0, 0.18, 0);
+      mesh(rb(w + 0.16, 0.85, 0.1, 0.04), WOOD, g, 0, 0.43, -l / 2 + 0.02);
+      mesh(rb(w, 0.22, l - 0.1, 0.08), WHITE, g, 0, 0.42, 0.03);
+      mesh(rb(w + 0.04, 0.07, l * 0.55, 0.035), cover, g, 0, 0.55, l * 0.2);
+      mesh(rb(w + 0.05, 0.08, 0.28, 0.035), tint(cover, 0.3), g, 0, 0.6, l * 0.2 - l * 0.26);
+      const n = w > 1.3 ? 2 : 1;
+      for (let i = 0; i < n; i++) mesh(rb(w / n - 0.12, 0.12, 0.34, 0.06), "#ffffff", g, (i - (n - 1) / 2) * (w / n), 0.59, -l / 2 + 0.3);
+    }
+    function sideTable(g) {
+      mesh(rb(0.44, 0.48, 0.4, 0.03), WOOD, g, 0, 0.24, 0);
+      mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.2, 12), WHITE, g, 0, 0.58, 0);
+      mesh(new THREE.CylinderGeometry(0.1, 0.15, 0.18, 16), new THREE.MeshStandardMaterial({ color: "#fff1d6", emissive: "#ffcf7a", emissiveIntensity: 0.35 }), g, 0, 0.76, 0);
+    }
+    function wardrobe(g, len) {
+      mesh(rb(len, 1.55, 0.6, 0.03), "#ece7df", g, 0, 0.775, 0);
+      const n = Math.round(len / 0.6);
+      for (let i = 1; i < n; i++) mesh(box(0.012, 1.4, 0.01), "#cfc8bd", g, -len / 2 + (len / n) * i, 0.78, 0.305);
+    }
+    function toilet(g) {
+      mesh(rb(0.4, 0.34, 0.18, 0.05), "#ffffff", g, 0, 0.55, -0.2);
+      mesh(rb(0.38, 0.38, 0.48, 0.14), "#ffffff", g, 0, 0.19, 0.05);
+    }
+    function vanity(g) {
+      mesh(rb(0.8, 0.78, 0.46, 0.03), WOOD, g, 0, 0.39, 0);
+      mesh(rb(0.5, 0.1, 0.34, 0.05), "#ffffff", g, 0, 0.83, 0.02);
+    }
+    function shower(g) {
+      mesh(rb(0.9, 0.06, 0.9, 0.03), "#ffffff", g, 0, 0.03, 0);
+      const glass = mesh(box(0.9, 1.5, 0.02), new THREE.MeshStandardMaterial({ color: "#cde9f2", transparent: true, opacity: 0.4, roughness: 0.1 }), g, 0, 0.8, 0.45);
+      glass.castShadow = false;
+    }
+
+    // Living and dining
+    { const g = item("living", -4.6, 2.5); mesh(rb(2.9, 0.02, 2.1, 0.01), "#ece6dc", g, 0, 0.01, 0); mesh(rb(2.6, 0.022, 1.8, 0.01), "#f5f1ea", g, 0, 0.012, 0); }
+    sofa(item("living", -4.6, 1.15), 2.4);
+    { const g = item("living", -4.6, 2.45); table(g, 1.1, 0.6, 0.36); mesh(rb(0.3, 0.05, 0.22, 0.02), ACCENT_SOFT, g, 0.2, 0.41, 0); }
+    sofa(item("living", -6.35, 2.55, Math.PI / 2), 0.95);
+    { const g = item("living", -4.4, 4.68, Math.PI); mesh(rb(2.0, 0.42, 0.4, 0.03), WOOD, g, 0, 0.21, 0); mesh(rb(1.4, 0.8, 0.05, 0.02), "#2b3035", g, 0, 0.84, 0.05); }
+    table(item("living", -1.7, 2.8, Math.PI / 2), 1.6, 0.9, 0.74);
+    for (const [x, z, r] of [[-2.35, 2.4, Math.PI / 2], [-2.35, 3.2, Math.PI / 2], [-1.05, 2.4, -Math.PI / 2], [-1.05, 3.2, -Math.PI / 2]]) chair(item("living", x, z, r));
+    plant(item("living", -0.45, 4.5), 1.1);
+    plant(item("living", -6.55, 4.5));
+
+    // Kitchen
+    { const g = item("kitchen", -5.7, -4.6); counter(g, 2.4); mesh(box(0.55, 0.02, 0.38), "#b7c0c5", g, 0.4, 0.895, 0); }
+    { const g = item("kitchen", -3.98, -4.55); mesh(rb(0.72, 1.6, 0.66, 0.05), "#dfe3e6", g, 0, 0.8, 0); mesh(box(0.02, 0.6, 0.02), "#9aa3a8", g, -0.28, 1.05, 0.34); }
+    { const g = item("kitchen", -6.6, -3.2, Math.PI / 2); counter(g, 1.8); mesh(box(0.6, 0.012, 0.45), "#2b3035", g, 0, 0.895, 0); }
+    { const g = item("kitchen", -5.0, -1.45); mesh(rb(1.8, 0.86, 0.8, 0.03), ACCENT, g, 0, 0.43, 0); mesh(box(1.9, 0.05, 0.9), WOOD, g, 0, 0.885, 0); }
+    for (const x of [-5.5, -4.5]) { const g = item("kitchen", x, -0.72); mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.06, 20), WOOD, g, 0, 0.66, 0); mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.63, 8), WOOD_DARK, g, 0, 0.32, 0); }
+
+    // Bathroom 2
+    vanity(item("bath2", -2.0, -4.72));
+    toilet(item("bath2", -3.1, -4.62));
+    shower(item("bath2", -2.02, -2.55, Math.PI));
+
+    // Bedroom 3
+    bed(item("bed3", -0.75, -3.9), 1.1, 2.0, "#a8c1ec");
+    sideTable(item("bed3", 0.15, -4.65));
+    { const g = item("bed3", 2.1, -3.4, -Math.PI / 2); table(g, 1.2, 0.6, 0.74, WHITE); }
+    chair(item("bed3", 1.5, -3.4, Math.PI / 2));
+    plant(item("bed3", 2.15, -4.65), 0.85);
+
+    // Bedroom 2
+    bed(item("bed2", 5.9, -2.6, -Math.PI / 2), 1.5, 2.0, "#c7b6ee");
+    sideTable(item("bed2", 6.62, -3.75));
+    sideTable(item("bed2", 6.62, -1.45));
+    wardrobe(item("bed2", 3.6, -4.6), 1.8);
+
+    // Master bedroom
+    { const g = item("master", 5.5, 2.25); mesh(rb(2.9, 0.02, 2.6, 0.01), "#efe9e0", g, 0, 0.01, 0); }
+    bed(item("master", 5.85, 2.25, -Math.PI / 2), 1.8, 2.1, ACCENT);
+    sideTable(item("master", 6.62, 0.95));
+    sideTable(item("master", 6.62, 3.55));
+    wardrobe(item("master", 4.9, -0.1), 2.4);
+    sofa(item("master", 3.25, 4.2, Math.PI * 0.8), 0.9);
+    plant(item("master", 6.6, 4.6));
+
+    // Bathroom 1
+    vanity(item("bath1", 1.7, 4.72, Math.PI));
+    toilet(item("bath1", 0.42, 4.6, Math.PI));
+    shower(item("bath1", 2.0, 2.55, Math.PI));
+
+    // Furniture pops in room by room.
+    const popOrder = ["living", "kitchen", "bath2", "bed3", "bed2", "master", "bath1"];
+    const perRoom = {};
+    for (const it of items) {
+      const k = (perRoom[it.room] = (perRoom[it.room] ?? -1) + 1);
+      it.start = 4.15 + popOrder.indexOf(it.room) * 0.32 + k * 0.07;
+    }
+    items.forEach((it, i) => { it.order = i; });
+
+    // Walls rise room by room.
+    rooms.forEach((r, i) => { r.rise = 1.0 + i * 0.3; });
+
+    // Room tags, lit one by one.
+    const ui = document.querySelector(".ui");
+    const tagged = rooms.filter((r) => r.name);
+    tagged.forEach((r, i) => {
+      const el = document.createElement("div");
+      el.className = "tag";
+      el.innerHTML = `<b></b><span></span>`;
+      el.querySelector("b").textContent = r.name;
+      el.querySelector("span").textContent = r.size;
+      ui.appendChild(el);
+      r.tag = el;
+      r.lit = 5.7 + i * 0.42;
+      r.anchor = new THREE.Vector3(r.at[0], 0.9, r.at[1]);
+    });
+    const card = document.getElementById("card");
+    const head = document.querySelector(".head");
+
+    // ---- Timing helpers. Everything repeats every LOOP seconds. ----
+    const LOOP = 12;
+    const TAU = Math.PI * 2;
+    const OUT = 10.9;
+    const clamp01 = (v) => Math.min(1, Math.max(0, v));
+    const easeOut = (u) => 1 - Math.pow(1 - clamp01(u), 3);
+    const easeInOut = (u) => { const x = clamp01(u); return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+    const backOut = (u) => { const s = 2.0, v = clamp01(u) - 1; return 1 + (s + 1) * v * v * v + s * v * v; };
+    const backIn = (u) => { const s = 1.7, v = clamp01(u); return (s + 1) * v * v * v - s * v * v; };
+    const wave = (t, k, phase = 0) => Math.sin((TAU * k * t) / LOOP + phase);
+    const setScale = (o, sx, sy = sx, sz = sx) => {
+      o.visible = Math.min(sx, sy, sz) > 0.001;
+      o.scale.set(Math.max(sx, 0.001), Math.max(sy, 0.001), Math.max(sz, 0.001));
+    };
+
+    // ---- Camera framing ----
+    // Points that must stay in frame: slab corners and wall tops.
+    const framePoints = [];
+    for (const x of [-7.35, 7.35]) for (const z of [-5.35, 5.35]) for (const y of [-0.34, H]) framePoints.push(new THREE.Vector3(x, y, z));
+    const target = new THREE.Vector3(0, 0.3, 0);
+    let W = 1, Hh = 1, range = { x0: -0.9, x1: 0.9, y0: -0.9, y1: 0.9 };
+    const right = new THREE.Vector3(), up = new THREE.Vector3(), back = new THREE.Vector3(), rel = new THREE.Vector3();
+
+    // Where the plan lands on screen (before any lens shift) from a given angle and distance.
+    function screenBox(az, el, d) {
+      back.set(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az));
+      right.set(Math.cos(az), 0, -Math.sin(az));
+      up.crossVectors(back, right);
+      const fy = 1 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+      const fx = fy / camera.aspect;
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (const p of framePoints) {
+        rel.subVectors(p, target);
+        const depth = d - rel.dot(back);
+        const sx = (fx * rel.dot(right)) / depth, sy = (fy * rel.dot(up)) / depth;
+        x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
+      }
+      return { x0, x1, y0, y1 };
+    }
+    // The distance that fits the plan into the free part of the frame from one angle.
+    // Then step back until the plan's outline also clears the title and price card.
+    const outline = [];
+    for (let i = 0; i <= 12; i++) {
+      const u = i / 12;
+      for (const y of [-0.34, H]) {
+        outline.push(new THREE.Vector3(-7.35 + 14.7 * u, y, -5.35), new THREE.Vector3(-7.35 + 14.7 * u, y, 5.35));
+        outline.push(new THREE.Vector3(-7.35, y, -5.35 + 10.7 * u), new THREE.Vector3(7.35, y, -5.35 + 10.7 * u));
+      }
+    }
+    let obstacles = [];
+    function blocked(az, el, d) {
+      const b = screenBox(az, el, d);
+      const shiftX = (range.x0 + range.x1) / 2 - (b.x0 + b.x1) / 2;
+      const shiftY = (range.y0 + range.y1) / 2 - (b.y0 + b.y1) / 2;
+      const fy = 1 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+      const fx = fy / camera.aspect;
+      for (const p of outline) {
+        rel.subVectors(p, target);
+        const depth = d - rel.dot(back);
+        const sx = (fx * rel.dot(right)) / depth + shiftX, sy = (fy * rel.dot(up)) / depth + shiftY;
+        for (const o of obstacles) if (sx > o.x0 && sx < o.x1 && sy > o.y0 && sy < o.y1) return true;
+      }
+      return false;
+    }
+    function fitDistance(az, el) {
+      const rx = (range.x1 - range.x0) / 2, ry = (range.y1 - range.y0) / 2;
+      let d = 40;
+      for (let pass = 0; pass < 5; pass++) {
+        const b = screenBox(az, el, d);
+        d *= Math.max((b.x1 - b.x0) / 2 / rx, (b.y1 - b.y0) / 2 / ry);
+      }
+      for (let i = 0; i < 80 && blocked(az, el, d); i++) d *= 1.025;
+      return d;
+    }
+    // One distance for the whole orbit (the widest view), so the plan never breathes in and out.
+    let distance = 40, baseAz = 0.42;
+    const orbit = (t) => ({ az: baseAz + wave(t, 1, -Math.PI / 2) * 0.2 + wave(t, 2) * 0.02, el: 0.97 + wave(t, 1) * 0.03 });
+    function fitOrbit() {
+      distance = 0;
+      for (let t = 0; t < LOOP; t += 0.25) {
+        const { az, el } = orbit(t);
+        distance = Math.max(distance, fitDistance(az, el));
+      }
+    }
+    // Place the camera and shift the lens so the plan sits in the middle of the free area.
+    function frame(az, el) {
+      const d = distance;
+      const box = screenBox(az, el, d);
+      camera.position.copy(target).addScaledVector(back, d);
+      camera.lookAt(target);
+      camera.updateMatrixWorld();
+      camera.updateProjectionMatrix();
+      // Lens shift: move the plan's box to the centre of the free area.
+      const e = camera.projectionMatrix.elements;
+      e[8] = -((range.x0 + range.x1) / 2 - (box.x0 + box.x1) / 2);
+      e[9] = -((range.y0 + range.y1) / 2 - (box.y0 + box.y1) / 2);
+      camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+    }
+
+    const tmp = new THREE.Vector3();
+    function pose(t) {
+      // Slab grows out from the middle, and shrinks away at the very end.
+      const slabIn = easeOut((t - 0.1) / 0.8);
+      const slabOut = 1 - easeInOut((t - 11.45) / 0.45);
+      const s = Math.min(slabIn, slabOut);
+      setScale(slab, s, 1, s);
+      catcher.visible = s > 0.02;
+
+      // Walls rise room by room, then sink before the loop restarts.
+      rooms.forEach((r, i) => {
+        const up = easeOut((t - r.rise) / 0.6);
+        const down = 1 - easeInOut((t - (11.05 + i * 0.03)) / 0.35);
+        const k = Math.min(up, down);
+        r.walls.visible = k > 0.001;
+        r.walls.scale.set(1, Math.max(k, 0.001), 1);
+        // Soft colour glow when the room is announced.
+        if (r.glowMat) {
+          const lit = t - r.lit;
+          const glow = lit < 0 ? 0 : lit < 0.35 ? lit / 0.35 * 0.7 : 0.7 - Math.min(0.32, (lit - 0.35) * 0.8);
+          r.glowMat.opacity = glow * (1 - clamp01((t - OUT) / 0.4));
+        }
+      });
+
+      // Windows and doors cut in: the filler shrinks along the wall, then glass fades in or the door swings open.
+      for (const c of cuts) {
+        const k = easeInOut((t - c.at) / 0.3);
+        const sx = Math.max(1 - k, 0.001);
+        const along = c.plug.geometry.parameters.width > c.plug.geometry.parameters.depth;
+        c.plug.scale.set(along ? sx : 1, 1, along ? 1 : sx);
+        c.plug.visible = k < 0.999;
+        if (c.o.door) {
+          c.hinge.visible = k > 0.5;
+          c.hinge.rotation.y = c.sign * 1.35 * easeOut((t - c.at - 0.2) / 0.6);
+        } else {
+          c.glassMat.opacity = 0.5 * k;
+        }
+      }
+
+      // Furniture pops in with a bounce, and pops out at the end.
+      for (const it of items) {
+        const outAt = OUT + 0.05 + (items.length - 1 - it.order) * 0.006;
+        const k = t >= outAt ? 1 - backIn((t - outAt) / 0.3) : t < it.start ? 0 : backOut((t - it.start) / 0.5);
+        setScale(it.pivot, k);
+      }
+
+      // Camera: a slow three quarter orbit that loops.
+      const { az, el } = orbit(t);
+      frame(az, el);
+
+      // Room tags follow their rooms on screen.
+      for (const r of tagged) {
+        const u = t - r.lit;
+        const out = clamp01((t - OUT) / 0.3);
+        const k = u < 0 ? 0 : easeOut(u / 0.45);
+        const o = k * (1 - out);
+        r.tag.style.opacity = o.toFixed(3);
+        if (o <= 0) continue;
+        tmp.copy(r.anchor).project(camera);
+        const x = (tmp.x + 1) / 2 * W, y = (1 - tmp.y) / 2 * Hh;
+        const lift = (1 - k) * 10 + out * 6;
+        const sc = 0.85 + 0.15 * backOut(u / 0.45);
+        r.tag.style.transform = `translate(${x.toFixed(1)}px, ${(y + lift).toFixed(1)}px) translate(-50%, -50%) scale(${sc.toFixed(3)})`;
+      }
+
+      // Price card slides in near the end.
+      const cin = easeOut((t - 7.9) / 0.7), cout = clamp01((t - OUT) / 0.35);
+      const slide = (1 - cin) * 1 + cout * 0.5;
+      card.style.opacity = (Math.min(1, cin * 1.4) * (1 - cout)).toFixed(3);
+      card.style.transform = wide ? `translateX(${(-slide * 30).toFixed(2)}vmin)` : `translateY(${(slide * 20).toFixed(2)}vmin)`;
+    }
+
+    // ---- Layout: keep the plan clear of the title and the price card ----
+    let wide = false;
+    function resize() {
+      W = window.innerWidth;
+      Hh = window.innerHeight;
+      renderer.setSize(W, Hh, false);
+      camera.aspect = W / Hh;
+      wide = W / Hh > 1.25;
+      document.body.classList.toggle("wide", wide);
+      document.body.classList.toggle("compact", !wide && W / Hh > 0.7);
+      const vmin = Math.min(W, Hh) / 100;
+      const pad = 3 * vmin;
+      const headBottom = head.offsetTop + head.offsetHeight;
+      const cardTop = card.offsetTop;
+      const nx = (px) => (px / W) * 2 - 1, ny = (py) => 1 - (py / Hh) * 2;
+      const rect = (el) => ({ x0: nx(el.offsetLeft - pad), x1: nx(el.offsetLeft + el.offsetWidth + pad), y0: ny(el.offsetTop + el.offsetHeight + pad), y1: ny(el.offsetTop - pad) });
+      const headBottomN = ny(headBottom + pad), cardTopN = ny(cardTop - pad);
+      const cardRight = card.offsetLeft + card.offsetWidth;
+      const col = Math.max(head.offsetLeft + head.offsetWidth, cardRight);
+      // A few ways to place the plan clear of the title and card; keep the one that shows it biggest.
+      const options = wide
+        ? [
+          { range: { x0: nx(col + pad), x1: nx(W - pad), y0: ny(Hh - pad), y1: ny(pad) }, obstacles: [] },
+          { range: { x0: nx(col * 0.45), x1: nx(W - pad), y0: ny(Hh - pad), y1: ny(pad) }, obstacles: [rect(head), rect(card)] },
+        ]
+        : [
+          { range: { x0: nx(pad), x1: nx(W - pad), y0: cardTopN, y1: headBottomN }, obstacles: [] },
+          { range: { x0: nx(cardRight + pad), x1: nx(W - pad), y0: ny(Hh - pad), y1: headBottomN }, obstacles: [] },
+        ];
+      // Or let the plan dip into the card's band on the right, beside the card.
+      if (!wide) {
+        for (const f of [0.35, 0.7]) for (const g of [0, 0.5]) {
+          options.push({ range: { x0: nx(cardRight * g + pad), x1: nx(W - pad), y0: ny(cardTop + (Hh - cardTop) * f), y1: headBottomN }, obstacles: [rect(card)] });
+        }
+      }
+      // Tall frames turn the plan so its long side runs up the screen.
+      const a = W / Hh;
+      baseAz = 0.42 + (0.95 - 0.42) * clamp01((1.25 - a) / (1.25 - 0.6));
+      let best = null;
+      for (const o of options) {
+        range = o.range;
+        obstacles = o.obstacles;
+        if (range.x1 - range.x0 < 0.2 || range.y1 - range.y0 < 0.2) continue;
+        fitOrbit();
+        if (!best || distance < best.distance) best = { ...o, distance };
+      }
+      range = best.range;
+      obstacles = best.obstacles;
+      distance = best.distance;
+    }
+
+    // setAnimationLoop passes the time in milliseconds.
+    function loop(ms) {
+      pose((ms / 1000) % LOOP);
+      renderer.render(scene, camera);
+    }
+
+    // Reduced motion: one still frame with every room labelled and the price showing.
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    const STILL = 9.6;
+    function still() {
+      renderer.setAnimationLoop(null);
+      pose(STILL);
+      renderer.render(scene, camera);
+    }
+    function apply() {
+      if (reduce.matches) still();
+      else renderer.setAnimationLoop(loop);
+    }
+
+    window.addEventListener("resize", () => {
+      resize();
+      if (reduce.matches) still();
+    });
+    reduce.addEventListener("change", apply);
+
+    resize();
+    apply();
+    // Measure again once the font has loaded, since the title may change size.
+    document.fonts.ready.then(() => {
+      resize();
+      if (reduce.matches) still();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,734 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Borneo rainforest demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/cormorant-garamond@5.3.0/600.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/montserrat@5.3.0/600.css">
+  <style>
+    /* Colours can be set from the URL: ?text=Title|Small line&bg=0f2d21&ink=f6f1dc&accent=e8c46a&accent2=c8331f */
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #0f2d21;
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="scene" role="img"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => "#" + (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const C = {
+      deep: hex("bg", "0f2d21"),
+      ink: hex("ink", "f6f1dc"),
+      gold: hex("accent", "e8c46a"),
+      petal: hex("accent2", "a8281a"),
+      haze: "#b9cfa6",
+      far: "#5f8b72",
+      trunk: "#35584a",
+      canopy: "#153626",
+      under: "#143a29",
+      front: "#0a2117",
+      spot: "#f4e3cc",
+    };
+    document.body.style.background = C.deep;
+
+    // ?text=Title|Small line. The default is one small word over a big name.
+    const raw = (params.get("text") || "").trim();
+    let [title, small] = raw
+      ? [raw.split("|")[0].trim().slice(0, 40), (raw.split("|")[1] || "").trim().slice(0, 40)]
+      : ["Discover Borneo", ""];
+    // "Discover Borneo" becomes a small "DISCOVER" line over a big "Borneo".
+    let big = title;
+    if (!raw || !small) {
+      const w = title.split(/\s+/);
+      if (w.length > 1 && w.slice(0, -1).join(" ").length <= 14) {
+        small = w.slice(0, -1).join(" ");
+        big = w.at(-1);
+      }
+    }
+
+    const canvas = document.getElementById("scene");
+    canvas.setAttribute("aria-label", `A misty Borneo rainforest at morning: light rays through tall trees and giant ferns, a rhinoceros hornbill gliding past and a rafflesia flower opening on the forest floor, with the title ${title}`);
+    const ctx = canvas.getContext("2d");
+
+    const TAU = Math.PI * 2;
+    const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+    const ease = gsap.parseEase("power2.inOut");
+    const easeOut = gsap.parseEase("power3.out");
+
+    function rng(seed) {
+      return () => {
+        seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    // One loop is 12 seconds. Every sway does a whole number of cycles per loop.
+    const LOOP = 12, STILL = 7;
+    const wave = (t, cycles, phase = 0) => Math.sin(TAU * (t * cycles) / LOOP + phase);
+
+    let W, H, u, dpr, M, L, layers, mist, T, motes;
+
+    function makeCanvas(w, h) {
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(w * dpr));
+      c.height = Math.max(1, Math.round(h * dpr));
+      const g = c.getContext("2d");
+      g.scale(dpr, dpr);
+      return [c, g];
+    }
+
+    // A soft round crown made of overlapping circles.
+    function crown(g, x, y, w, h, rnd, col, light) {
+      const n = 9;
+      for (let pass = 0; pass < 2; pass++) {
+        g.fillStyle = pass ? light : col;
+        for (let i = 0; i < n; i++) {
+          const a = (i / (n - 1)) * Math.PI;
+          const cx = x - Math.cos(a) * w * 0.42, cy = y - Math.sin(a) * h * 0.35 + h * 0.1;
+          const r = h * (0.32 + rnd() * 0.12) * (pass ? 0.6 : 1);
+          g.beginPath();
+          g.arc(cx + (pass ? r * 0.2 : 0), cy - (pass ? r * 0.3 : 0), r, 0, TAU);
+          g.fill();
+        }
+      }
+    }
+
+    // A tall dipterocarp: a straight pale trunk with wide buttress roots at the base.
+    function dipterocarp(g, x, base, top, w, col, lit) {
+      const grad = g.createLinearGradient(x - w, 0, x + w, 0);
+      grad.addColorStop(0, col);
+      grad.addColorStop(0.65, lit);
+      grad.addColorStop(1, col);
+      g.fillStyle = grad;
+      g.beginPath();
+      g.moveTo(x - w * 2.6, base);
+      g.quadraticCurveTo(x - w * 0.7, base - w * 0.6, x - w * 0.55, base - w * 4);
+      g.lineTo(x - w * 0.4, top);
+      g.lineTo(x + w * 0.4, top);
+      g.lineTo(x + w * 0.55, base - w * 4);
+      g.quadraticCurveTo(x + w * 0.7, base - w * 0.6, x + w * 2.6, base);
+      g.closePath();
+      g.fill();
+      // A middle buttress fin catching the light.
+      g.strokeStyle = lit;
+      g.globalAlpha = 0.5;
+      g.lineWidth = Math.max(1, w * 0.14);
+      g.beginPath();
+      g.moveTo(x + w * 0.1, base - w * 3.2);
+      g.quadraticCurveTo(x + w * 0.3, base - w * 0.4, x + w * 1.3, base);
+      g.stroke();
+      g.globalAlpha = 1;
+    }
+
+    function layout() {
+      const r = W / H, o = {};
+      if (r < 0.8) {
+        o.title = { cx: W / 2, cy: H * 0.34, maxW: W * 0.84 };
+        o.flower = { x: W * 0.5, y: H * 0.86, r: W * 0.2 };
+        o.bird = { y: H * 0.53, s: W * 0.3 };
+      } else if (r < 1.3) {
+        o.title = { cx: W / 2, cy: H * 0.4, maxW: W * 0.7 };
+        o.flower = { x: W * 0.5, y: H * 0.86, r: u * 0.16 };
+        o.bird = { y: H * 0.18, s: u * 0.24 };
+      } else {
+        o.title = { cx: W / 2, cy: H * 0.4, maxW: W * 0.5 };
+        o.flower = { x: W * 0.62, y: H * 0.85, r: u * 0.18 };
+        o.bird = { y: H * 0.15, s: u * 0.24 };
+      }
+      return o;
+    }
+
+    function build() {
+      W = innerWidth;
+      H = innerHeight;
+      u = Math.min(W, H);
+      dpr = Math.min(devicePixelRatio || 1, 2);
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
+      L = layout();
+      // Layers are a little wider than the window so they can sway.
+      M = u * 0.06;
+      const LW = W + M * 2, LH = H + M * 2;
+      const rnd = rng(5);
+      layers = [];
+
+      // Far: hazy sky and a distant canopy with tall emergent crowns.
+      let [c, g] = makeCanvas(LW, LH);
+      g.translate(M, M);
+      const sky = g.createLinearGradient(0, -M, 0, H + M);
+      sky.addColorStop(0, "#c9d9a0");
+      sky.addColorStop(0.22, "#62995f");
+      sky.addColorStop(0.55, "#255d3c");
+      sky.addColorStop(1, "#123524");
+      g.fillStyle = sky;
+      g.fillRect(-M, -M, LW, LH);
+      const sun = g.createRadialGradient(W * 0.78, -H * 0.02, 0, W * 0.78, -H * 0.02, Math.max(W, H) * 0.7);
+      sun.addColorStop(0, "rgba(255,246,200,0.85)");
+      sun.addColorStop(1, "rgba(255,248,215,0)");
+      g.fillStyle = sun;
+      g.fillRect(-M, -M, LW, LH);
+      for (let i = 0; i < 7; i++) {
+        const x = -M + (i + rnd() * 0.6) * (LW / 6.5), top = H * (0.14 + rnd() * 0.16);
+        g.fillStyle = "#56806a";
+        g.fillRect(x - u * 0.006, top, u * 0.012, H);
+        crown(g, x, top, u * (0.2 + rnd() * 0.1), u * (0.08 + rnd() * 0.04), rnd, "#4a8556", "#64a068");
+      }
+      for (let x = -M; x < W + M; x += u * 0.07) {
+        crown(g, x, H * (0.5 + rnd() * 0.06), u * 0.16, u * 0.08, rnd, "#285f3f", "#35714c");
+      }
+      g.fillStyle = "#285f3f";
+      g.fillRect(-M, H * 0.55, LW, H);
+      layers.push({ c, depth: 0.2 });
+
+      // Middle: big trunks going up out of frame, a canopy along the top and hanging lianas.
+      [c, g] = makeCanvas(LW, LH);
+      g.translate(M, M);
+      const trunks = W / H > 1.3 ? [0.05, 0.2, 0.36, 0.7, 0.84, 0.97] : W / H > 0.8 ? [0.05, 0.24, 0.76, 0.93] : [0.04, 0.3, 0.72, 0.95];
+      trunks.forEach((fx, i) => {
+        const w = u * (0.024 + (i % 2) * 0.014);
+        dipterocarp(g, fx * W, H * (0.84 + (i % 2) * 0.05), -M, w, i % 2 ? "#1b362a" : "#244536", i % 2 ? "#48705a" : "#577f68");
+      });
+      for (let x = -M; x < W + M; x += u * 0.08) {
+        crown(g, x, -M * 0.2 + rnd() * u * 0.04, u * 0.22, u * 0.14, rnd, "#0d2519", "#1b442f");
+      }
+      g.lineCap = "round";
+      for (let i = 0; i < 6; i++) {
+        const x0 = (0.08 + i * 0.17 + rnd() * 0.05) * W, len = H * (0.25 + rnd() * 0.3), sag = u * (rnd() - 0.5) * 0.15;
+        g.strokeStyle = "#1c3f2e";
+        g.lineWidth = Math.max(1, u * 0.004);
+        g.beginPath();
+        g.moveTo(x0, 0);
+        g.quadraticCurveTo(x0 + sag, len * 0.6, x0 + sag * 0.3, len);
+        g.stroke();
+        g.fillStyle = "#23523a";
+        for (let k = 0.2; k < 1; k += 0.14) {
+          const px = x0 + sag * 2 * k * (1 - k) * 1.2 + sag * 0.3 * k * k, py = len * k;
+          g.beginPath();
+          g.ellipse(px + u * 0.008, py, u * 0.011, u * 0.005, 0.6, 0, TAU);
+          g.ellipse(px - u * 0.008, py + u * 0.01, u * 0.011, u * 0.005, -0.6, 0, TAU);
+          g.fill();
+        }
+      }
+      layers.push({ c, depth: 0.45 });
+
+      // Understory: palms, fern clumps and the forest floor.
+      [c, g] = makeCanvas(LW, LH);
+      g.translate(M, M);
+      // Understory palms: a short stem with a fan of arching fronds.
+      for (let i = 0; i < 5; i++) {
+        const x = -M + (i + 0.2 + rnd() * 0.6) * (LW / 5), y = H * (0.68 + rnd() * 0.08), len = u * (0.16 + rnd() * 0.08);
+        g.strokeStyle = "#173d2a";
+        g.lineWidth = Math.max(1, u * 0.008);
+        g.beginPath();
+        g.moveTo(x, H * 0.9);
+        g.lineTo(x, y);
+        g.stroke();
+        for (let k = 0; k < 6; k++) fern(g, x, y, len, -Math.PI / 2 + (k - 2.5) * 0.5, k % 2 ? "#174a2f" : "#1d5738", 12, (k - 2.5) * 0.35);
+      }
+      for (let i = 0; i < 11; i++) {
+        const x = -M + (i + rnd() * 0.8) * (LW / 10.5), y = H * (0.84 + rnd() * 0.06);
+        for (let k = 0; k < 3; k++) fern(g, x, y, u * (0.14 + rnd() * 0.08), -Math.PI / 2 + (k - 1) * 0.7 + (rnd() - 0.5) * 0.3, i % 2 ? "#1d5a37" : "#276d44", 12, (k - 1) * 0.5);
+      }
+      const floor = g.createLinearGradient(0, H * 0.8, 0, H + M);
+      floor.addColorStop(0, "#173e2b");
+      floor.addColorStop(1, "#0a2016");
+      g.fillStyle = floor;
+      g.beginPath();
+      g.moveTo(-M, H + M);
+      for (let x = -M; x <= W + M; x += u * 0.05) g.lineTo(x, H * 0.87 + Math.sin(x / u * 7) * u * 0.02 + rnd() * u * 0.01);
+      g.lineTo(W + M, H + M);
+      g.fill();
+      layers.push({ c, depth: 0.7 });
+
+      // Mist bands that scroll one tile width per loop, so they wrap without a seam.
+      mist = [0, 1].map((k) => {
+        const tw = W * (k ? 2 : 1), th = H;
+        const [mc, mg] = makeCanvas(tw, th);
+        const rm = rng(40 + k);
+        for (let i = 0; i < 16; i++) {
+          const x = rm() * tw, y = H * (k ? 0.62 + rm() * 0.3 : 0.4 + rm() * 0.25), r = u * (0.18 + rm() * 0.2);
+          for (const ox of [-tw, 0, tw]) {
+            const gr = mg.createRadialGradient(x + ox, y, 0, x + ox, y, r);
+            gr.addColorStop(0, `rgba(228,238,220,${k ? 0.2 : 0.26})`);
+            gr.addColorStop(1, "rgba(236,242,228,0)");
+            mg.fillStyle = gr;
+            mg.save();
+            mg.translate(x + ox, y);
+            mg.scale(2.2, 0.55);
+            mg.translate(-(x + ox), -y);
+            mg.fillRect(x + ox - r, y - r, r * 2, r * 2);
+            mg.restore();
+          }
+        }
+        return { c: mc, w: tw };
+      });
+
+      // Floating dew sparkles and fireflies.
+      const rm = rng(9);
+      motes = Array.from({ length: 34 }, (_, i) => ({
+        x: rm() * W, y: H * (0.25 + rm() * 0.65), r: u * (0.002 + rm() * 0.003),
+        ax: u * (0.02 + rm() * 0.04), ay: u * (0.02 + rm() * 0.03), c1: 1 + Math.floor(rm() * 2), c2: 1 + Math.floor(rm() * 2),
+        ph: rm() * TAU, fly: i % 3 === 0,
+      }));
+
+      // Title sizes.
+      T = {};
+      const corm = '"Cormorant Garamond", Garamond, Georgia, serif';
+      const mont = 'Montserrat, "Trebuchet MS", system-ui, sans-serif';
+      ctx.font = `600 100px ${corm}`;
+      const bw = ctx.measureText(big).width;
+      T.bigSize = Math.min(u * 0.26, (100 * L.title.maxW) / Math.max(1, bw));
+      T.smallSize = small ? Math.max(8, T.bigSize * 0.19) : 0;
+      if (small) {
+        ctx.font = `600 ${T.smallSize}px ${mont}`;
+        ctx.letterSpacing = `${(T.smallSize * 0.5).toFixed(1)}px`;
+        const sw = ctx.measureText(small.toUpperCase()).width;
+        ctx.letterSpacing = "0px";
+        if (sw > L.title.maxW) T.smallSize *= L.title.maxW / sw;
+      }
+      T.corm = corm;
+      T.mont = mont;
+      ctx.font = `600 ${T.bigSize}px ${corm}`;
+      const full = ctx.measureText(big).width;
+      T.letters = [...big].map((ch, i) => ({ ch, x: L.title.cx - full / 2 + ctx.measureText(big.slice(0, i)).width + ctx.measureText(ch).width / 2 }));
+    }
+
+    // A fern frond: a curved stem with leaflets on both sides that shrink toward the tip.
+    function fern(g, x, y, len, ang, col, n = 16, bend = 0.5) {
+      g.fillStyle = col;
+      g.strokeStyle = col;
+      g.lineWidth = Math.max(1, len * 0.012);
+      const pt = (k) => {
+        const a = ang + bend * k * k;
+        const cx = x + Math.cos(ang) * len * k + Math.cos(a + Math.PI / 2) * 0 , cy = y + Math.sin(ang) * len * k;
+        const dx = Math.cos(ang + Math.PI / 2) * bend * len * k * k * 0.35, dy = Math.sin(ang + Math.PI / 2) * bend * len * k * k * 0.35;
+        return [cx + dx, cy + dy, a];
+      };
+      g.beginPath();
+      g.moveTo(x, y);
+      for (let k = 0.05; k <= 1.001; k += 0.05) g.lineTo(...pt(k).slice(0, 2));
+      g.stroke();
+      for (let i = 1; i < n; i++) {
+        const k = i / n, [px, py, a] = pt(k), ll = len * 0.22 * (1 - k * 0.85);
+        for (const side of [-1, 1]) {
+          const la = a + side * 1.15;
+          g.beginPath();
+          g.ellipse(px + Math.cos(la) * ll * 0.5, py + Math.sin(la) * ll * 0.5, ll * 0.5, ll * 0.13, la, 0, TAU);
+          g.fill();
+        }
+      }
+    }
+
+    // A big tropical leaf (like a giant taro) with a midrib and veins.
+    function bigLeaf(x, y, len, ang, col, vein) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(ang);
+      const w = len * 0.42;
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.bezierCurveTo(len * 0.1, -w * 1.1, len * 0.75, -w * 0.9, len, 0);
+      ctx.bezierCurveTo(len * 0.75, w * 0.9, len * 0.1, w * 1.1, 0, 0);
+      ctx.fill();
+      ctx.strokeStyle = vein;
+      ctx.lineWidth = Math.max(1, len * 0.012);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(len * 0.97, 0);
+      for (let k = 0.18; k < 0.9; k += 0.13) {
+        const s = Math.sin(k * Math.PI) * w * 0.8;
+        ctx.moveTo(len * k, 0);
+        ctx.quadraticCurveTo(len * (k + 0.08), -s * 0.5, len * (k + 0.16), -s);
+        ctx.moveTo(len * k, 0);
+        ctx.quadraticCurveTo(len * (k + 0.08), s * 0.5, len * (k + 0.16), s);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Light rays from the top right, shimmering slowly.
+    function drawRays(t) {
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      const sx = W * 0.85, sy = -H * 0.15;
+      for (let i = 0; i < 6; i++) {
+        const a = Math.PI * (0.6 + i * 0.07), spread = 0.02 + (i % 3) * 0.012;
+        const len = Math.hypot(W, H) * 1.2;
+        const k = 0.1 + 0.07 * (0.5 + 0.5 * wave(t, 1 + (i % 3), i * 1.7));
+        const gr = ctx.createLinearGradient(sx, sy, sx + Math.cos(a) * len * 0.8, sy + Math.sin(a) * len * 0.8);
+        gr.addColorStop(0, `rgba(255,246,208,${k * 1.6})`);
+        gr.addColorStop(1, "rgba(255,246,208,0)");
+        ctx.fillStyle = gr;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx + Math.cos(a - spread) * len, sy + Math.sin(a - spread) * len);
+        ctx.lineTo(sx + Math.cos(a + spread) * len, sy + Math.sin(a + spread) * len);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function drawMist(m, t, y0, alpha) {
+      const off = -((t / LOOP) * m.w);
+      ctx.globalAlpha = alpha;
+      for (let x = off; x < W; x += m.w) ctx.drawImage(m.c, x, y0, m.w, H);
+      ctx.globalAlpha = 1;
+    }
+
+    // Rhinoceros hornbill in flight, seen a little from below. Wing angle psi in radians.
+    function hornbill(x, y, s, psi, tilt) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(tilt);
+      ctx.scale(s, s);
+      const span = 0.82;
+      // A wing: rounded leading edge, five fingered primaries at the tip, straight trailing edge.
+      const shape = [[0, -0.02], [0.35, -0.05], [0.7, -0.03], [0.92, 0.02], [1, 0.08], [0.93, 0.12], [0.99, 0.15], [0.9, 0.18],
+        [0.95, 0.22], [0.85, 0.24], [0.89, 0.27], [0.78, 0.27], [0.55, 0.29], [0.3, 0.3], [0.05, 0.28], [0, 0.2]];
+      const wing = (side, col, edge) => {
+        const sh = [0.04, -0.03];
+        const tip = [-0.22, -span * Math.sin(psi) + side * span * Math.cos(psi) * 0.7];
+        const P = shape.map(([k, c]) => [sh[0] + tip[0] * k - c, sh[1] + tip[1] * k]);
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        P.forEach((p, i) => (i ? ctx.lineTo(...p) : ctx.moveTo(...p)));
+        ctx.closePath();
+        ctx.fill();
+        if (edge) {
+          ctx.strokeStyle = edge;
+          ctx.lineWidth = 0.012;
+          ctx.beginPath();
+          P.slice(0, 5).forEach((p, i) => (i ? ctx.lineTo(...p) : ctx.moveTo(...p)));
+          ctx.stroke();
+        }
+      };
+      wing(-1, "#0b0c0b");
+      // Tail: white with a broad black band.
+      ctx.fillStyle = "#f3f0e6";
+      ctx.beginPath();
+      ctx.moveTo(-0.25, -0.04);
+      ctx.lineTo(-0.66, -0.07);
+      ctx.lineTo(-0.68, 0.06);
+      ctx.lineTo(-0.25, 0.05);
+      ctx.fill();
+      ctx.fillStyle = "#111";
+      ctx.beginPath();
+      ctx.moveTo(-0.4, -0.05);
+      ctx.lineTo(-0.54, -0.06);
+      ctx.lineTo(-0.55, 0.055);
+      ctx.lineTo(-0.41, 0.05);
+      ctx.fill();
+      // Body, with a white belly under the tail.
+      ctx.fillStyle = "#141614";
+      ctx.beginPath();
+      ctx.ellipse(-0.02, 0, 0.3, 0.1, 0, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = "#efece2";
+      ctx.beginPath();
+      ctx.ellipse(-0.2, 0.05, 0.1, 0.045, 0.1, 0, TAU);
+      ctx.fill();
+      // Neck and head.
+      ctx.fillStyle = "#141614";
+      ctx.beginPath();
+      ctx.moveTo(0.18, -0.07);
+      ctx.quadraticCurveTo(0.3, -0.1, 0.38, -0.08);
+      ctx.arc(0.37, -0.015, 0.075, -Math.PI / 2, Math.PI / 2);
+      ctx.quadraticCurveTo(0.28, 0.07, 0.18, 0.07);
+      ctx.fill();
+      // Bill: long and curved down, pale yellow with orange at the base.
+      const bill = ctx.createLinearGradient(0.42, 0, 0.82, 0);
+      bill.addColorStop(0, "#e2572a");
+      bill.addColorStop(0.3, "#f2c552");
+      bill.addColorStop(1, "#f8ecbc");
+      ctx.fillStyle = bill;
+      ctx.beginPath();
+      ctx.moveTo(0.42, -0.058);
+      ctx.quadraticCurveTo(0.64, -0.06, 0.82, 0.08);
+      ctx.quadraticCurveTo(0.62, 0.035, 0.43, 0.03);
+      ctx.closePath();
+      ctx.fill();
+      // Casque: a big red orange horn on top of the bill that curls up at the front.
+      const cas = ctx.createLinearGradient(0.4, -0.06, 0.68, -0.22);
+      cas.addColorStop(0, "#d8401f");
+      cas.addColorStop(0.7, "#f07a26");
+      cas.addColorStop(1, "#f6b93a");
+      ctx.fillStyle = cas;
+      ctx.beginPath();
+      ctx.moveTo(0.39, -0.07);
+      ctx.quadraticCurveTo(0.44, -0.145, 0.55, -0.14);
+      ctx.quadraticCurveTo(0.62, -0.14, 0.665, -0.2);
+      ctx.quadraticCurveTo(0.69, -0.12, 0.63, -0.075);
+      ctx.quadraticCurveTo(0.53, -0.055, 0.42, -0.052);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#d8322a";
+      ctx.beginPath();
+      ctx.arc(0.39, -0.035, 0.012, 0, TAU);
+      ctx.fill();
+      wing(1, "#1b1e1b", "#4a524a");
+      ctx.restore();
+    }
+
+    // Rafflesia: five thick lobes with cream warts around a round central disc.
+    // Petals open from a closed bud (elevation near 90 degrees) to flat on the floor.
+    function rafflesia(x, y, R, open) {
+      const phi = 0.62, sp = Math.sin(phi), cp = Math.cos(phi);
+      const proj = (X, Y, Z) => [x + X, y - Y * sp - Z * cp];
+      const e = (1 - open) * 1.45 - 0.08 * open;
+      const sc = 0.55 + 0.45 * open;
+      const petals = [0, 1, 2, 3, 4].map((i) => {
+        const a = -Math.PI / 2 + (i / 5) * TAU + 0.3;
+        return { a, depth: Math.sin(a) };
+      }).sort((p, q) => q.depth - p.depth);
+      const drawPetal = ({ a }) => {
+        const pl = R * sc, ce = Math.cos(e), se = Math.sin(e);
+        const toXYZ = (r, w) => {
+          const rr = R * 0.28 * sc + r;
+          return [Math.cos(a) * ce * r + Math.cos(a) * R * 0.28 * sc - Math.sin(a) * w, Math.sin(a) * ce * r + Math.sin(a) * R * 0.28 * sc + Math.cos(a) * w, se * r];
+        };
+        const pts = [];
+        for (let k = 0; k <= 12; k++) {
+          const r = (k / 12) * pl, wd = pl * 0.46 * Math.pow(Math.sin(Math.min(1, (k / 12) * 1.08) * Math.PI * 0.5 + (k / 12) * Math.PI * 0.5), 0.6);
+          pts.push(toXYZ(r, wd));
+        }
+        for (let k = 12; k >= 0; k--) {
+          const r = (k / 12) * pl, wd = pl * 0.46 * Math.pow(Math.sin(Math.min(1, (k / 12) * 1.08) * Math.PI * 0.5 + (k / 12) * Math.PI * 0.5), 0.6);
+          pts.push(toXYZ(r, -wd));
+        }
+        // Which side faces us: the inner face is red with warts, the back is dark brown.
+        const facing = Math.sin(a) * se * cp + ce * sp > 0;
+        const P = pts.map((p) => proj(...p));
+        const gr = ctx.createRadialGradient(x, y, 0, x, y, R * 1.3);
+        gr.addColorStop(0.2, facing ? "#d24a26" : "#5a2418");
+        gr.addColorStop(1, facing ? C.petal : "#3e1a12");
+        ctx.fillStyle = gr;
+        ctx.strokeStyle = "rgba(60,15,8,0.6)";
+        ctx.lineWidth = Math.max(1, R * 0.02);
+        ctx.beginPath();
+        ctx.moveTo(...P[0]);
+        for (let i = 1; i < P.length - 1; i++) ctx.quadraticCurveTo(...P[i], (P[i][0] + P[i + 1][0]) / 2, (P[i][1] + P[i + 1][1]) / 2);
+        ctx.lineTo(...P.at(-1));
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        if (facing && open > 0.3) {
+          ctx.fillStyle = C.spot;
+          ctx.globalAlpha = clamp((open - 0.3) * 2);
+          const rs = rng(Math.round(a * 1000));
+          for (let s = 0; s < 14; s++) {
+            const r = pl * (0.12 + rs() * 0.72), w = (rs() - 0.5) * pl * 0.6 * Math.sin((r / pl) * Math.PI * 0.9 + 0.2);
+            const [px, py] = proj(...toXYZ(r, w));
+            ctx.beginPath();
+            ctx.ellipse(px, py, R * (0.028 + rs() * 0.02), R * (0.028 + rs() * 0.02) * (sp * ce + 0.2), 0, 0, TAU);
+            ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+        }
+      };
+      // Soft shadow on the ground.
+      const sh = ctx.createRadialGradient(x, y, 0, x, y, R * 1.3 * sc);
+      sh.addColorStop(0, "rgba(4,16,10,0.5)");
+      sh.addColorStop(1, "rgba(4,16,10,0)");
+      ctx.fillStyle = sh;
+      ctx.beginPath();
+      ctx.ellipse(x, y + R * 0.05, R * 1.3 * sc, R * 1.3 * sc * sp, 0, 0, TAU);
+      ctx.fill();
+      const back = petals.filter((p) => p.depth > 0), front = petals.filter((p) => p.depth <= 0);
+      back.forEach(drawPetal);
+      // The central disc: a raised rim with an opening and small spikes inside.
+      const dr = R * 0.34 * sc, rimH = R * 0.16 * sc;
+      const [cx, cy] = proj(0, 0, 0);
+      ctx.fillStyle = "#8f2a19";
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, dr, dr * sp, 0, 0, Math.PI);
+      ctx.lineTo(cx - dr, cy - rimH);
+      ctx.ellipse(cx, cy - rimH, dr, dr * sp, 0, Math.PI, 0, true);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#c9432a";
+      ctx.beginPath();
+      ctx.ellipse(cx, cy - rimH, dr, dr * sp, 0, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = "#2b0d08";
+      ctx.beginPath();
+      ctx.ellipse(cx, cy - rimH, dr * 0.66 * open + dr * 0.1, (dr * 0.66 * open + dr * 0.1) * sp, 0, 0, TAU);
+      ctx.fill();
+      if (open > 0.5) {
+        ctx.fillStyle = C.spot;
+        ctx.globalAlpha = clamp((open - 0.5) * 2) * 0.85;
+        for (let i = 0; i < 12; i++) {
+          const a = (i / 12) * TAU;
+          ctx.beginPath();
+          ctx.arc(cx + Math.cos(a) * dr * 0.83, cy - rimH + Math.sin(a) * dr * 0.83 * sp, R * 0.022, 0, TAU);
+          ctx.fill();
+        }
+        ctx.fillStyle = "#7a2416";
+        for (let i = 0; i < 9; i++) {
+          const a = (i / 9) * TAU + 0.3;
+          ctx.beginPath();
+          ctx.arc(cx + Math.cos(a) * dr * 0.35, cy - rimH + Math.sin(a) * dr * 0.35 * sp + R * 0.01, R * 0.018, 0, TAU);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+      front.forEach(drawPetal);
+    }
+
+    // Animated values. GSAP moves these; draw() paints them.
+    const S = { bloom: 0, small: 0, big: 0, out: 0, bird: 0, veil: 1 };
+
+    function drawTitle() {
+      const { cx, cy } = L.title;
+      const alpha = 1 - S.out;
+      if (alpha <= 0) return;
+      ctx.save();
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.shadowColor = "rgba(4,20,12,0.7)";
+      ctx.shadowBlur = u * 0.03;
+      const lift = S.out * u * 0.03;
+      const bigY = cy + (small ? T.smallSize * 1.1 : 0) - lift;
+      if (small && S.small > 0) {
+        ctx.font = `600 ${T.smallSize}px ${T.mont}`;
+        const sp = T.smallSize * (0.5 + (1 - S.small) * 0.5);
+        ctx.letterSpacing = `${sp.toFixed(1)}px`;
+        ctx.globalAlpha = S.small * alpha;
+        ctx.fillStyle = C.gold;
+        ctx.fillText(small.toUpperCase(), cx + sp / 2, bigY - T.bigSize * 0.62);
+        ctx.letterSpacing = "0px";
+      }
+      if (S.big > 0) {
+        ctx.font = `600 ${T.bigSize}px ${T.corm}`;
+        ctx.fillStyle = C.ink;
+        const n = T.letters.length;
+        T.letters.forEach((l, i) => {
+          const k = clamp((S.big * (n + 3) - i) / 4);
+          if (k <= 0) return;
+          ctx.globalAlpha = easeOut(k) * alpha;
+          ctx.fillText(l.ch, l.x, bigY + (1 - easeOut(k)) * T.bigSize * 0.25);
+        });
+      }
+      ctx.restore();
+    }
+
+    function draw() {
+      const t = tl.time();
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // A slow camera sway: near layers move more than far ones.
+      const sway = (d) => [-M + d * u * 0.05 * wave(t, 1), -M + d * u * 0.015 * wave(t, 2, 1)];
+      const drawLayer = (i) => {
+        const [ox, oy] = sway(layers[i].depth);
+        ctx.drawImage(layers[i].c, ox, oy, W + M * 2, H + M * 2);
+      };
+      drawLayer(0);
+      drawMist(mist[0], t, 0, 0.6);
+      drawRays(t);
+      drawLayer(1);
+      // The hornbill glides across the upper sky with a few wingbeats.
+      if (S.bird > 0 && S.bird < 1) {
+        const p = S.bird, s = L.bird.s;
+        const bx = -s + p * (W + s * 2), by = L.bird.y + Math.sin(p * Math.PI) * u * 0.05 - p * u * 0.04;
+        const bt = t - 3.2;
+        const flap = Math.max(0, 1 - Math.abs(bt - 0.9) / 0.9) + Math.max(0, 1 - Math.abs(bt - 3) / 0.5);
+        const psi = 0.16 + clamp(flap) * 0.75 * Math.sin(bt * TAU * 1.6);
+        hornbill(bx, by, s, psi, -0.04 + Math.cos(p * Math.PI) * 0.05);
+      }
+      drawLayer(2);
+      drawMist(mist[1], t, H * 0.05, 0.5);
+      rafflesia(L.flower.x + sway(0.8)[0] + M, L.flower.y + sway(0.8)[1] + M, L.flower.r, S.bloom);
+      // Dew sparkles in the light and a few soft fireflies lower down.
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      for (const m of motes) {
+        const mx = m.x + m.ax * Math.sin(TAU * m.c1 * t / LOOP + m.ph), my = m.y + m.ay * Math.cos(TAU * m.c2 * t / LOOP + m.ph);
+        const glow = 0.35 + 0.45 * (0.5 + 0.5 * Math.sin(TAU * (m.c1 + 2) * t / LOOP + m.ph * 2));
+        const r = m.r * (m.fly ? 3.2 : 2);
+        const gr = ctx.createRadialGradient(mx, my, 0, mx, my, r);
+        gr.addColorStop(0, m.fly ? `rgba(220,255,140,${glow})` : `rgba(255,250,220,${glow})`);
+        gr.addColorStop(1, "rgba(220,255,140,0)");
+        ctx.fillStyle = gr;
+        ctx.fillRect(mx - r, my - r, r * 2, r * 2);
+      }
+      ctx.restore();
+      // Foreground: giant ferns and big leaves framing the corners, swaying gently.
+      const [fx, fy] = sway(1.2);
+      ctx.save();
+      ctx.translate(fx + M, fy + M);
+      const sw = (c, p) => wave(t, c, p) * 0.04;
+      fern(ctx, -u * 0.05, H + u * 0.02, u * 0.5, -1.3 + sw(2, 0), C.front, 22, 0.9);
+      fern(ctx, W + u * 0.05, H + u * 0.04, u * 0.48, -1.85 + sw(2, 1.3), "#0c2619", 20, -0.9);
+      fern(ctx, W + u * 0.03, -u * 0.04, u * 0.5, 2.35 + sw(3, 2), "#0b2418", 18, 0.7);
+      bigLeaf(-u * 0.07, H * 0.94, u * 0.34, -0.75 + sw(2, 0.5), "#123321", "#27543a");
+      bigLeaf(W + u * 0.06, H * 0.99, u * 0.3, Math.PI + 0.85 + sw(3, 2.2), "#10301f", "#24503a");
+      bigLeaf(-u * 0.03, -u * 0.02, u * 0.3, 0.9 + sw(2, 1), "#0e2b1c", "#21493a");
+      ctx.restore();
+      // Soft vignette.
+      const vg = ctx.createRadialGradient(W / 2, H / 2, u * 0.3, W / 2, H / 2, Math.hypot(W, H) * 0.62);
+      vg.addColorStop(0, "rgba(3,15,9,0)");
+      vg.addColorStop(1, "rgba(3,15,9,0.55)");
+      ctx.fillStyle = vg;
+      ctx.fillRect(0, 0, W, H);
+      drawTitle();
+      // Morning mist veil that thins at the start and rolls back in at the end of the loop.
+      if (S.veil > 0.001) {
+        const vg2 = ctx.createLinearGradient(0, 0, 0, H);
+        vg2.addColorStop(0, `rgba(214,228,206,${(S.veil * 0.55).toFixed(3)})`);
+        vg2.addColorStop(0.6, `rgba(214,228,206,${(S.veil * 0.72).toFixed(3)})`);
+        vg2.addColorStop(1, `rgba(214,228,206,${(S.veil * 0.6).toFixed(3)})`);
+        ctx.fillStyle = vg2;
+        ctx.fillRect(0, 0, W, H);
+      }
+    }
+
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    const tl = gsap.timeline({ repeat: -1, paused: true, onUpdate: () => draw() });
+    tl.to({}, { duration: LOOP }, 0);
+    tl.fromTo(S, { veil: 1 }, { veil: 0, duration: 1.6, ease: "sine.inOut", immediateRender: false }, 0);
+    tl.fromTo(S, { small: 0 }, { small: 1, duration: 1.4, ease: "power2.out", immediateRender: false }, 1.0);
+    tl.fromTo(S, { big: 0 }, { big: 1, duration: 1.8, ease: "none", immediateRender: false }, 1.3);
+    tl.fromTo(S, { bloom: 0 }, { bloom: 1, duration: 3.2, ease: "power2.inOut", immediateRender: false }, 2.0);
+    tl.fromTo(S, { bird: 0 }, { bird: 1, duration: 6, ease: "none", immediateRender: false }, 3.2);
+    tl.fromTo(S, { out: 0 }, { out: 1, duration: 1, ease: "power2.in", immediateRender: false }, 10.1);
+    tl.fromTo(S, { bloom: 1 }, { bloom: 0, duration: 1.4, ease: "power2.inOut", immediateRender: false }, 10.4);
+    tl.fromTo(S, { veil: 0 }, { veil: 1, duration: 1.4, ease: "sine.inOut", immediateRender: false }, 10.6);
+
+    // Reduced motion: one still frame with the flower open, the hornbill passing and the title.
+    function apply() {
+      if (reduce.matches) tl.pause(STILL);
+      else tl.play();
+      draw();
+    }
+    reduce.addEventListener("change", apply);
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => { build(); draw(); }, 150);
+    });
+
+    // Wait briefly for the fonts so the title is measured in the right face.
+    Promise.race([
+      Promise.all([document.fonts.load('600 1em "Cormorant Garamond"'), document.fonts.load("600 1em Montserrat")]),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(() => { build(); apply(); });
+  </script>
+</body>
+</html>

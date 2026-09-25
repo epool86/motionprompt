@@ -1,0 +1,794 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Festive Raya demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/cinzel@5.3.0/500.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/cinzel@5.3.0/600.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/quicksand@5.3.0/600.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=06261f&ink=fbf1dc&accent=e3b75a&accent2=1f7a5a */
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #06261f;
+    }
+
+    .layer {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .display { font-family: "Cinzel", "Trajan Pro", Georgia, serif; }
+    .friendly { font-family: "Quicksand", "Nunito", system-ui, sans-serif; }
+    text { text-anchor: middle; }
+  </style>
+</head>
+<body>
+  <div id="stage" role="img">
+    <canvas class="layer" id="sky"></canvas>
+    <svg class="layer" id="art" xmlns="http://www.w3.org/2000/svg"></svg>
+    <canvas class="layer" id="lamps"></canvas>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => "#" + (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const C = {
+      night: hex("bg", "06261f"),
+      cream: hex("ink", "fbf1dc"),
+      gold: hex("accent", "e3b75a"),
+      emerald: hex("accent2", "1f7a5a"),
+    };
+    document.body.style.background = C.night;
+
+    // Title: the first word sits small on top when there are three words or more.
+    const title = (params.get("text") || "Selamat Hari Raya").trim().slice(0, 40);
+    const tw = title.split(/\s+/);
+    const titleLines = tw.length >= 3 ? [tw[0], tw.slice(1).join(" ")] : [title];
+    const subline = "Maaf Zahir dan Batin";
+    document.getElementById("stage").setAttribute("aria-label",
+      `An animated Hari Raya greeting: under a crescent moon, gold Islamic star patterns draw themselves, ketupat and lanterns sway, a row of pelita lamps flickers and fireworks burst in the distance, with the words ${title}, ${subline}`);
+
+    // Colour helpers
+    const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+    const mix = (a, b, t) => "#" + rgb(a).map((v, i) => Math.round(v + (rgb(b)[i] - v) * t).toString(16).padStart(2, "0")).join("");
+    const rgba = (h, a) => `rgba(${rgb(h).join(",")},${a})`;
+    const GOLD = {
+      deep: mix(C.gold, "#5a3b10", 0.4),
+      mid: C.gold,
+      light: mix(C.gold, "#fff3cf", 0.55),
+      pale: mix(C.gold, "#fffaf0", 0.8),
+    };
+
+    const NS = "http://www.w3.org/2000/svg";
+    function el(name, attrs, parent) {
+      const node = document.createElementNS(NS, name);
+      for (const k in attrs) node.setAttribute(k, attrs[k]);
+      if (parent) parent.append(node);
+      return node;
+    }
+
+    let seed = 1;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+    const clamp = (v) => Math.max(0, Math.min(1, v));
+    const easeOut = (p) => 1 - (1 - p) ** 3;
+    const TAU = Math.PI * 2;
+    const LOOP = 12;
+    // A wave that repeats a whole number of times per loop, so the loop is seamless.
+    const wave = (t, n, ph) => Math.sin((t / LOOP) * TAU * n + ph);
+
+    const skyCanvas = document.getElementById("sky");
+    const lampCanvas = document.getElementById("lamps");
+    const art = document.getElementById("art");
+    const sg = skyCanvas.getContext("2d");
+    const lg = lampCanvas.getContext("2d");
+
+    let W, H, u, dpr, G = {};
+
+    function offscreen(w, h) {
+      const c = document.createElement("canvas");
+      c.width = Math.max(4, Math.ceil(w * dpr));
+      c.height = Math.max(4, Math.ceil(h * dpr));
+      const g = c.getContext("2d");
+      g.scale(dpr, dpr);
+      return [c, g];
+    }
+
+    function build() {
+      W = innerWidth;
+      H = innerHeight;
+      u = Math.min(W, H);
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      seed = 5;
+      for (const c of [skyCanvas, lampCanvas]) {
+        c.width = Math.round(W * dpr);
+        c.height = Math.round(H * dpr);
+      }
+      const wide = W > H * 1.2;
+      G = {
+        wide,
+        moon: { x: W / 2, y: Math.max(u * 0.11, H * 0.11), r: u * 0.06 },
+        ground: H - u * 0.09,
+        yc: wide ? H * 0.53 : H * 0.47,
+        titleW: W * (wide ? 0.6 : 0.84),
+      };
+      buildArt();
+      paintSky();
+      buildLamps();
+    }
+
+    // ---------- Static sky: gradient, glow, moon, distant skyline ----------
+
+    function paintSky() {
+      const wide = G.wide;
+      const [c, g] = offscreen(W, H);
+      const grad = g.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0, mix(C.night, "#000000", 0.35));
+      grad.addColorStop(0.45, C.night);
+      grad.addColorStop(0.78, mix(C.night, C.emerald, 0.55));
+      grad.addColorStop(0.9, mix(C.emerald, C.gold, 0.45));
+      grad.addColorStop(1, mix(C.gold, "#f0a860", 0.3));
+      g.fillStyle = grad;
+      g.fillRect(0, 0, W, H);
+      // Warm dusk haze along the horizon
+      const hz = g.createRadialGradient(W / 2, G.ground, 0, W / 2, G.ground, Math.max(W, H) * 0.6);
+      hz.addColorStop(0, rgba(C.gold, 0.35));
+      hz.addColorStop(1, rgba(C.gold, 0));
+      g.fillStyle = hz;
+      g.fillRect(0, 0, W, H);
+
+      // Crescent moon with a soft halo
+      const { x, y, r } = G.moon;
+      const halo = g.createRadialGradient(x, y, r * 0.5, x, y, r * 4);
+      halo.addColorStop(0, rgba(GOLD.pale, 0.28));
+      halo.addColorStop(1, rgba(GOLD.pale, 0));
+      g.fillStyle = halo;
+      g.fillRect(x - r * 4, y - r * 4, r * 8, r * 8);
+      const [mc, mg] = offscreen(r * 2.4, r * 2.4);
+      mg.translate(r * 1.2, r * 1.2);
+      const mf = mg.createLinearGradient(-r, -r, r, r);
+      mf.addColorStop(0, GOLD.pale);
+      mf.addColorStop(1, GOLD.light);
+      mg.fillStyle = mf;
+      mg.beginPath();
+      mg.arc(0, 0, r, 0, TAU);
+      mg.fill();
+      mg.globalCompositeOperation = "destination-out";
+      mg.beginPath();
+      mg.arc(r * 0.42, -r * 0.2, r * 0.86, 0, TAU);
+      mg.fill();
+      g.save();
+      g.translate(x, y);
+      g.rotate(-0.35);
+      g.drawImage(mc, -r * 1.2, -r * 1.2, r * 2.4, r * 2.4);
+      g.restore();
+
+      // Distant hills, a mosque on the skyline and coconut palms, all as dark silhouettes
+      const base = G.ground;
+      g.fillStyle = mix(C.night, "#000000", 0.25);
+      g.beginPath();
+      g.moveTo(0, H);
+      for (let i = 0; i <= 24; i++) {
+        const px = (i / 24) * W;
+        g.lineTo(px, base - u * 0.03 - Math.sin(i * 0.7 + 1) * u * 0.018 - Math.sin(i * 1.9) * u * 0.008);
+      }
+      g.lineTo(W, H);
+      g.fill();
+      const mq = wide ? W * 0.78 : W * 0.72, ms = u * 0.1;
+      g.beginPath();
+      g.rect(mq - ms * 0.9, base - ms * 0.55, ms * 1.8, ms * 0.6);
+      g.moveTo(mq + ms * 0.55, base - ms * 0.55);
+      g.arc(mq, base - ms * 0.55, ms * 0.55, 0, Math.PI, true);
+      g.rect(mq - ms * 0.02, base - ms * 1.35, ms * 0.04, ms * 0.3);
+      for (const side of [-1, 1]) {
+        const mx = mq + side * ms * 1.15;
+        g.rect(mx - ms * 0.07, base - ms * 1.25, ms * 0.14, ms * 1.3);
+        g.moveTo(mx - ms * 0.1, base - ms * 1.25);
+        g.lineTo(mx, base - ms * 1.55);
+        g.lineTo(mx + ms * 0.1, base - ms * 1.25);
+        g.rect(mx - ms * 0.11, base - ms * 0.95, ms * 0.22, ms * 0.05);
+      }
+      g.fill();
+      const palm = (px, s, lean) => {
+        g.strokeStyle = g.fillStyle;
+        g.lineWidth = s * 0.05;
+        g.lineCap = "round";
+        const tx = px + lean * s * 0.35, ty = base - s;
+        g.beginPath();
+        g.moveTo(px, base);
+        g.quadraticCurveTo(px + lean * s * 0.05, base - s * 0.6, tx, ty);
+        g.stroke();
+        for (let i = 0; i < 7; i++) {
+          const a = -Math.PI / 2 + (i - 3) * 0.5 + lean * 0.2, L = s * (0.45 + (i % 2) * 0.1);
+          g.lineWidth = s * 0.035;
+          g.beginPath();
+          g.moveTo(tx, ty);
+          g.quadraticCurveTo(tx + Math.cos(a) * L * 0.6, ty + Math.sin(a) * L * 0.6 - s * 0.08, tx + Math.cos(a) * L, ty + Math.sin(a) * L + s * 0.12);
+          g.stroke();
+        }
+      };
+      palm(wide ? W * 0.12 : W * 0.1, u * 0.2, 1);
+      palm(wide ? W * 0.18 : W * 0.24, u * 0.14, -0.6);
+      palm(wide ? W * 0.93 : W * 0.93, u * 0.17, -1);
+      // Ground
+      g.fillStyle = mix(C.night, "#000000", 0.45);
+      g.fillRect(0, base, W, H - base);
+      G.skyImg = c;
+
+      // Stars, away from the moon and the ground
+      G.stars = [];
+      const n = Math.round(Math.min(110, Math.max(30, (W * H) / 3000)));
+      for (let i = 0; i < n; i++) {
+        G.stars.push({ x: rand() * W, y: rand() * rand() * (G.ground - u * 0.15), r: u * (0.0015 + rand() * 0.003), n: 1 + Math.floor(rand() * 4), ph: rand() * TAU });
+      }
+      // Four distant fireworks per loop, left and right of the title.
+      const cols = [[GOLD.light, GOLD.mid], [C.cream, "#9fe0bd"], [GOLD.pale, "#f4a7a0"], [GOLD.light, C.cream]];
+      G.bursts = [3.4, 5.4, 7.3, 9.1].map((at, i) => {
+        const side = i % 2 ? 1 : -1;
+        const x = W / 2 + side * (wide ? W * (0.3 + rand() * 0.08) : W * (0.26 + rand() * 0.1));
+        const y = wide ? H * (0.26 + rand() * 0.1) : H * (0.27 + rand() * 0.05);
+        const parts = [];
+        const count = 32;
+        for (let k = 0; k < count; k++) parts.push({ a: (k / count) * TAU + rand() * 0.15, v: 0.75 + rand() * 0.3 });
+        return { at, x, y, R: u * (0.12 + rand() * 0.05), cols: cols[i], parts };
+      });
+    }
+
+    // ---------- SVG: star lattice, medallion and words ----------
+
+    function buildArt() {
+      art.replaceChildren();
+      art.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      const defs = el("defs", {}, art);
+      const cx = W / 2, cy = G.yc;
+      const goldGrad = (id, x1, y1, x2, y2) => {
+        const lgr = el("linearGradient", { id, gradientUnits: "userSpaceOnUse", x1, y1, x2, y2 }, defs);
+        [[0, GOLD.deep], [0.25, GOLD.light], [0.45, GOLD.mid], [0.6, GOLD.pale], [0.8, GOLD.mid], [1, GOLD.deep]].forEach(([o, c]) => el("stop", { offset: o, "stop-color": c }, lgr));
+      };
+
+      // Star and cross lattice over the sky, painted once, revealed later by a growing circle.
+      const cell = u * 0.17, a = cell * 0.5 / Math.SQRT2;
+      const [lc, lctx] = offscreen(W, H);
+      lctx.strokeStyle = GOLD.mid;
+      lctx.lineWidth = Math.max(0.5, u * 0.0022);
+      lctx.beginPath();
+      const nx = Math.ceil(W / cell / 2) + 1, ny = Math.ceil(H / cell / 2) + 1;
+      for (let i = -nx; i <= nx; i++) {
+        for (let j = -ny; j <= ny; j++) {
+          const x = cx + i * cell, y = cy + j * cell, b = a * Math.SQRT2, o = a * 0.42;
+          lctx.rect(x - a, y - a, a * 2, a * 2);
+          for (const r of [b, o]) {
+            lctx.moveTo(x, y - r);
+            lctx.lineTo(x + r, y);
+            lctx.lineTo(x, y + r);
+            lctx.lineTo(x - r, y);
+            lctx.closePath();
+          }
+        }
+      }
+      lctx.stroke();
+      G.latticeImg = lc;
+      G.reach = Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy));
+
+      // Medallion: circles and eight point stars that draw themselves, centred on 0 0.
+      const R = Math.min(W * 0.46, H * (G.wide ? 0.46 : 0.3));
+      G.R = R;
+      const poly = (r, count, step, rot) => {
+        const p = new Path2D();
+        for (let k = 0; k <= count; k++) {
+          const ang = rot + ((k * step) % count) * (TAU / count);
+          p[k ? "lineTo" : "moveTo"](Math.cos(ang) * r, Math.sin(ang) * r);
+        }
+        return p;
+      };
+      const circle = (r) => {
+        const p = new Path2D();
+        p.arc(0, 0, r, -Math.PI / 2, Math.PI * 1.5);
+        return { p, len: TAU * r };
+      };
+      // Classic eight point star: two squares turned 45 degrees, a ring inside the octagon
+      // where they cross, a smaller nested star, all within a thin double circle.
+      const lw = Math.max(0.7, u * 0.0035), rs = R * 0.88, ro = rs * Math.cos(Math.PI / 4) / Math.cos(Math.PI / 8), ri = R * 0.46;
+      const up = -Math.PI / 2;
+      const square = (r, rot, w, delay) => ({ p: poly(r, 4, 1, rot), len: 4 * r * Math.SQRT2, w, delay });
+      G.medParts = [
+        { ...circle(R), w: lw * 1.1, delay: 0 },
+        { ...circle(R * 0.95), w: lw * 0.6, delay: 0.05 },
+        square(rs, up, lw, 0.15),
+        square(rs, up + Math.PI / 4, lw, 0.22),
+        { ...circle(ro * Math.cos(Math.PI / 8) * 0.9), w: lw * 0.55, delay: 0.34 },
+        square(ri, up, lw * 0.7, 0.42),
+        square(ri, up + Math.PI / 4, lw * 0.7, 0.48),
+      ];
+      const mg = sg.createLinearGradient(-R, -R, R, R);
+      [[0, GOLD.deep], [0.25, GOLD.light], [0.45, GOLD.mid], [0.6, GOLD.pale], [0.8, GOLD.mid], [1, GOLD.deep]].forEach(([o, c]) => mg.addColorStop(o, c));
+      G.medGold = mg;
+      G.medDot = lw * 1.1;
+      // A dark soft disc behind the words keeps them easy to read.
+      const vg = el("radialGradient", { id: "fr-veil" }, defs);
+      el("stop", { offset: 0, "stop-color": C.night, "stop-opacity": 0.85 }, vg);
+      el("stop", { offset: 0.6, "stop-color": C.night, "stop-opacity": 0.6 }, vg);
+      el("stop", { offset: 1, "stop-color": C.night, "stop-opacity": 0 }, vg);
+      G.veil = el("ellipse", { cx, cy, rx: G.titleW * 0.62, ry: R * 0.62, fill: "url(#fr-veil)", opacity: 0 }, art);
+
+      // Words
+      const words = el("g", {}, art);
+      G.words = words;
+      const specs = titleLines.map((t, i) => titleLines.length === 2 && i === 0
+        ? { text: t.toUpperCase(), cls: "display", weight: 500, size: 0.085, ls: 0.32, lh: 1.5 }
+        : { text: t.toUpperCase(), cls: "display", weight: 600, size: 0.2, ls: 0.04, lh: 1.15 });
+      specs.push({ text: subline, cls: "friendly", weight: 600, size: 0.058, ls: 0.06, lh: 2, sub: true });
+      for (const s of specs) {
+        const probe = el("text", { class: s.cls, "font-size": 100, "font-weight": s.weight, "letter-spacing": s.ls * 100 }, art);
+        probe.textContent = s.text;
+        const w100 = probe.getComputedTextLength();
+        probe.remove();
+        const max = s.sub ? G.titleW * 0.8 : G.titleW;
+        s.fs = Math.min(s.size * u * (G.wide ? 1.05 : 1), (max * 100) / w100);
+        s.width = (w100 * s.fs) / 100;
+      }
+      // The small top line and subline follow the size of the main line.
+      const main = specs[titleLines.length - 1];
+      if (titleLines.length === 2) specs[0].fs = Math.min(specs[0].fs, main.fs * 0.45);
+      specs.at(-1).fs = Math.min(specs.at(-1).fs, main.fs * 0.32);
+      const total = specs.reduce((a2, s) => a2 + s.fs * s.lh, 0);
+      let y = cy - total / 2;
+      G.lines = specs.map((s) => {
+        const base = y + s.fs * s.lh * (s.sub ? 0.62 : 0.78);
+        y += s.fs * s.lh;
+        const g = el("g", {}, words);
+        const attrs = { class: s.cls, x: cx, y: base, "font-size": s.fs, "font-weight": s.weight, "letter-spacing": s.ls * s.fs };
+        if (s.sub) {
+          el("text", { ...attrs, fill: C.cream }, g).textContent = s.text;
+          // Small gold diamonds either side of the subline
+          const r = s.fs * 0.2, off = s.width / 2 + s.fs * 0.7, my = base - s.fs * 0.34;
+          for (const side of [-1, 1]) el("path", { d: `M${cx + side * off} ${my - r}l${r} ${r}l${-r} ${r}l${-r} ${-r}Z`, fill: GOLD.mid }, g);
+        } else {
+          el("text", { ...attrs, y: base + s.fs * 0.04, fill: "#02140f", opacity: 0.55 }, g).textContent = s.text;
+          el("text", { ...attrs, fill: "url(#fr-foil)" }, g).textContent = s.text;
+          el("text", { ...attrs, fill: "url(#fr-shine)" }, g).textContent = s.text;
+        }
+        return { g, s, base, texts: [...g.querySelectorAll("text")] };
+      });
+      const top = cy - total / 2, bottom = cy + total / 2;
+      G.box = { l: cx - G.titleW / 2, r: cx + G.titleW / 2, t: top, b: bottom };
+      G.veil.setAttribute("ry", Math.max(R * 0.5, total * 0.85));
+      goldGrad("fr-foil", cx - main.width / 2, top, cx + main.width / 2, bottom);
+      G.shine = el("linearGradient", { id: "fr-shine", gradientUnits: "userSpaceOnUse", x1: 0, y1: 0, x2: 1, y2: 0 }, defs);
+      [[0, 0], [0.5, 0.9], [1, 0]].forEach(([o, a2]) => el("stop", { offset: o, "stop-color": "#fffbe6", "stop-opacity": a2 }, G.shine));
+      G.mainW = main.width;
+    }
+
+    // ---------- Lamps, ketupat and lanterns (canvas sprites) ----------
+
+    function ketupatSprite(s) {
+      const [c, g] = offscreen(s * 1.2, s * 1.9);
+      g.translate(s * 0.6, s * 0.08);
+      const h = s * 0.5;
+      // Two palm leaf tails from the bottom corner
+      g.lineCap = "round";
+      for (const side of [-1, 1]) {
+        g.strokeStyle = side < 0 ? "#6f9a3c" : "#9dbb57";
+        g.lineWidth = s * 0.07;
+        g.beginPath();
+        g.moveTo(0, h * 2 - s * 0.02);
+        g.bezierCurveTo(side * s * 0.05, h * 2 + s * 0.25, side * s * 0.25, h * 2 + s * 0.3, side * s * 0.18, h * 2 + s * 0.62);
+        g.stroke();
+      }
+      // Woven diamond: a checker of palm strips, turned 45 degrees
+      g.save();
+      g.translate(0, h);
+      g.rotate(Math.PI / 4);
+      const side = h * Math.SQRT2, n = 4, cs = side / n;
+      g.beginPath();
+      g.rect(-side / 2, -side / 2, side, side);
+      g.clip();
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+          const x = -side / 2 + i * cs, y = -side / 2 + j * cs;
+          const across = (i + j) % 2 === 0;
+          const gr = across ? g.createLinearGradient(x, y, x, y + cs) : g.createLinearGradient(x, y, x + cs, y);
+          gr.addColorStop(0, across ? "#c9d97a" : "#8fb24a");
+          gr.addColorStop(1, across ? "#8fb24a" : "#5d8a34");
+          g.fillStyle = gr;
+          g.fillRect(x, y, cs, cs);
+          g.strokeStyle = "rgba(40,70,20,0.55)";
+          g.lineWidth = s * 0.012;
+          g.strokeRect(x, y, cs, cs);
+        }
+      }
+      // Light from the top left, shade to the bottom right
+      const sh = g.createLinearGradient(-side / 2, -side / 2, side / 2, side / 2);
+      sh.addColorStop(0, "rgba(255,240,190,0.25)");
+      sh.addColorStop(1, "rgba(0,30,10,0.35)");
+      g.fillStyle = sh;
+      g.fillRect(-side / 2, -side / 2, side, side);
+      g.restore();
+      g.strokeStyle = GOLD.mid;
+      g.lineWidth = s * 0.02;
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.lineTo(h, h);
+      g.lineTo(0, h * 2);
+      g.lineTo(-h, h);
+      g.closePath();
+      g.stroke();
+      return { img: c, w: s * 1.2, h: s * 1.9, ox: s * 0.6, oy: s * 0.08 };
+    }
+
+    function lanternSprite(s) {
+      const [c, g] = offscreen(s, s * 1.9);
+      g.translate(s / 2, 0);
+      const bw = s * 0.36, top = s * 0.42, bot = s * 1.38;
+      // Cap and ring
+      g.strokeStyle = GOLD.mid;
+      g.lineWidth = s * 0.035;
+      g.beginPath();
+      g.arc(0, s * 0.08, s * 0.06, 0, TAU);
+      g.stroke();
+      const cap = g.createLinearGradient(-bw, 0, bw, 0);
+      cap.addColorStop(0, GOLD.deep);
+      cap.addColorStop(0.45, GOLD.light);
+      cap.addColorStop(1, GOLD.deep);
+      g.fillStyle = cap;
+      g.beginPath();
+      g.moveTo(-bw * 0.85, top);
+      g.quadraticCurveTo(-bw * 0.6, s * 0.2, 0, s * 0.14);
+      g.quadraticCurveTo(bw * 0.6, s * 0.2, bw * 0.85, top);
+      g.closePath();
+      g.fill();
+      // Glass body glowing from inside
+      const body = new Path2D();
+      body.moveTo(-bw * 0.85, top);
+      body.bezierCurveTo(-bw * 1.25, top + (bot - top) * 0.35, -bw * 1.1, bot - (bot - top) * 0.2, -bw * 0.45, bot);
+      body.lineTo(bw * 0.45, bot);
+      body.bezierCurveTo(bw * 1.1, bot - (bot - top) * 0.2, bw * 1.25, top + (bot - top) * 0.35, bw * 0.85, top);
+      body.closePath();
+      const glow = g.createRadialGradient(0, (top + bot) / 2, 0, 0, (top + bot) / 2, bw * 1.3);
+      glow.addColorStop(0, "#fff4c8");
+      glow.addColorStop(0.45, "#ffc868");
+      glow.addColorStop(1, "#c8702a");
+      g.fillStyle = glow;
+      g.fill(body);
+      // Gold ribs and small star cut-outs in the frame
+      g.save();
+      g.clip(body);
+      g.strokeStyle = GOLD.deep;
+      g.lineWidth = s * 0.025;
+      for (const k of [-0.55, 0, 0.55]) {
+        g.beginPath();
+        g.moveTo(k * bw * 1.5, top);
+        g.quadraticCurveTo(k * bw * 2.1, (top + bot) / 2, k * bw * 0.8, bot);
+        g.stroke();
+      }
+      g.beginPath();
+      g.moveTo(-bw * 1.3, (top + bot) * 0.5);
+      g.lineTo(bw * 1.3, (top + bot) * 0.5);
+      g.stroke();
+      g.restore();
+      g.strokeStyle = GOLD.mid;
+      g.lineWidth = s * 0.03;
+      g.stroke(body);
+      // Base and finial
+      g.fillStyle = cap;
+      g.beginPath();
+      g.moveTo(-bw * 0.55, bot);
+      g.lineTo(bw * 0.55, bot);
+      g.lineTo(bw * 0.3, bot + s * 0.1);
+      g.lineTo(0, bot + s * 0.32);
+      g.lineTo(-bw * 0.3, bot + s * 0.1);
+      g.closePath();
+      g.fill();
+      return { img: c, w: s, h: s * 1.9, ox: s / 2, oy: s * 0.02, glowY: (top + bot) / 2 };
+    }
+
+    function buildLamps() {
+      const ks = u * 0.075, ls = u * 0.1;
+      const ket = ketupatSprite(ks), lan = lanternSprite(ls);
+      // Hanging decorations: long strings at the sides, short ones near the title.
+      const layout = [[0.07, "k", 0], [0.2, "l", 1], [0.33, "k", 2], [0.67, "k", 2], [0.8, "l", 1], [0.93, "k", 0]];
+      G.hangs = layout.map(([fx, kind, rank], i) => {
+        const x = W * fx, spr = kind === "k" ? ket : lan;
+        const clear = Math.abs(x - W / 2) > G.titleW / 2 + spr.w * 0.6;
+        const maxEnd = clear ? H * (G.wide ? 0.5 : 0.36) : Math.min(G.box.t - u * 0.06, G.yc - G.R * 0.75);
+        const want = [0.34, 0.24, 0.12][rank] * H + spr.h;
+        const end = Math.max(spr.h + u * 0.03, Math.min(maxEnd, want));
+        return { x, spr, len: end - spr.h, n: [3, 2, 4][rank] + (i % 2), ph: i * 1.7, amp: 0.045 + rank * 0.01, lantern: kind === "l" };
+      });
+      // Pelita: bamboo oil lamps in a row along the ground.
+      const n = Math.max(5, Math.min(13, Math.round(W / (u * 0.14))));
+      G.pelita = [];
+      for (let i = 0; i < n; i++) {
+        G.pelita.push({ x: ((i + 0.5) / n) * W, h: u * (0.15 + (i % 2) * 0.035 + rand() * 0.015), ph: rand() * TAU, ph2: rand() * TAU });
+      }
+      // Glints around the title that twinkle on and off.
+      G.glints = [];
+      for (let i = 0; i < 14; i++) {
+        const side = i % 2 ? 1 : -1;
+        G.glints.push({
+          x: W / 2 + side * (G.mainW / 2 + u * 0.03) * (0.3 + rand() * 0.8),
+          y: G.box.t + (G.box.b - G.box.t) * (rand() * 1.2 - 0.1),
+          n: 2 + Math.floor(rand() * 3), ph: rand() * TAU, r: u * (0.01 + rand() * 0.012),
+        });
+      }
+    }
+
+    // ---------- Timeline ----------
+
+    const S = { lat: 0, med: 0, l0: 0, l1: 0, sub: 0, sh1: 0, sh2: 0, out: 0 };
+    const tl = gsap.timeline({ repeat: -1, paused: true });
+    tl.to(S, { lat: 1, duration: 3.2, ease: "sine.inOut" }, 0.1)
+      .to(S, { med: 1, duration: 3.4, ease: "power1.inOut" }, 0.4)
+      .to(S, { l0: 1, duration: 1.3, ease: "power2.out" }, 2.1)
+      .to(S, { l1: 1, duration: 1.6, ease: "power3.out" }, 2.6)
+      .to(S, { sub: 1, duration: 1, ease: "power2.out" }, 4.1)
+      .to(S, { sh1: 1, duration: 1.4, ease: "power1.inOut" }, 5.0)
+      .to(S, { sh2: 1, duration: 1.4, ease: "power1.inOut" }, 8.6)
+      .to(S, { out: 1, duration: 1.1, ease: "power2.in" }, 10.7)
+      .set({}, {}, LOOP);
+
+    // Only touch the SVG when a value really changes, so still parts are not repainted.
+    function set(node, key, value) {
+      const v = typeof value === "number" ? value.toFixed(3) : value;
+      const memo = node.__memo || (node.__memo = {});
+      if (memo[key] !== v) {
+        memo[key] = v;
+        node.setAttribute(key, v);
+      }
+    }
+
+    function render() {
+      const t = tl.time();
+      const keep = 1 - S.out;
+
+      // Sky
+      sg.setTransform(dpr, 0, 0, dpr, 0, 0);
+      sg.drawImage(G.skyImg, 0, 0, W, H);
+      sg.fillStyle = GOLD.pale;
+      for (const s of G.stars) {
+        sg.globalAlpha = 0.35 + 0.55 * (0.5 + 0.5 * wave(t, s.n, s.ph));
+        sg.beginPath();
+        sg.arc(s.x, s.y, s.r, 0, TAU);
+        sg.fill();
+      }
+      // Fireworks: a rising spark, then a ring of streaks that falls and fades.
+      sg.globalCompositeOperation = "lighter";
+      sg.lineCap = "round";
+      for (const b of G.bursts) {
+        const rise = t - (b.at - 0.7);
+        if (rise > 0 && rise < 0.7) {
+          const p = easeOut(rise / 0.7);
+          sg.globalAlpha = 0.6;
+          sg.fillStyle = b.cols[0];
+          sg.beginPath();
+          sg.arc(b.x, G.ground - (G.ground - b.y) * p, u * 0.004, 0, TAU);
+          sg.fill();
+        }
+        const tau = t - b.at;
+        if (tau <= 0 || tau > 1.9) continue;
+        const life = tau / 1.9, fade = (1 - life) ** 1.4;
+        sg.lineWidth = Math.max(0.7, u * 0.0045);
+        b.parts.forEach((pt, k) => {
+          const d0 = b.R * pt.v * easeOut(Math.min(1, tau / 1.2)), d1 = b.R * pt.v * easeOut(Math.max(0, tau - 0.12) / 1.2);
+          const drop = u * 0.05 * tau * tau;
+          sg.strokeStyle = b.cols[k % 2];
+          sg.globalAlpha = 0.95 * fade;
+          sg.beginPath();
+          sg.moveTo(b.x + Math.cos(pt.a) * d1, b.y + Math.sin(pt.a) * d1 + drop * 0.8);
+          sg.lineTo(b.x + Math.cos(pt.a) * d0, b.y + Math.sin(pt.a) * d0 + drop);
+          sg.stroke();
+        });
+        if (tau < 0.25) {
+          const fl = sg.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.R * 0.6);
+          fl.addColorStop(0, rgba(GOLD.pale, 0.5 * (1 - tau / 0.25)));
+          fl.addColorStop(1, rgba(GOLD.pale, 0));
+          sg.globalAlpha = 1;
+          sg.fillStyle = fl;
+          sg.fillRect(b.x - b.R, b.y - b.R, b.R * 2, b.R * 2);
+        }
+      }
+      sg.globalCompositeOperation = "source-over";
+      sg.globalAlpha = 1;
+
+      // Pattern and words
+      // Lattice and medallion on the sky canvas
+      if (S.lat > 0 && keep > 0) {
+        sg.save();
+        sg.beginPath();
+        sg.arc(W / 2, G.yc, G.reach * easeOut(S.lat) + 1, 0, TAU);
+        sg.clip();
+        sg.globalAlpha = 0.16 * keep;
+        sg.drawImage(G.latticeImg, 0, 0, W, H);
+        sg.restore();
+      }
+      if (S.med > 0 && keep > 0) {
+        sg.save();
+        sg.translate(W / 2, G.yc);
+        sg.rotate((t / LOOP) * (Math.PI / 4));
+        sg.lineJoin = "round";
+        for (const part of G.medParts) {
+          const q = clamp((S.med - part.delay) / (0.95 - part.delay));
+          if (q <= 0) continue;
+          sg.setLineDash([part.len * q, part.len * 2]);
+          sg.globalAlpha = 0.1 * keep;
+          sg.strokeStyle = GOLD.light;
+          sg.lineWidth = part.w * 4;
+          sg.stroke(part.p);
+          sg.globalAlpha = 0.85 * keep;
+          sg.strokeStyle = G.medGold;
+          sg.lineWidth = part.w;
+          sg.stroke(part.p);
+        }
+        sg.setLineDash([]);
+        const dots = clamp(S.med * 3 - 2);
+        if (dots > 0) {
+          sg.globalAlpha = dots * keep;
+          sg.fillStyle = GOLD.light;
+          for (let k = 0; k < 16; k++) {
+            const ang = (k / 16) * TAU + Math.PI / 16;
+            sg.beginPath();
+            sg.arc(Math.cos(ang) * G.R * 0.97, Math.sin(ang) * G.R * 0.97, G.medDot, 0, TAU);
+            sg.fill();
+          }
+        }
+        sg.restore();
+      }
+
+      set(G.veil, "opacity", Math.max(S.l0, S.l1) * keep);
+      const reveals = titleLines.length === 2 ? [S.l0, S.l1, S.sub] : [S.l1, S.sub];
+      G.lines.forEach((line, i) => {
+        const p = reveals[i], { s } = line;
+        // Letters close in from wide spacing as the line rises and fades up.
+        const spacing = (s.ls + (1 - p) * (s.sub ? 0.2 : 0.5)) * s.fs;
+        for (const tx of line.texts) set(tx, "letter-spacing", spacing);
+        set(line.g, "opacity", p * keep);
+        set(line.g, "transform", `translate(0 ${(1 - p) * s.fs * 0.3})`);
+      });
+      const sh = S.sh1 > 0 && S.sh1 < 1 ? S.sh1 : S.sh2;
+      const band = G.mainW * 0.2, x0 = W / 2 - G.mainW / 2 - band * 2;
+      const sx = x0 + sh * (G.mainW + band * 4);
+      set(G.shine, "x1", sx - band);
+      set(G.shine, "x2", sx + band);
+      set(G.shine, "y1", G.box.t);
+      set(G.shine, "y2", G.box.b);
+
+      // Front: hanging decorations, pelita and glints
+      const g = lg;
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, W, H);
+      for (const hg of G.hangs) {
+        const ang = hg.amp * wave(t, hg.n, hg.ph);
+        const ex = hg.x + Math.sin(ang) * hg.len, ey = Math.cos(ang) * hg.len;
+        g.strokeStyle = rgba(GOLD.light, 0.7);
+        g.lineWidth = Math.max(0.6, u * 0.0025);
+        g.beginPath();
+        g.moveTo(hg.x, 0);
+        g.lineTo(ex, ey);
+        g.stroke();
+        if (hg.lantern) {
+          const gy = ey + hg.spr.glowY, flick = 1 + 0.06 * wave(t, 17, hg.ph);
+          const r = hg.spr.w * 1.6 * flick;
+          const gl = g.createRadialGradient(ex, gy, 0, ex, gy, r);
+          gl.addColorStop(0, "rgba(255,200,110,0.4)");
+          gl.addColorStop(1, "rgba(255,200,110,0)");
+          g.globalCompositeOperation = "lighter";
+          g.fillStyle = gl;
+          g.fillRect(ex - r, gy - r, r * 2, r * 2);
+          g.globalCompositeOperation = "source-over";
+        }
+        g.save();
+        g.translate(ex, ey);
+        g.rotate(-ang * 1.4);
+        g.drawImage(hg.spr.img, -hg.spr.ox, -hg.spr.oy, hg.spr.w, hg.spr.h);
+        g.restore();
+      }
+
+      for (const p of G.pelita) {
+        const top = H - p.h;
+        const flick = 0.5 * wave(t, 7, p.ph) + 0.3 * wave(t, 13, p.ph2) + 0.2 * wave(t, 29, p.ph + 1);
+        // Warm glow on the ground and around the flame
+        const fy = top - u * 0.012;
+        const gr = u * (0.13 + flick * 0.01);
+        const glow = g.createRadialGradient(p.x, fy, 0, p.x, fy, gr);
+        glow.addColorStop(0, "rgba(255,190,90,0.45)");
+        glow.addColorStop(0.4, "rgba(255,160,60,0.14)");
+        glow.addColorStop(1, "rgba(255,160,60,0)");
+        g.globalCompositeOperation = "lighter";
+        g.fillStyle = glow;
+        g.fillRect(p.x - gr, fy - gr, gr * 2, gr * 2);
+        g.globalCompositeOperation = "source-over";
+        // Bamboo pole with nodes, and a wider bamboo cup on top
+        const pw = u * 0.011;
+        const pole = g.createLinearGradient(p.x - pw, 0, p.x + pw, 0);
+        pole.addColorStop(0, "#3a2a14");
+        pole.addColorStop(0.5, "#7a5a2c");
+        pole.addColorStop(1, "#2a1c0c");
+        g.fillStyle = pole;
+        g.fillRect(p.x - pw / 2, top + u * 0.04, pw, p.h);
+        g.fillStyle = "#24170a";
+        for (let k = 1; k < 4; k++) g.fillRect(p.x - pw * 0.6, top + u * 0.04 + k * p.h * 0.25, pw * 1.2, Math.max(0.6, u * 0.003));
+        const cw = u * 0.026, ch = u * 0.045;
+        const cup = g.createLinearGradient(p.x - cw / 2, 0, p.x + cw / 2, 0);
+        cup.addColorStop(0, "#6b5022");
+        cup.addColorStop(0.35, "#c9a456");
+        cup.addColorStop(1, "#4a3616");
+        g.fillStyle = cup;
+        g.fillRect(p.x - cw / 2, top, cw, ch);
+        g.fillStyle = "rgba(255,200,110,0.55)";
+        g.fillRect(p.x - cw / 2, top, cw, Math.max(0.8, u * 0.004));
+        // Flame: an outer orange tongue and a pale core, swaying gently
+        const fh = u * 0.05 * (1 + flick * 0.12), fw = u * 0.013 * (1 - flick * 0.05);
+        const tipX = p.x + flick * u * 0.006;
+        const flame = (w, h, c0, c1) => {
+          const fg = g.createLinearGradient(0, fy + w, 0, fy - h);
+          fg.addColorStop(0, c0);
+          fg.addColorStop(1, c1);
+          g.fillStyle = fg;
+          g.beginPath();
+          g.moveTo(tipX, fy - h);
+          g.bezierCurveTo(p.x + w * 0.9, fy - h * 0.5, p.x + w * 1.1, fy + w * 0.6, p.x, fy + w);
+          g.bezierCurveTo(p.x - w * 1.1, fy + w * 0.6, p.x - w * 0.9, fy - h * 0.5, tipX, fy - h);
+          g.fill();
+        };
+        flame(fw, fh, "#ff8a2a", "rgba(255,210,100,0.4)");
+        flame(fw * 0.5, fh * 0.55, "#fff6d6", "rgba(255,240,190,0.6)");
+      }
+
+      // Glints near the title after it appears
+      g.fillStyle = GOLD.pale;
+      for (const s of G.glints) {
+        const k = Math.max(0, wave(t, s.n, s.ph)) ** 3 * clamp(S.sub * 2) * keep;
+        if (k <= 0.02) continue;
+        const r = s.r * k, w = r * 0.16;
+        g.globalAlpha = k;
+        g.beginPath();
+        g.moveTo(s.x, s.y - r);
+        g.lineTo(s.x + w, s.y - w);
+        g.lineTo(s.x + r, s.y);
+        g.lineTo(s.x + w, s.y + w);
+        g.lineTo(s.x, s.y + r);
+        g.lineTo(s.x - w, s.y + w);
+        g.lineTo(s.x - r, s.y);
+        g.lineTo(s.x - w, s.y - w);
+        g.closePath();
+        g.fill();
+      }
+      g.globalAlpha = 1;
+    }
+
+    // Reduced motion: one still frame with the greeting and a firework in place.
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    const HOLD = 7.9;
+    function apply() {
+      gsap.ticker.remove(render);
+      if (reduce.matches) {
+        tl.pause(HOLD);
+        render();
+      } else {
+        tl.play();
+        gsap.ticker.add(render);
+      }
+    }
+    reduce.addEventListener("change", apply);
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => { build(); render(); }, 150);
+    });
+
+    // Wait briefly for the fonts so the words are measured in the right face.
+    Promise.race([
+      Promise.all([document.fonts.load("600 1em Cinzel"), document.fonts.load("500 1em Cinzel"), document.fonts.load("600 1em Quicksand")]),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(() => { build(); render(); apply(); });
+  </script>
+</body>
+</html>

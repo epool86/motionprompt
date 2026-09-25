@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Claymation demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/baloo-2@5.3.0/latin-800.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=f8e4cc&ink=e24e5c&accent=ff9457&accent2=93cf7f */
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #f8e4cc;
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="scene" role="img"></canvas>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => "#" + (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const C = {
+      bg: hex("bg", "f8e4cc"),
+      ink: hex("ink", "e24e5c"),
+      buddy: hex("accent", "ff9457"),
+      ground: hex("accent2", "93cf7f"),
+      sign: "#fff2dd",
+      wood: "#b87a50",
+      leaf: "#5dab66",
+      leafLight: "#7fc27a",
+      cheek: "#ff7a8c",
+      dark: "#3b2a2f",
+      pebble: "#d3bca6",
+      sun: "#ffc84a",
+      cloud: "#fffaf3",
+      petals: ["#f99ab5", "#7cc5ea", "#ffd35a"],
+    };
+    document.body.style.background = C.bg;
+    const text = (params.get("text") || "Hello there!").trim().slice(0, 40);
+
+    const canvas = document.getElementById("scene");
+    canvas.setAttribute("aria-label", `A claymation scene: a round clay buddy bounces in front of a clay sign that reads ${text}`);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(C.bg);
+    scene.fog = new THREE.Fog(C.bg, 20, 60);
+    const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 200);
+
+    // Warm, soft light: a sky and bounce fill, plus one key light for the shadows.
+    scene.add(new THREE.HemisphereLight(0xfff4e6, 0xc79a78, 1.6));
+    const key = new THREE.DirectionalLight(0xfff0dc, 2.3);
+    key.position.set(-5, 9, 7);
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.camera.left = key.shadow.camera.bottom = -7;
+    key.shadow.camera.right = key.shadow.camera.top = 7;
+    key.shadow.camera.near = 1;
+    key.shadow.camera.far = 30;
+    key.shadow.radius = 5;
+    key.shadow.intensity = 0.55;
+    key.shadow.bias = -0.0008;
+    key.shadow.normalBias = 0.03;
+    scene.add(key);
+    const rim = new THREE.DirectionalLight(0xffe2c4, 0.6);
+    rim.position.set(6, 4, -6);
+    scene.add(rim);
+
+    // Fingerprints and fine noise, drawn once and used as a bump map on every piece of clay.
+    function printCanvas(size = 256) {
+      const c = document.createElement("canvas");
+      c.width = c.height = size;
+      const g = c.getContext("2d");
+      const img = g.createImageData(size, size);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const v = 128 + (Math.random() - 0.5) * 36;
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+        img.data[i + 3] = 255;
+      }
+      g.putImageData(img, 0, 0);
+      g.lineWidth = 1.3;
+      let s = 7;
+      const r = () => ((s = (s * 16807) % 2147483647) - 1) / 2147483646;
+      for (let k = 0; k < 5; k++) {
+        const cx = r() * size, cy = r() * size, sq = 0.6 + r() * 0.3;
+        for (let ring = 5; ring < 58; ring += 3.4) {
+          const a0 = r() * Math.PI * 2, span = 1.5 + r() * 3.5;
+          g.strokeStyle = `rgba(${r() > 0.5 ? "255,255,255" : "0,0,0"},0.22)`;
+          // Draw at wrapped offsets so the tile has no seams.
+          for (const ox of [-size, 0, size]) for (const oy of [-size, 0, size]) {
+            g.beginPath();
+            g.ellipse(cx + ox, cy + oy, ring, ring * sq, k, a0, a0 + span);
+            g.stroke();
+          }
+        }
+      }
+      return c;
+    }
+    const printTex = new THREE.CanvasTexture(printCanvas());
+    printTex.wrapS = printTex.wrapT = THREE.RepeatWrapping;
+    printTex.repeat.set(2, 2);
+
+    const mats = new Map();
+    const clay = (color) => {
+      if (!mats.has(color)) mats.set(color, new THREE.MeshStandardMaterial({ color, roughness: 0.92, metalness: 0, bumpMap: printTex, bumpScale: 1.2 }));
+      return mats.get(color);
+    };
+
+    // Soft wobbly lumps: push each vertex in or out by a smooth noise, then smooth the normals.
+    const lumpNoise = (x, y, z, s) =>
+      (Math.sin(x * 1.3 + s) + Math.sin(y * 1.7 + s * 2.1) + Math.sin(z * 1.5 + s * 0.7)) * 0.2 +
+      Math.sin(x * 2.9 + y * 2.3 + s) * Math.sin(z * 2.7 - x * 1.9 + s * 1.7) * 0.4;
+    const posKey = (p, i) => `${p.getX(i).toFixed(3)},${p.getY(i).toFixed(3)},${p.getZ(i).toFixed(3)}`;
+    function sharedNormals(geo) {
+      const pos = geo.attributes.position, nor = geo.attributes.normal, sum = new Map();
+      for (let i = 0; i < pos.count; i++) {
+        const k = posKey(pos, i);
+        if (!sum.has(k)) sum.set(k, new THREE.Vector3());
+        sum.get(k).add(new THREE.Vector3(nor.getX(i), nor.getY(i), nor.getZ(i)));
+      }
+      for (let i = 0; i < pos.count; i++) {
+        const n = sum.get(posKey(pos, i)).clone().normalize();
+        nor.setXYZ(i, n.x, n.y, n.z);
+      }
+      return sum;
+    }
+    function lumpy(geo, amount, freq = 2, seed = 1) {
+      sharedNormals(geo);
+      const pos = geo.attributes.position, nor = geo.attributes.normal;
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+        const d = lumpNoise(x * freq, y * freq, z * freq, seed) * amount;
+        pos.setXYZ(i, x + nor.getX(i) * d, y + nor.getY(i) * d, z + nor.getZ(i) * d);
+      }
+      geo.computeVertexNormals();
+      sharedNormals(geo);
+      return geo;
+    }
+    const ball = (r, amount = 0.06, seed = 1, w = 20, h = 14) => lumpy(new THREE.SphereGeometry(r, w, h), r * amount, 2 / r, seed);
+
+    function mesh(geo, color, parent, x = 0, y = 0, z = 0) {
+      const m = new THREE.Mesh(geo, typeof color === "string" ? clay(color) : color);
+      m.position.set(x, y, z);
+      m.castShadow = m.receiveShadow = true;
+      parent.add(m);
+      return m;
+    }
+
+    // Soft contact shadow, so things feel pressed onto the ground.
+    const blobMat = (() => {
+      const c = document.createElement("canvas");
+      c.width = c.height = 128;
+      const g = c.getContext("2d");
+      const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+      grad.addColorStop(0, "rgba(70,40,30,0.38)");
+      grad.addColorStop(0.6, "rgba(70,40,30,0.12)");
+      grad.addColorStop(1, "rgba(70,40,30,0)");
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 128, 128);
+      return new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
+    })();
+    const blobGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+    function blob(parent, w, d = w) {
+      const b = new THREE.Mesh(blobGeo, blobMat);
+      b.scale.set(w, 1, d);
+      b.position.y = 0.02;
+      b.renderOrder = 1;
+      parent.add(b);
+      return b;
+    }
+
+    // ---- Ground: a big soft clay field, flat in the middle, rolling at the edges ----
+    {
+      const geo = new THREE.PlaneGeometry(80, 80, 60, 60).rotateX(-Math.PI / 2);
+      const pos = geo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i), z = pos.getZ(i), r = Math.hypot(x, z);
+        const edge = Math.min(1, Math.max(0, (r - 6) / 10));
+        pos.setY(i, lumpNoise(x * 0.35, 0, z * 0.35, 3) * (0.06 + edge * 1.4));
+      }
+      geo.computeVertexNormals();
+      const tex = printTex.clone();
+      tex.repeat.set(24, 24);
+      const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: C.ground, roughness: 0.95, bumpMap: tex, bumpScale: 1.4 }));
+      ground.receiveShadow = true;
+      scene.add(ground);
+      // Distant hills
+      const hillColors = [C.ground, "#7dbf6d", "#a6d690"];
+      [[-12, -16, 6], [2, -20, 8], [15, -15, 6.5], [-24, -22, 9], [26, -26, 10]].forEach(([x, z, r], i) => {
+        const hill = mesh(ball(r, 0.05, i + 2, 24, 14), hillColors[i % 3], scene, x, -r * 0.55, z);
+        hill.scale.y = 0.7;
+        hill.castShadow = false;
+      });
+    }
+
+    // Everything that pops in and out: a pivot at its base plus timing.
+    const props = [];
+    function prop(t0, t1, parent = scene) {
+      const pivot = new THREE.Group();
+      parent.add(pivot);
+      const p = { pivot, t0, t1, i: props.length };
+      props.push(p);
+      return p;
+    }
+
+    // ---- Tree: lumpy trunk and three round clumps ----
+    const tree = prop(0.5, 9.25);
+    {
+      const b = tree.pivot;
+      blob(b, 2.2);
+      mesh(lumpy(new THREE.CylinderGeometry(0.17, 0.26, 1.5, 10, 4), 0.03, 3, 4), C.wood, b, 0, 0.75, 0);
+      mesh(ball(0.72, 0.08, 5), C.leaf, b, 0, 1.85, 0);
+      mesh(ball(0.55, 0.08, 6), C.leafLight, b, -0.45, 1.55, 0.2);
+      mesh(ball(0.5, 0.08, 7), C.leaf, b, 0.48, 1.6, 0.1);
+    }
+
+    // ---- Bush ----
+    const bush = prop(0.7, 9.3);
+    {
+      const b = bush.pivot;
+      blob(b, 1.8, 1.3);
+      mesh(ball(0.45, 0.08, 8), C.leafLight, b, -0.3, 0.3, 0);
+      mesh(ball(0.55, 0.08, 9), C.leaf, b, 0.2, 0.4, -0.05);
+      mesh(ball(0.35, 0.08, 10), C.leafLight, b, 0.6, 0.25, 0.15);
+    }
+
+    // ---- Flowers ----
+    const flowers = [0, 1, 2, 3].map((k) => {
+      const f = prop(0.25 + k * 0.18, 9.0 + k * 0.06);
+      const b = f.pivot;
+      const h = 0.45 + (k % 2) * 0.15;
+      blob(b, 0.5);
+      mesh(new THREE.CylinderGeometry(0.035, 0.045, h, 6), C.leaf, b, 0, h / 2, 0);
+      const leaf = mesh(ball(0.1, 0.05, k), C.leaf, b, 0.09, h * 0.4, 0);
+      leaf.scale.set(1.3, 0.4, 0.7);
+      const head = new THREE.Group();
+      head.position.y = h;
+      head.rotation.x = 0.5;
+      b.add(head);
+      const petal = ball(0.1, 0.05, k + 3, 10, 8);
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        const p = mesh(petal, C.petals[k % 3], head, Math.cos(a) * 0.12, 0, Math.sin(a) * 0.12);
+        p.scale.y = 0.45;
+      }
+      mesh(ball(0.075, 0.05, k, 10, 8), k % 3 === 2 ? "#ff9457" : "#ffd35a", head, 0, 0.04, 0);
+      return f;
+    });
+
+    // ---- Pebbles ----
+    const pebbles = [0, 1, 2].map((k) => {
+      const p = prop(0.35 + k * 0.15, 9.1);
+      const m = mesh(ball(0.22 + k * 0.05, 0.12, k + 11, 12, 8), k === 1 ? "#c6ae98" : C.pebble, p.pivot, 0, 0.08, 0);
+      m.scale.y = 0.55;
+      return p;
+    });
+
+    // ---- Sky: a clay sun and a cloud (fog does not touch them) ----
+    const skyMat = (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.9, bumpMap: printTex, bumpScale: 1.2, fog: false });
+    const sun = prop(0.2, 9.5);
+    const sunSpin = new THREE.Group();
+    sun.pivot.add(sunSpin);
+    {
+      const core = mesh(ball(0.75, 0.05, 12), skyMat(C.sun), sunSpin);
+      core.scale.z = 0.5;
+      core.castShadow = false;
+      const ray = ball(0.16, 0.05, 13, 10, 8);
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        const m = mesh(ray, skyMat(C.sun), sunSpin, Math.cos(a) * 1.05, Math.sin(a) * 1.05, 0);
+        m.scale.set(1, 1, 0.6);
+        m.castShadow = false;
+      }
+    }
+    const cloud = prop(0.6, 9.4);
+    {
+      const mat = skyMat(C.cloud);
+      [[-0.55, -0.05, 0.42], [0, 0.12, 0.58], [0.58, -0.02, 0.45], [0.1, -0.2, 0.45]].forEach(([x, y, r], i) => {
+        const m = mesh(ball(r, 0.06, 20 + i, 14, 10), mat, cloud.pivot, x, y, 0);
+        m.scale.z = 0.7;
+        m.castShadow = false;
+      });
+    }
+
+    // ---- Sign: a clay board on two posts, with rolled clay letters ----
+    const sign = prop(0.9, 9.2);
+    const signSquash = new THREE.Group();
+    sign.pivot.add(signSquash);
+    const signPrint = printCanvas(256);
+    let signParts = [];
+    let signSize = { w: 3, h: 1.4, post: 1 };
+
+    // Draw the headline twice: a colour map and a height map for the bump.
+    function drawSign(lines) {
+      const fs = 150, lineH = fs * 1.02, padX = fs * 0.55, padY = fs * 0.42;
+      const font = `800 ${fs}px "Baloo 2", "Arial Rounded MT Bold", system-ui, sans-serif`;
+      const probe = document.createElement("canvas").getContext("2d");
+      probe.font = font;
+      const widest = Math.max(...lines.map((l) => probe.measureText(l).width));
+      const cw = Math.max(widest + padX * 2, lineH * lines.length + padY * 2);
+      const ch = lines.length * lineH + padY * 2;
+      const k = Math.min(1, 1024 / cw);
+      const make = () => {
+        const c = document.createElement("canvas");
+        c.width = Math.round(cw * k);
+        c.height = Math.round(ch * k);
+        const g = c.getContext("2d");
+        g.scale(k, k);
+        g.font = font;
+        g.textAlign = "center";
+        g.textBaseline = "middle";
+        g.lineJoin = "round";
+        return { c, g };
+      };
+      const eachLine = (fn) => lines.forEach((l, i) => fn(l, cw / 2, padY + lineH * (i + 0.5) + fs * 0.06));
+      const border = (g) => {
+        g.beginPath();
+        g.roundRect(fs * 0.16, fs * 0.16, cw - fs * 0.32, ch - fs * 0.32, fs * 0.22);
+        g.stroke();
+      };
+
+      // Colour
+      const color = make(), g = color.g;
+      g.fillStyle = C.sign;
+      g.fillRect(0, 0, cw, ch);
+      g.strokeStyle = "#f2d5b0";
+      g.lineWidth = fs * 0.1;
+      border(g);
+      g.save();
+      g.filter = `blur(${fs * 0.05}px)`;
+      g.fillStyle = "rgba(90,40,30,0.35)";
+      eachLine((l, x, y) => g.fillText(l, x + fs * 0.03, y + fs * 0.07));
+      g.restore();
+      g.fillStyle = g.strokeStyle = C.ink;
+      g.lineWidth = fs * 0.07;
+      eachLine((l, x, y) => { g.strokeText(l, x, y); g.fillText(l, x, y); });
+
+      // Height: letters and border raised and softly rounded, with fingerprints all over.
+      const height = make(), h = height.g;
+      h.fillStyle = "#6a6a6a";
+      h.fillRect(0, 0, cw, ch);
+      h.save();
+      h.filter = `blur(${fs * 0.045}px)`;
+      h.strokeStyle = "#cfcfcf";
+      h.lineWidth = fs * 0.1;
+      border(h);
+      h.fillStyle = h.strokeStyle = "#ffffff";
+      h.lineWidth = fs * 0.07;
+      eachLine((l, x, y) => { h.strokeText(l, x, y); h.fillText(l, x, y); });
+      h.restore();
+      h.globalAlpha = 0.5;
+      h.globalCompositeOperation = "overlay";
+      h.fillStyle = h.createPattern(signPrint, "repeat");
+      h.fillRect(0, 0, cw, ch);
+
+      const map = new THREE.CanvasTexture(color.c);
+      map.colorSpace = THREE.SRGBColorSpace;
+      map.anisotropy = 4;
+      const bump = new THREE.CanvasTexture(height.c);
+      return { map, bump, aspect: cw / ch };
+    }
+
+    let signKey = "";
+    function buildSign(tall) {
+      // Long headlines go on two lines on tall screens, split where the longer line is shortest.
+      const words = text.split(/\s+/);
+      let lines = [text];
+      if (words.length > 1 && text.length > (tall ? 8 : 16)) {
+        let best = null;
+        for (let i = 1; i < words.length; i++) {
+          const pair = [words.slice(0, i).join(" "), words.slice(i).join(" ")];
+          if (!best || Math.max(...pair.map((x) => x.length)) < Math.max(...best.map((x) => x.length))) best = pair;
+        }
+        lines = best;
+      }
+      const keyNow = lines.join("|") + tall;
+      if (keyNow === signKey) return;
+      signKey = keyNow;
+      signParts.forEach((m) => { signSquash.remove(m); m.geometry.dispose(); });
+      const { map, bump, aspect } = drawSign(lines);
+      let bh = 0.62 * lines.length + 0.62, bw = bh * aspect;
+      const maxW = tall ? 3.2 : 3.8;
+      if (bw > maxW) { bh *= maxW / bw; bw = maxW; }
+      const post = tall ? 1.9 : 0.7;
+      signSize = { w: bw, h: bh, post };
+      const side = clay(C.sign);
+      const face = new THREE.MeshStandardMaterial({ map, bumpMap: bump, bumpScale: 3, roughness: 0.9 });
+      const board = mesh(new RoundedBoxGeometry(bw, bh, 0.32, 3, 0.13), [side, side, side, side, face, side], signSquash, 0, post + bh / 2, 0);
+      const postGeo = lumpy(new THREE.CylinderGeometry(0.11, 0.14, post + bh * 0.6, 8, 3), 0.02, 3, 2);
+      const p1 = mesh(postGeo, C.wood, signSquash, -bw * 0.3, (post + bh * 0.6) / 2, -0.12);
+      const p2 = mesh(postGeo, C.wood, signSquash, bw * 0.3, (post + bh * 0.6) / 2, -0.12);
+      const b1 = blob(signSquash, 0.7), b2 = blob(signSquash, 0.7);
+      b1.position.x = -bw * 0.3;
+      b2.position.x = bw * 0.3;
+      signParts = [board, p1, p2, b1, b2];
+    }
+
+    // ---- The buddy: a round clay blob with dot eyes, cheeks, a smile and a sprout ----
+    const buddy = { pivot: new THREE.Group() };
+    scene.add(buddy.pivot);
+    buddy.shadow = blob(buddy.pivot, 1.9);
+    buddy.hop = new THREE.Group();
+    buddy.pivot.add(buddy.hop);
+    buddy.squash = new THREE.Group();
+    buddy.hop.add(buddy.squash);
+    {
+      const s = buddy.squash, R = 0.8;
+      const body = mesh(ball(R, 0.05, 30, 32, 24), C.buddy, s, 0, R * 0.92, 0);
+      body.scale.set(1.05, 0.92, 1);
+      // Depth of the body surface at (x, y), so the face sits right on it.
+      const surf = (x, y) => R * Math.sqrt(Math.max(0, 1 - (x / (R * 1.05)) ** 2 - ((y - R * 0.92) / (R * 0.92)) ** 2));
+      const eye = new THREE.SphereGeometry(0.1, 12, 10);
+      const shine = new THREE.SphereGeometry(0.032, 8, 6);
+      buddy.eyes = [-1, 1].map((side) => {
+        const g = new THREE.Group();
+        g.position.set(side * 0.26, R * 1.12, surf(0.26, R * 1.12) - 0.03);
+        g.rotation.y = side * 0.33;
+        s.add(g);
+        mesh(eye, C.dark, g).scale.z = 0.6;
+        mesh(shine, "#ffffff", g, 0.035, 0.04, 0.05).castShadow = false;
+        return g;
+      });
+      [-1, 1].forEach((side) => {
+        const c = mesh(ball(0.13, 0.05, 31, 12, 8), C.cheek, s, side * 0.47, R * 0.86, surf(0.47, R * 0.86) - 0.03);
+        c.scale.set(1, 0.6, 0.4);
+        c.rotation.y = side * 0.6;
+      });
+      buddy.smile = mesh(new THREE.TorusGeometry(0.1, 0.03, 6, 14, Math.PI), C.dark, s, 0, R * 0.9, surf(0, R * 0.9) - 0.01);
+      buddy.smile.rotation.z = Math.PI;
+      buddy.mouth = mesh(new THREE.SphereGeometry(0.08, 10, 8), C.dark, s, 0, R * 0.84, surf(0, R * 0.84) - 0.02);
+      buddy.mouth.scale.set(0.9, 1.1, 0.5);
+      // Sprout on top, it sways a little behind the motion.
+      buddy.sprout = new THREE.Group();
+      buddy.sprout.position.y = R * 1.66;
+      s.add(buddy.sprout);
+      mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.3, 6), C.leaf, buddy.sprout, 0, 0.14, 0);
+      [-1, 1].forEach((side) => {
+        const l = mesh(ball(0.12, 0.05, 32, 10, 8), C.leafLight, buddy.sprout, side * 0.12, 0.3, 0);
+        l.scale.set(1.3, 0.45, 0.7);
+        l.rotation.z = side * 0.4;
+      });
+      // Little feet
+      [-1, 1].forEach((side) => {
+        const f = mesh(ball(0.17, 0.05, 33, 12, 8), "#ec7c45", buddy.hop, side * 0.33, 0.07, 0.35);
+        f.scale.set(1, 0.5, 1.3);
+      });
+    }
+
+    // Layouts: side by side on wide screens, stacked on tall ones. [x, z] or [x, y, z].
+    const LAYOUTS = {
+      wide: {
+        sign: [-1.75, -0.5], buddy: [1.45, 0.75], tree: [3.5, -1.5], bush: [-4.1, -0.9],
+        flowers: [[-3.1, 0.9], [0.2, 1.7], [2.8, 0.2], [-0.1, -1.4]], pebbles: [[-2.2, 1.6], [3.4, 1.1], [0.7, -0.4]],
+        sun: [-3.9, 3.6, -3.5], cloud: [2.4, 3.3, -2.5],
+      },
+      tall: {
+        sign: [-0.2, -1.0], buddy: [0.75, 1.3], tree: [-2.0, -1.9], bush: [2.0, -1.5],
+        flowers: [[-1.5, 1.0], [1.7, 0.6], [-0.9, 2.1], [2.1, 1.9]], pebbles: [[-1.9, 0.1], [1.2, 2.3], [-0.6, 0.2]],
+        sun: [-1.4, 5.4, -3.5], cloud: [1.4, 4.6, -2.5],
+      },
+    };
+    let layout = null, fitPoints = [];
+    function applyLayout(tall) {
+      const L = tall ? LAYOUTS.tall : LAYOUTS.wide;
+      if (layout === L) return;
+      layout = L;
+      buildSign(tall);
+      const at = (p, [x, z]) => { p.home = new THREE.Vector3(x, 0, z); };
+      at(sign, L.sign);
+      at(buddy, L.buddy);
+      at(tree, L.tree);
+      at(bush, L.bush);
+      flowers.forEach((f, i) => at(f, L.flowers[i]));
+      pebbles.forEach((p, i) => at(p, L.pebbles[i]));
+      sun.home = new THREE.Vector3(...L.sun);
+      cloud.home = new THREE.Vector3(...L.cloud);
+      // Points that must stay in frame.
+      const { w, h, post } = signSize;
+      const [sx, sz] = L.sign, [bx, bz] = L.buddy;
+      fitPoints = [
+        [sx - w / 2, 0, sz], [sx + w / 2, 0, sz], [sx - w / 2, post + h + 0.1, sz], [sx + w / 2, post + h + 0.1, sz],
+        [bx - 0.95, 0, bz + 0.6], [bx + 0.95, 0, bz + 0.6], [bx, 2.2, bz],
+        [L.tree[0] - 1.2, 2.5, L.tree[1]], [L.tree[0] + 1.2, 0, L.tree[1] + 0.5],
+        [L.bush[0] - 0.9, 0, L.bush[1]], [L.bush[0] + 0.9, 0.9, L.bush[1]],
+        [L.sun[0] - 1.25, L.sun[1] + 1.25, L.sun[2]], [L.sun[0] + 1.25, L.sun[1] - 1.25, L.sun[2]],
+        [L.cloud[0] - 1.1, L.cloud[1] + 0.7, L.cloud[2]], [L.cloud[0] + 1.1, L.cloud[1] - 0.6, L.cloud[2]],
+        ...L.flowers.map(([x, z]) => [x, 0, z + 0.3]),
+      ].map((p) => new THREE.Vector3(...p));
+    }
+
+    // Fit the points into the window: find the camera distance, then re-centre a few times.
+    const right = new THREE.Vector3(), up = new THREE.Vector3(), back = new THREE.Vector3(), q = new THREE.Vector3();
+    let aspect = 1;
+    function frameCamera(az, el) {
+      back.set(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az));
+      right.set(Math.cos(az), 0, -Math.sin(az));
+      up.crossVectors(back, right);
+      const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / 1.1, tanH = tanV * aspect;
+      const c = new THREE.Vector3(0, 1.5, 0);
+      let D = 10;
+      for (let pass = 0; pass < 4; pass++) {
+        D = 0;
+        for (const p of fitPoints) {
+          q.subVectors(p, c);
+          const x = q.dot(right), y = q.dot(up), z = q.dot(back);
+          D = Math.max(D, z + Math.abs(x) / tanH, z + Math.abs(y) / tanV);
+        }
+        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        for (const p of fitPoints) {
+          q.subVectors(p, c);
+          const depth = D - q.dot(back);
+          const sx = q.dot(right) / depth, sy = q.dot(up) / depth;
+          x0 = Math.min(x0, sx); x1 = Math.max(x1, sx);
+          y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
+        }
+        c.addScaledVector(right, ((x0 + x1) / 2) * D).addScaledVector(up, ((y0 + y1) / 2) * D);
+      }
+      camera.position.copy(c).addScaledVector(back, D);
+      camera.lookAt(c);
+      scene.fog.near = D + 6;
+      scene.fog.far = D + 45;
+    }
+
+    // Timing, in seconds. The whole scene loops every 10 s, stepped at 12 frames a second.
+    const LOOP = 10, FPS = 12;
+    const clamp01 = (v) => Math.min(1, Math.max(0, v));
+    const backOut = (u, s = 2.4) => { const v = clamp01(u) - 1; return 1 + (s + 1) * v * v * v + s * v * v; };
+    const smooth = (a, b, t) => { const x = clamp01((t - a) / (b - a)); return x * x * (3 - 2 * x); };
+    const noise = (a, b) => { const x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return x - Math.floor(x) - 0.5; };
+    // Squash that wobbles out after a landing, as a scale on y (x and z keep the volume).
+    const wobble = (k, amp = 0.32) => 1 - amp * Math.exp(-6 * k) * Math.cos(15 * k);
+
+    // Grow up out of the ground with a squishy overshoot; squash flat back into it at the end.
+    function popScale(t, t0, t1) {
+      if (t < t0) return null;
+      const u = (t - t0) / 0.5;
+      let s = backOut(u), sy = s * (u < 1 ? 1 + Math.sin(u * Math.PI * 2) * 0.22 * (1 - u) : 1);
+      if (t > t1) {
+        const o = clamp01((t - t1) / 0.4);
+        if (o >= 1) return null;
+        sy = (1 - o) * (1 - o) * (1 - o * 0.3);
+        s = 1 + o * 0.35;
+      }
+      return [s, sy];
+    }
+
+    const ENTER = 1.8, LAND = ENTER + 0.42, EXIT = 8.95;
+    const HOPS = [
+      { t0: 3.25, dur: 0.5, h: 0.55 },
+      { t0: 3.95, dur: 0.5, h: 0.55 },
+      { t0: 5.1, dur: 0.9, h: 1.45, spin: 1 },
+      { t0: 7.4, dur: 0.5, h: 0.5 },
+      { t0: 8.1, dur: 0.5, h: 0.5 },
+    ];
+    const LANDINGS = [LAND, ...HOPS.map((h) => h.t0 + h.dur)];
+    const CROUCHES = [...HOPS.map((h) => h.t0), EXIT];
+    const BLINKS = [2.9, 4.8, 6.9];
+
+    function buddyPose(t) {
+      let y = 0, sy = 1, spin = 0, air = false;
+      const present = t >= ENTER && t < EXIT + 0.7;
+      if (t >= ENTER && t < LAND) {
+        const u = (t - ENTER) / (LAND - ENTER);
+        y = 8 * (1 - u * u);
+        sy = 1.28;
+        air = true;
+      }
+      for (const L of LANDINGS) if (t >= L && t < L + 0.7) sy = wobble(t - L, L === LAND ? 0.4 : 0.3);
+      for (const c of CROUCHES) if (t >= c - 0.2 && t < c) sy = 1 - 0.24 * Math.sin(((t - c + 0.2) / 0.2) * Math.PI / 2);
+      for (const h of HOPS) {
+        if (t >= h.t0 && t < h.t0 + h.dur) {
+          const u = (t - h.t0) / h.dur;
+          y = 4 * h.h * u * (1 - u);
+          sy = 1 + 0.22 * Math.abs(1 - 2 * u);
+          air = true;
+          if (h.spin) spin = Math.PI * 2 * smooth(0.1, 0.9, u);
+        }
+        if (h.spin && t >= h.t0 + h.dur) spin = Math.PI * 2;
+      }
+      if (t >= EXIT) {
+        const u = (t - EXIT) / 0.7;
+        y = 11 * u * u + 3 * u;
+        sy = 1.3;
+        air = true;
+      }
+      return { present, y, sy, spin, air };
+    }
+
+    function pose(t, frame, still = false) {
+      const jit = still ? 0 : 1;
+      // Props pop in and out, with a tiny hand-nudged wobble on every frame.
+      for (const p of props) {
+        const s = popScale(t, p.t0, p.t1);
+        p.pivot.visible = !!s;
+        if (!s) continue;
+        const home = p.home;
+        p.pivot.position.set(home.x + noise(frame, p.i) * 0.012 * jit, home.y, home.z + noise(frame, p.i + 40) * 0.012 * jit);
+        p.pivot.scale.set(s[0], Math.max(0.001, s[1]), s[0]);
+        p.pivot.rotation.set(0, noise(frame, p.i + 80) * 0.02 * jit, noise(frame, p.i + 120) * 0.012 * jit);
+      }
+      // The sign drops from the sky and lands with a squish.
+      if (sign.pivot.visible && t < sign.t1) {
+        const u = clamp01((t - sign.t0) / 0.4);
+        sign.pivot.position.y = 7 * (1 - u * u);
+        sign.pivot.scale.set(1, 1, 1);
+        const k = t - sign.t0 - 0.4;
+        const sy = k < 0 ? 1.12 : wobble(k, 0.22);
+        signSquash.scale.set(1 / Math.sqrt(sy), sy, 1 / Math.sqrt(sy));
+      } else signSquash.scale.set(1, 1, 1);
+      // Sky pieces drift instead of popping.
+      sun.pivot.position.y += Math.sin((t / LOOP) * Math.PI * 4) * 0.08;
+      sunSpin.rotation.z = -t * 0.25;
+      cloud.pivot.position.x += Math.sin((t / LOOP) * Math.PI * 2) * 0.25;
+      cloud.pivot.position.y += Math.sin((t / LOOP) * Math.PI * 4 + 1) * 0.06;
+      // Flowers sway.
+      flowers.forEach((f, i) => { f.pivot.rotation.z += Math.sin((t / LOOP) * Math.PI * 6 + i * 1.7) * 0.08; });
+
+      // The buddy
+      const b = buddyPose(t);
+      if (still) Object.assign(b, { y: 0, sy: 1, air: false });
+      buddy.pivot.visible = b.present;
+      buddy.pivot.position.copy(buddy.home);
+      buddy.hop.position.y = b.y;
+      // Face the camera, glance at the sign in the middle of the loop.
+      const toSign = Math.atan2(sign.home.x - buddy.home.x, sign.home.z - buddy.home.z);
+      const look = smooth(6.2, 6.5, t) * (1 - smooth(7.0, 7.3, t));
+      buddy.hop.rotation.y = camAz(t) * 0.8 + look * (toSign - camAz(t)) * 0.6 + b.spin + noise(frame, 7) * 0.03 * jit;
+      buddy.hop.rotation.z = noise(frame, 9) * 0.03 * jit;
+      buddy.squash.scale.set(1 / Math.sqrt(b.sy), b.sy, 1 / Math.sqrt(b.sy));
+      buddy.sprout.rotation.x = (b.sy - 1) * -1.2;
+      buddy.smile.visible = !b.air;
+      buddy.mouth.visible = b.air;
+      const blink = BLINKS.some((x) => t >= x && t < x + 0.17);
+      buddy.eyes.forEach((e) => e.scale.set(1, blink ? 0.15 : 1, 1));
+      // The shadow shrinks as the buddy leaves the ground.
+      const lift = Math.max(0, 1 - b.y / 4);
+      buddy.shadow.scale.set(1.9 * (0.4 + lift * 0.6) / Math.sqrt(b.sy), 1, 1.5 * (0.4 + lift * 0.6));
+
+      frameCamera(camAz(t), 0.3 + Math.sin((t / LOOP) * Math.PI * 2 + 1) * 0.02);
+    }
+    // A slow sway of the camera, stepped like the rest.
+    const camAz = (t) => Math.sin((t / LOOP) * Math.PI * 2) * 0.14;
+
+    function resize() {
+      const w = window.innerWidth, h = window.innerHeight;
+      renderer.setSize(w, h, false);
+      aspect = w / h;
+      camera.aspect = aspect;
+      camera.updateProjectionMatrix();
+      applyLayout(aspect < 1.15);
+    }
+
+    let start = performance.now(), last = -1;
+    function loop(now) {
+      const t = ((now - start) / 1000) % LOOP;
+      const frame = Math.floor(t * FPS);
+      if (frame === last) return;
+      last = frame;
+      pose(frame / FPS, frame);
+      renderer.render(scene, camera);
+    }
+
+    // Reduced motion: one still frame with everything in place.
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    function still() {
+      renderer.setAnimationLoop(null);
+      pose(4.7, 0, true);
+      renderer.render(scene, camera);
+    }
+    function apply() {
+      last = -1;
+      if (reduce.matches) still();
+      else renderer.setAnimationLoop(loop);
+    }
+    reduce.addEventListener("change", apply);
+    window.addEventListener("resize", () => {
+      resize();
+      last = -1;
+      if (reduce.matches) still();
+    });
+
+    // Wait briefly for the font so the sign is drawn in the right face.
+    Promise.race([
+      document.fonts.load('800 1em "Baloo 2"'),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(() => {
+      resize();
+      apply();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+Make my video in this style: Comic pop art.
+
+Look and motion
+- A comic book page in the pop art style: bold black outlines, flat colours and Ben-Day halftone dots on off-white paper.
+- Turn my message into three or four comic panels with slanted gutters. Each panel slides in fast and slams into place with a quick camera shake.
+- Tell the message like a tiny story: a speech bubble for the opening line, a cloud shaped thought bubble for the question or problem, then the answer.
+- Draw my product or subject yourself in simple cartoon style, with thick outlines and dot shading. Give it a big reveal: it pops open or jumps into view with radiating action lines.
+- Add jagged burst shapes with sound words like "POW!" or "WOW!", and end with my key line in a huge burst that smashes in over the page, with a hard shake.
+- Keep things alive while they hold: bubbles pop in, small shapes wobble in steps like hand drawn frames. Clear the page with a bold diagonal colour wipe at the end.
+- Keep every line of text short and easy to read in a second.
+
+Type and colour
+- A bold, hand lettered comic font (like Bangers), all capitals, with thick black outlines and a hard offset shadow on the big words.
+- Use my brand colours if I give them. Otherwise use comic red #e8262b, sunny yellow #ffd21f, sky cyan #27b1e6, ink black #16161b and off-white paper #fbf1dc.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP and SVG) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

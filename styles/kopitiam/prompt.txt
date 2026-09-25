@@ -1,0 +1,19 @@
+Make my video in this style: Kopitiam.
+
+Look and motion
+- A warm Malaysian kopitiam morning, drawn as a clean, cosy flat illustration. The camera looks at a round white marble table in front of a cream wall with retro green and cream tiles.
+- Morning sun shines in through a louvred window. Soft beams of light cross the room and tiny dust specks float in them. An old ceiling fan turns slowly overhead.
+- On the table, the food and drink from my request, or classic kopitiam breakfast if I do not name any: a thick white kopitiam cup and saucer with a green rim, kaya toast with a slab of butter and half-boiled eggs. Each item drops gently into place. Hot drinks have soft steam rising.
+- A hand pulls teh tarik: a glossy milky tea stream arcs from a high mug into a low one, stretching long and short a few times, and a frothy top builds up.
+- A chalkboard menu writes itself in chalk, letter by letter, with a little stick of chalk moving along. Show my message as the chalk headline, with my menu items and prices from my request underneath. If I give none, write a short line from my message instead.
+- Write my text in the language I use, Malay or English.
+- At the end, a duster wipes the board and the table clears, so the video can loop.
+
+Type and colour
+- A sketchy chalk font (like Cabin Sketch) for the headline and a hand-written font (like Caveat) for the menu, both with a dusty chalk texture.
+- Use my brand colours if I give them. Otherwise use cream #f4e8c8, kopitiam green #3f8f6b, chalkboard #263229, chalk white #f7f3e8, chalk yellow #f5d677 and milky tea brown #b77a47.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

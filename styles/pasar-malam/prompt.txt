@@ -1,0 +1,21 @@
+Make my video in this style: Pasar malam.
+
+Look and motion
+- A lively Malaysian night market, drawn as a clean, warm flat illustration. Rows of stalls with striped canopies run down a long aisle into the distance, with small shopper silhouettes browsing.
+- The sky turns from an orange and purple dusk to a starry night with a crescent moon. As it gets dark, strings of warm bulbs and bare bulbs under the canopies flicker on one by one, from the front to the far end.
+- Soft bokeh lights float in the air. Smoke and steam curl up from the grills.
+- In front, a stall counter shows the food and drinks from my request. If I give none, show classic pasar malam favourites: satay on a grill with glowing embers, apam balik on a round griddle, and drinks in plastic bags with straws.
+- Hand painted price cards pop up above each item with a springy bounce, like "RM5" or "3 for RM10". Use my menu items and prices from my request. Keep each card short.
+- Show my message on a red cloth banner that drops in and hangs from the string of lights, swinging gently.
+- Write my text in the language I use, Malay or English.
+- Keep it lively but tidy: a few moving things at a time, nothing cluttered.
+- At the end, the cards and banner go, the lights switch off and the sky returns to dusk, so the video can loop.
+
+Type and colour
+- A chunky, friendly display font (like Lilita One) for the banner and a marker pen font (like Permanent Marker) for the price cards.
+- Use my brand colours if I give them. Otherwise use night blue #141a3c, dusk orange #f39a62, banner red #d8392f, warm bulb yellow #ffcf6e, and canopy stripes in red, blue, yellow and green with white.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

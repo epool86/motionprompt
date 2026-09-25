@@ -1,0 +1,19 @@
+Make my video in this style: Borneo rainforest.
+
+Look and motion
+- A calm, cinematic walk into a lush Borneo rainforest in the early morning. Build the scene in deep layers: tall dipterocarp trees with pale straight trunks and wide buttress roots, hanging vines, a thick canopy at the top, giant ferns and big tropical leaves framing the corners.
+- Soft morning mist drifts slowly between the layers, and warm light rays fall through the canopy. The layers sway a little at different speeds, so the forest feels deep.
+- Add living details that fit my topic. For example, a rhinoceros hornbill (black wings, white tail with a black band, a big yellow bill with an orange casque that curls up) gliding across with a few slow wingbeats, a rafflesia flower (five thick red petals with cream spots) opening on the forest floor, and dew sparkles or fireflies glowing in the light.
+- Keep the motion slow and smooth. Nothing flashes or jumps.
+- Show my message as an elegant title that fades up letter by letter, with an optional small line above it in spaced capitals. Keep it short and easy to read over the forest.
+- Start and end in thick mist, so the video can loop.
+- Write my text in the language I use, Malay or English.
+
+Type and colour
+- An elegant serif font (like Cormorant Garamond) for the title, and a clean sans serif (like Montserrat) in spaced capitals for the small line.
+- Use my brand colours if I give them. Otherwise use deep forest green #0f2d21, fern green #276d44, misty sage #b9cfa6, warm cream #f6f1dc, soft gold #e8c46a and rafflesia red #a8281a.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

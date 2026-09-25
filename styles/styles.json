@@ -14,11 +14,39 @@
     "tags": ["text", "social"]
   },
   {
+    "slug": "malaysian-heritage",
+    "name": "Malaysian heritage",
+    "summary": "Wau bulan, batik and wayang kulit shadows frame your title in gold songket.",
+    "library": "GSAP",
+    "tags": ["malaysia", "festive", "text"]
+  },
+  {
     "slug": "app-showcase",
     "name": "App showcase",
     "summary": "A floating 3D phone with sliding app screens, pop out UI cards and a tap ripple.",
     "library": "GSAP",
     "tags": ["product", "3d"]
+  },
+  {
+    "slug": "kawaii-pastel",
+    "name": "Kawaii pastel",
+    "summary": "A cute chibi girl waves hello among pastel stickers, hearts and bouncy bubble text.",
+    "library": "GSAP",
+    "tags": ["social", "promo", "cute"]
+  },
+  {
+    "slug": "tech-noir",
+    "name": "Tech noir",
+    "summary": "A dark cinematic tech film: a dotted globe, glowing line-art devices and particle text.",
+    "library": "Canvas",
+    "tags": ["3d", "explainer", "product"]
+  },
+  {
+    "slug": "food-menu",
+    "name": "Food menu",
+    "summary": "A top down food flat lay: ingredients drop onto the plate and a menu card slides in.",
+    "library": "GSAP",
+    "tags": ["food", "promo"]
   },
   {
     "slug": "neon-sign",
@@ -28,11 +56,25 @@
     "tags": ["text", "retro"]
   },
   {
+    "slug": "map-journey",
+    "name": "Map journey",
+    "summary": "A travel map where the route draws itself, pins drop and day cards pop up.",
+    "library": "d3-geo",
+    "tags": ["travel", "explainer", "malaysia"]
+  },
+  {
     "slug": "liquid-gradient",
     "name": "Liquid gradient",
     "summary": "Soft colour blobs melt into each other under fine grain while a clean headline fades in.",
     "library": "WebGL",
     "tags": ["background", "text"]
+  },
+  {
+    "slug": "festive-raya",
+    "name": "Festive Raya",
+    "summary": "Gold star patterns, swaying ketupat and flickering pelita for a warm Raya greeting.",
+    "library": "GSAP",
+    "tags": ["festive", "malaysia", "text"]
   },
   {
     "slug": "data-story",
@@ -42,11 +84,25 @@
     "tags": ["data", "explainer"]
   },
   {
+    "slug": "claymation",
+    "name": "Claymation",
+    "summary": "A squishy clay world with a bouncy blob buddy, shot in choppy stop motion.",
+    "library": "Three.js",
+    "tags": ["3d", "handmade", "cute"]
+  },
+  {
     "slug": "retro-synthwave",
     "name": "Retro synthwave",
     "summary": "80s outrun: a neon grid, a striped setting sun and a chrome headline.",
     "library": "Canvas",
     "tags": ["retro", "background"]
+  },
+  {
+    "slug": "elegant-wedding",
+    "name": "Elegant wedding",
+    "summary": "Watercolour flowers bloom around a gold arch as the names write on in foil script.",
+    "library": "GSAP",
+    "tags": ["festive", "text", "handmade"]
   },
   {
     "slug": "logo-spin-3d",
@@ -56,11 +112,39 @@
     "tags": ["3d", "brand"]
   },
   {
+    "slug": "kopitiam",
+    "name": "Kopitiam",
+    "summary": "A sunny kopitiam morning: teh tarik pulled high and a chalk menu that writes itself.",
+    "library": "GSAP",
+    "tags": ["food", "malaysia", "retro"]
+  },
+  {
+    "slug": "comic-pop-art",
+    "name": "Comic pop art",
+    "summary": "Comic book panels slam in with halftone dots, speech bubbles and a big POW.",
+    "library": "GSAP",
+    "tags": ["promo", "retro", "text"]
+  },
+  {
     "slug": "photo-slideshow",
     "name": "Photo slideshow",
     "summary": "Your photos with slow Ken Burns zooms, bold captions and smooth editorial transitions.",
     "library": "GSAP",
-    "tags": ["photos", "social"]
+    "tags": ["photos", "travel", "social"]
+  },
+  {
+    "slug": "merdeka",
+    "name": "Merdeka",
+    "summary": "The Jalur Gemilang waves over KL fireworks for Merdeka and Malaysia Day.",
+    "library": "GSAP",
+    "tags": ["malaysia", "festive", "text"]
+  },
+  {
+    "slug": "product-turntable",
+    "name": "Product turntable",
+    "summary": "A glass bottle turns on a studio pedestal with light glints, callouts and a price card.",
+    "library": "Three.js",
+    "tags": ["product", "3d", "promo"]
   },
   {
     "slug": "glitch",
@@ -70,11 +154,39 @@
     "tags": ["text", "social"]
   },
   {
+    "slug": "kampung-sunset",
+    "name": "Kampung sunset",
+    "summary": "A Malaysian kampung at golden hour, sinking into a firefly dusk.",
+    "library": "GSAP",
+    "tags": ["malaysia", "background", "handmade"]
+  },
+  {
+    "slug": "chat-story",
+    "name": "Chat story",
+    "summary": "A phone chat that pops to life: typing dots, springy bubbles and a voice note.",
+    "library": "GSAP",
+    "tags": ["social", "promo", "text"]
+  },
+  {
     "slug": "sale-countdown",
     "name": "Sale countdown",
     "summary": "A punchy 3, 2, 1 countdown, a swinging price tag and a burst of confetti.",
     "library": "GSAP",
     "tags": ["promo", "social"]
+  },
+  {
+    "slug": "watercolour-ink",
+    "name": "Watercolour ink",
+    "summary": "Watercolour washes bloom on paper as an ink plum branch and a brushed headline paint in.",
+    "library": "WebGL",
+    "tags": ["handmade", "text", "brand"]
+  },
+  {
+    "slug": "pasar-malam",
+    "name": "Pasar malam",
+    "summary": "A Malaysian night market lights up at dusk, with satay smoke and price cards popping.",
+    "library": "GSAP",
+    "tags": ["food", "malaysia", "promo"]
   },
   {
     "slug": "whiteboard-sketch",
@@ -84,6 +196,27 @@
     "tags": ["explainer", "handmade"]
   },
   {
+    "slug": "y2k-chrome",
+    "name": "Y2K chrome",
+    "summary": "A liquid chrome blob morphs under a shiny Y2K headline with holo stickers.",
+    "library": "Three.js",
+    "tags": ["3d", "retro", "brand"]
+  },
+  {
+    "slug": "chinese-new-year",
+    "name": "Chinese New Year",
+    "summary": "Red and gold paper cuts, swaying lanterns and a gold fu for Chinese New Year.",
+    "library": "GSAP",
+    "tags": ["festive", "malaysia", "text"]
+  },
+  {
+    "slug": "property-tour",
+    "name": "Property tour",
+    "summary": "A 3D floor plan builds itself, rooms light up with sizes, then the price slides in.",
+    "library": "Three.js",
+    "tags": ["3d", "product", "explainer"]
+  },
+  {
     "slug": "particle-field",
     "name": "Particle field",
     "summary": "Thousands of glowing dots drifting along soft currents, like smoke or wind.",
@@ -91,11 +224,53 @@
     "tags": ["background"]
   },
   {
+    "slug": "nostalgia-90s",
+    "name": "Nostalgia 90s",
+    "summary": "A chunky 90s TV flicks on to colour bars and a VHS home video title.",
+    "library": "Canvas",
+    "tags": ["retro", "malaysia", "photos"]
+  },
+  {
+    "slug": "podcast-audiogram",
+    "name": "Podcast audiogram",
+    "summary": "A podcast clip card with a talking avatar, live sound bars and karaoke captions.",
+    "library": "GSAP",
+    "tags": ["social", "text"]
+  },
+  {
+    "slug": "borneo-rainforest",
+    "name": "Borneo rainforest",
+    "summary": "A misty Borneo rainforest with light rays, a gliding hornbill and a rafflesia in bloom.",
+    "library": "GSAP",
+    "tags": ["travel", "background", "malaysia"]
+  },
+  {
     "slug": "paper-cutout",
     "name": "Paper cut-out",
     "summary": "Layered paper hills, sun and clouds pop into place with a handmade stop motion wobble.",
     "library": "SVG",
     "tags": ["handmade", "background"]
+  },
+  {
+    "slug": "pixel-art",
+    "name": "Pixel art",
+    "summary": "A retro 16-bit game world: a pixel hero runs, grabs coins and levels up.",
+    "library": "Canvas",
+    "tags": ["retro", "promo", "social"]
+  },
+  {
+    "slug": "deepavali",
+    "name": "Deepavali",
+    "summary": "A kolam draws itself as clay diyas light up under marigold garlands for Deepavali.",
+    "library": "GSAP",
+    "tags": ["festive", "malaysia", "text"]
+  },
+  {
+    "slug": "vintage-archive",
+    "name": "Vintage archive",
+    "summary": "Sepia photos, typewriter captions and an ink timeline that stamps the years on aged film.",
+    "library": "GSAP",
+    "tags": ["photos", "retro", "brand"]
   },
   {
     "slug": "swiss-geometric",

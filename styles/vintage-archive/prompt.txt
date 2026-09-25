@@ -1,0 +1,21 @@
+Make my video in this style: Vintage archive.
+
+Look and motion
+- Make it feel like an old documentary reel found in a family archive. Tell my story in the order of my dates.
+- The background is aged paper: warm cream with soft stains, fibres and darker worn edges. Over everything add heavy film grain, a gentle flicker in brightness, the odd dust speck and a faint vertical scratch, and a soft dark vignette.
+- Show old photos in sepia or black and white. Give each one a white or deckled border, tilt it slightly, and fix it to the page with black photo corners or a strip of tape. Each photo drops gently onto the page and then drifts slowly with a Ken Burns zoom. New photos land on top of the earlier ones like a small stack in an album.
+- If I attach old photos, use them in the photo frames and tone them to match. If I attach none, draw simple period scenes that suit my subject, like an old street, a steam train or a portrait.
+- Type short captions from my message letter by letter, like a typewriter, with a blinking caret. Keep each caption to one short line or two.
+- Show my title large near the top, with a small line above it like "Since" and my first year, and a thin printed rule underneath.
+- Along the bottom, an ink timeline draws across the frame. At each of my years it stops, and the year lands as a round red ink stamp.
+- Between chapters, a soft warm light leak washes in from the side. At the end, the film briefly burns out to warm orange light and fades back to the start. Keep every flash brief and gentle, never strobing.
+- Keep everything calm, warm and nostalgic.
+
+Type and colour
+- A classic, high contrast serif (like Playfair Display) for the title, and a typewriter font (like Special Elite) for captions, labels and years.
+- Use my brand colours if I give them, kept muted and aged. Otherwise use aged paper #ecdfc4, sepia ink #3a2718, oxblood stamp red #8e2b22 and faded brass #a8864f.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

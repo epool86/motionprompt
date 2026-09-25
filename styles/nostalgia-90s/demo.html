@@ -1,0 +1,841 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nostalgia 90s demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/righteous@5.3.0/latin-400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/vt323@5.3.0/latin-400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/permanent-marker@5.3.0/latin-400.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=2b1d5c&ink=ffd23f&accent=ff4fa3&accent2=1fb5b0 */
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #8fb3a3;
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="scene" role="img"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => "#" + (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const C = { bg: hex("bg", "2b1d5c"), ink: hex("ink", "ffd23f"), accent: hex("accent", "ff4fa3"), accent2: hex("accent2", "1fb5b0") };
+    const text = (params.get("text") || "Zaman dulu-dulu").trim().slice(0, 40);
+
+    const canvas = document.getElementById("scene");
+    canvas.setAttribute("aria-label", `A chunky 90s TV switches on to colour bars, then plays a home video title: ${text}. A cassette tape, a bus ticket and old coins sit in front.`);
+    const ctx = canvas.getContext("2d");
+
+    const LOOP = 12, TAU = Math.PI * 2;
+    const TITLE = '400 100px Righteous, "Arial Rounded MT Bold", "Trebuchet MS", sans-serif';
+    const OSD = '400 100px VT323, "Courier New", monospace';
+    const HAND = '400 100px "Permanent Marker", "Comic Sans MS", cursive';
+
+    function rand(seed) {
+      let s = seed;
+      return () => ((s = (s * 16807) % 2147483647) / 2147483647);
+    }
+
+    // Title lines: split long titles in two, where the longer line is shortest.
+    const words = text.split(/\s+/).filter(Boolean);
+    let lines = [text];
+    if (text.length > 10 && words.length > 1) {
+      for (let i = 1; i < words.length; i++) {
+        const pair = [words.slice(0, i).join(" "), words.slice(i).join(" ")];
+        if (lines.length === 1 || Math.max(...pair.map((x) => x.length)) < Math.max(...lines.map((x) => x.length))) lines = pair;
+      }
+    }
+
+    // Timeline state, tweened by GSAP.
+    const S = { lineW: 0, lineH: 0, flash: 0, bars: 0, noise: 0, card: 0, offY: 1, offX: 1, dot: 0, led: 0, track: -1 };
+    const letters = [...lines.join("")].map(() => ({ p: 0 }));
+
+    let W, H, u, dpr, L = {}, layers = {};
+
+    function makeCanvas(cw, ch) {
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(cw * dpr));
+      c.height = Math.max(1, Math.round(ch * dpr));
+      const g = c.getContext("2d");
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return [c, g];
+    }
+
+    function rr(g, x, y, w, h, r) {
+      g.beginPath();
+      g.roundRect(x, y, w, h, r);
+    }
+
+    // Film grain tiles, swapped a few times a second.
+    const grains = [0, 1, 2, 3].map((k) => {
+      const size = 128, c = document.createElement("canvas");
+      c.width = c.height = size;
+      const g = c.getContext("2d"), img = g.createImageData(size, size), r = rand(k * 97 + 5);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const v = r();
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = v > 0.5 ? 255 : 0;
+        img.data[i + 3] = Math.abs(v - 0.5) * 2 * 60;
+      }
+      g.putImageData(img, 0, 0);
+      return c;
+    });
+    // TV static, drawn small and stretched.
+    const statics = [0, 1, 2].map((k) => {
+      const c = document.createElement("canvas");
+      c.width = 96; c.height = 72;
+      const g = c.getContext("2d"), img = g.createImageData(96, 72), r = rand(k * 31 + 11);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const v = 60 + r() * 150;
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+        img.data[i + 3] = 255;
+      }
+      g.putImageData(img, 0, 0);
+      return c;
+    });
+
+    // ---- Layout and everything that stays still, drawn once per size ----
+    function build() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = innerWidth;
+      H = innerHeight;
+      u = Math.min(W, H);
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
+      const a = W / H;
+      const side = a > 1.3;
+
+      // TV box: body tw x th, screen inside on the left, controls on the right.
+      let tw, th, tx, ty;
+      if (side) {
+        th = H * 0.56;
+        tw = th / 0.72;
+        tx = (W - tw) / 2 - W * 0.02;
+        ty = H * 0.8 - th;
+      } else {
+        tw = Math.min(W * (a < 0.7 ? 0.9 : 0.86), (H * 0.46) / 0.72);
+        th = tw * 0.72;
+        tx = (W - tw) / 2;
+        ty = Math.max(H * 0.07 + th * 0.28, H * (a < 0.7 ? 0.42 : 0.44) - th * (a < 0.7 ? 0.5 : 0.62));
+      }
+      const table = ty + th + th * 0.03;
+      const sx = tx + tw * 0.055, sy = ty + th * 0.11, sw = tw * 0.66, sh = th * 0.78;
+      L = { side, tw, th, tx, ty, table, sx, sy, sw, sh, sr: sw * 0.07, osd: Math.max(11, u * 0.065), pad: u * 0.05 };
+
+      const [bg, g] = makeCanvas(W, H);
+
+      // Mint painted wall with faint stripes and a warm lamp glow
+      const wall = g.createLinearGradient(0, 0, 0, table);
+      wall.addColorStop(0, "#9cbfae");
+      wall.addColorStop(1, "#b9d2bd");
+      g.fillStyle = wall;
+      g.fillRect(0, 0, W, table);
+      const stripe = u * 0.06;
+      g.fillStyle = "rgba(255, 255, 255, 0.08)";
+      for (let x = 0; x < W; x += stripe * 2) g.fillRect(x, 0, stripe, table);
+      g.fillStyle = "rgba(90, 120, 105, 0.18)";
+      for (let x = stripe / 2; x < W; x += stripe * 2) {
+        for (let y = stripe * 0.6; y < table; y += stripe * 1.2) {
+          g.beginPath();
+          g.arc(x + stripe * 0.5, y + ((x / stripe) % 2) * stripe * 0.6, u * 0.005, 0, TAU);
+          g.fill();
+        }
+      }
+      const lamp = g.createRadialGradient(W * 0.15, H * 0.1, 0, W * 0.15, H * 0.1, Math.max(W, H) * 0.8);
+      lamp.addColorStop(0, "rgba(255, 214, 150, 0.45)");
+      lamp.addColorStop(1, "rgba(255, 214, 150, 0)");
+      g.fillStyle = lamp;
+      g.fillRect(0, 0, W, table);
+
+      // Wooden cabinet top
+      const wood = g.createLinearGradient(0, table, 0, H);
+      wood.addColorStop(0, "#7a4a2c");
+      wood.addColorStop(1, "#4e2c1a");
+      g.fillStyle = wood;
+      g.fillRect(0, table, W, H - table);
+      g.fillStyle = "#a36a40";
+      g.fillRect(0, table, W, Math.max(2, u * 0.012));
+      const rw = rand(3);
+      g.strokeStyle = "rgba(40, 20, 10, 0.25)";
+      g.lineWidth = Math.max(0.6, u * 0.002);
+      for (let i = 0; i < 16; i++) {
+        const y = table + (H - table) * rw();
+        g.beginPath();
+        g.moveTo(0, y);
+        for (let x = 0; x <= W; x += W / 8) g.lineTo(x, y + Math.sin(x * 0.02 + i) * u * 0.006);
+        g.stroke();
+      }
+
+      // Shadow behind the TV
+      g.fillStyle = "rgba(40, 60, 50, 0.25)";
+      rr(g, tx + tw * 0.04, ty + th * 0.06, tw, th, tw * 0.05);
+      g.fill();
+      g.fillStyle = "rgba(30, 15, 5, 0.35)";
+      g.beginPath();
+      g.ellipse(tx + tw / 2, table + u * 0.01, tw * 0.55, u * 0.025, 0, 0, TAU);
+      g.fill();
+
+      drawTV(g);
+      drawProps(g);
+      layers.bg = bg;
+
+      // Screen buffer, plus glass and scanlines drawn over it
+      [layers.screen, layers.sg] = makeCanvas(sw, sh);
+      const [glass, gg] = makeCanvas(sw, sh);
+      gg.fillStyle = "rgba(0, 0, 0, 0.16)";
+      for (let y = 0; y < sh; y += 3) gg.fillRect(0, y, sw, 1);
+      const vig = gg.createRadialGradient(sw / 2, sh / 2, sh * 0.35, sw / 2, sh / 2, sw * 0.7);
+      vig.addColorStop(0, "rgba(0, 0, 0, 0)");
+      vig.addColorStop(1, "rgba(0, 0, 0, 0.55)");
+      gg.fillStyle = vig;
+      gg.fillRect(0, 0, sw, sh);
+      const shine = gg.createLinearGradient(0, 0, sw * 0.6, sh * 0.8);
+      shine.addColorStop(0, "rgba(255, 255, 255, 0.16)");
+      shine.addColorStop(0.45, "rgba(255, 255, 255, 0.04)");
+      shine.addColorStop(0.5, "rgba(255, 255, 255, 0)");
+      gg.fillStyle = shine;
+      gg.fillRect(0, 0, sw, sh);
+      layers.glass = glass;
+
+      // Frame overlay: soft vignette and faint scanlines, like a tape copy
+      const [ov, og] = makeCanvas(W, H);
+      og.fillStyle = "rgba(0, 0, 0, 0.06)";
+      for (let y = 0; y < H; y += 3) og.fillRect(0, y, W, 1);
+      const v2 = og.createRadialGradient(W / 2, H / 2, u * 0.3, W / 2, H / 2, Math.hypot(W, H) * 0.6);
+      v2.addColorStop(0, "rgba(20, 10, 30, 0)");
+      v2.addColorStop(1, "rgba(20, 10, 30, 0.45)");
+      og.fillStyle = v2;
+      og.fillRect(0, 0, W, H);
+      layers.over = ov;
+
+      layers.grain = grains.map((c) => ctx.createPattern(c, "repeat"));
+
+      // Title size to fit the screen
+      ctx.font = TITLE;
+      const widest = Math.max(...lines.map((l) => ctx.measureText(l).width)) / 100;
+      L.fs = Math.min(sh * (lines.length > 1 ? 0.3 : 0.36), (sw * 0.84) / widest);
+    }
+
+    function drawTV(g) {
+      const { tw, th, tx, ty, sx, sy, sw, sh, sr } = L;
+      // Rabbit ear antenna
+      const ax = tx + tw * 0.62, ay = ty;
+      g.strokeStyle = "#d9dde0";
+      g.lineCap = "round";
+      g.lineWidth = Math.max(1.2, tw * 0.008);
+      [[-0.32, -0.5], [0.3, -0.42]].forEach(([dx, dy]) => {
+        g.beginPath();
+        g.moveTo(ax, ay - th * 0.05);
+        g.lineTo(ax + dx * tw * 0.5, ay + dy * th * 0.5);
+        g.stroke();
+        g.fillStyle = "#e9ecee";
+        g.beginPath();
+        g.arc(ax + dx * tw * 0.5, ay + dy * th * 0.5, tw * 0.009, 0, TAU);
+        g.fill();
+      });
+      g.fillStyle = "#2c2b30";
+      g.beginPath();
+      g.ellipse(ax, ay, tw * 0.07, th * 0.07, 0, Math.PI, TAU);
+      g.fill();
+
+      // Little plastic flowers in a vase
+      const vx = tx + tw * 0.2, vy = ty;
+      g.strokeStyle = "#4f8a4a";
+      g.lineWidth = Math.max(1, tw * 0.006);
+      [[-0.05, -0.2], [0.01, -0.25], [0.06, -0.18]].forEach(([dx, dy], i) => {
+        g.beginPath();
+        g.moveTo(vx, vy - th * 0.06);
+        g.quadraticCurveTo(vx + dx * tw * 0.3, vy + dy * th * 0.5, vx + dx * tw, vy + dy * th);
+        g.stroke();
+        g.fillStyle = ["#ff6f91", "#ffd23f", "#ff8a4a"][i];
+        for (let k = 0; k < 5; k++) {
+          const an = (k / 5) * TAU;
+          g.beginPath();
+          g.arc(vx + dx * tw + Math.cos(an) * tw * 0.014, vy + dy * th + Math.sin(an) * tw * 0.014, tw * 0.011, 0, TAU);
+          g.fill();
+        }
+        g.fillStyle = "#fff4c2";
+        g.beginPath();
+        g.arc(vx + dx * tw, vy + dy * th, tw * 0.008, 0, TAU);
+        g.fill();
+      });
+      g.fillStyle = "#e8e2d4";
+      g.beginPath();
+      g.moveTo(vx - tw * 0.03, vy);
+      g.lineTo(vx - tw * 0.02, vy - th * 0.09);
+      g.lineTo(vx + tw * 0.02, vy - th * 0.09);
+      g.lineTo(vx + tw * 0.03, vy);
+      g.fill();
+      g.fillStyle = "#6f9fc7";
+      g.fillRect(vx - tw * 0.024, vy - th * 0.05, tw * 0.048, th * 0.012);
+
+      // Legs
+      g.fillStyle = "#2a1a12";
+      [0.1, 0.86].forEach((k) => g.fillRect(tx + tw * k, ty + th - 2, tw * 0.04, th * 0.05));
+
+      // Wood grain cabinet body
+      const body = g.createLinearGradient(tx, ty, tx, ty + th);
+      body.addColorStop(0, "#8a5530");
+      body.addColorStop(1, "#6a3c20");
+      g.fillStyle = body;
+      rr(g, tx, ty, tw, th, tw * 0.04);
+      g.fill();
+      g.save();
+      g.clip();
+      const r = rand(9);
+      g.strokeStyle = "rgba(50, 25, 10, 0.3)";
+      g.lineWidth = Math.max(0.6, tw * 0.003);
+      for (let i = 0; i < 14; i++) {
+        const y = ty + th * r();
+        g.beginPath();
+        g.moveTo(tx, y);
+        g.bezierCurveTo(tx + tw * 0.3, y + th * 0.04 * (r() - 0.5), tx + tw * 0.7, y + th * 0.06 * (r() - 0.5), tx + tw, y);
+        g.stroke();
+      }
+      g.fillStyle = "rgba(255, 220, 170, 0.15)";
+      g.fillRect(tx, ty, tw, th * 0.03);
+      g.restore();
+
+      // Dark bezel round the screen
+      g.fillStyle = "#26252a";
+      rr(g, sx - tw * 0.025, sy - tw * 0.025, sw + tw * 0.05, sh + tw * 0.05, sr * 1.3);
+      g.fill();
+      g.fillStyle = "#121115";
+      rr(g, sx - tw * 0.006, sy - tw * 0.006, sw + tw * 0.012, sh + tw * 0.012, sr * 1.05);
+      g.fill();
+
+      // Control panel
+      const px = sx + sw + tw * 0.045, pw = tx + tw - px - tw * 0.03, py = sy - tw * 0.02, ph = sh + tw * 0.04;
+      L.panel = { px, pw, py, ph };
+      g.fillStyle = "#bdb6a6";
+      rr(g, px, py, pw, ph, tw * 0.015);
+      g.fill();
+      g.fillStyle = "#a59e8e";
+      g.fillRect(px, py + ph * 0.5, pw, 1);
+      // Channel dial with ticks
+      const kx = px + pw / 2, k1 = py + ph * 0.2, kr = Math.min(pw * 0.36, ph * 0.13);
+      g.fillStyle = "#2c2b30";
+      g.beginPath();
+      g.arc(kx, k1, kr * 1.25, 0, TAU);
+      g.fill();
+      g.strokeStyle = "#eee8da";
+      g.lineWidth = Math.max(0.6, kr * 0.08);
+      for (let i = 0; i < 12; i++) {
+        const an = (i / 12) * TAU;
+        g.beginPath();
+        g.moveTo(kx + Math.cos(an) * kr * 1.05, k1 + Math.sin(an) * kr * 1.05);
+        g.lineTo(kx + Math.cos(an) * kr * 1.2, k1 + Math.sin(an) * kr * 1.2);
+        g.stroke();
+      }
+      g.fillStyle = "#4a4850";
+      g.beginPath();
+      g.arc(kx, k1, kr * 0.85, 0, TAU);
+      g.fill();
+      g.fillStyle = "#6a6870";
+      g.fillRect(kx - kr * 0.12, k1 - kr * 0.8, kr * 0.24, kr * 1.6);
+      // Volume knob
+      const k2 = py + ph * 0.44;
+      g.fillStyle = "#2c2b30";
+      g.beginPath();
+      g.arc(kx, k2, kr * 0.7, 0, TAU);
+      g.fill();
+      g.fillStyle = "#e8e2d4";
+      g.fillRect(kx - kr * 0.06, k2 - kr * 0.6, kr * 0.12, kr * 0.4);
+      // Speaker grille
+      g.fillStyle = "#6e685c";
+      for (let i = 0; i < 7; i++) rr(g, px + pw * 0.15, py + ph * (0.58 + i * 0.045), pw * 0.7, ph * 0.02, ph * 0.01), g.fill();
+      // Power button; the light is drawn live
+      L.led = { x: kx - pw * 0.2, y: py + ph * 0.93, r: Math.max(1.2, pw * 0.05) };
+      g.fillStyle = "#3a3840";
+      rr(g, kx + pw * 0.02, py + ph * 0.905, pw * 0.3, ph * 0.05, ph * 0.01);
+      g.fill();
+
+      // Crochet doily draped over the top edge
+      const dx0 = tx + tw * 0.32, dx1 = tx + tw * 0.9, sc = tw * 0.024;
+      g.fillStyle = "rgba(255, 252, 240, 0.95)";
+      g.fillRect(dx0, ty - th * 0.012, dx1 - dx0, th * 0.03);
+      for (let x = dx0 + sc; x < dx1 - sc * 0.5; x += sc * 2) {
+        g.beginPath();
+        g.arc(x, ty + th * 0.018, sc, 0, Math.PI);
+        g.fill();
+      }
+      g.fillStyle = "#7a4a2c";
+      for (let x = dx0 + sc; x < dx1 - sc * 0.5; x += sc * 2) {
+        g.beginPath();
+        g.arc(x, ty + th * 0.026, sc * 0.28, 0, TAU);
+        g.fill();
+      }
+    }
+
+    // Props: a bus ticket, a few old coins and a cassette tape.
+    function drawProps(g) {
+      const { side, table, tx, tw } = L;
+      const room = side ? null : H - table;
+      let cas, tick, coins;
+      if (side) {
+        const right = tx + tw, sp = W - right;
+        const cw = Math.min(sp * 0.8, H * 0.34);
+        cas = { x: right + sp * 0.5, y: Math.min(table - cw * 0.1, H - L.pad - L.osd * 2.2 - cw * 0.36), w: cw, rot: -0.06 };
+        const lw = tx;
+        tick = { x: lw * 0.5, y: table - H * 0.1, w: Math.min(lw * 0.5, H * 0.14), rot: -0.14 };
+        coins = [[lw * 0.32, table + (H - table) * 0.45, 20], [lw * 0.6, table + (H - table) * 0.6, 50], [lw * 0.8, table + (H - table) * 0.3, 10]];
+        L.coinR = Math.min(lw * 0.1, H * 0.045);
+      } else {
+        // Cassette on the left, clear of the date stamp; ticket and coins on the right
+        const cw = Math.min(W * 0.5, room * 1.1);
+        cas = { x: W * 0.05 + cw * 0.5, y: table + Math.max(room * 0.45, cw * 0.4), w: cw, rot: -0.07 };
+        const gap = W - (tx + tw);
+        if (gap > W * 0.12) {
+          // Room beside the TV: the ticket stands against it
+          const tkw = Math.min(gap * 0.6, L.th * 0.3);
+          tick = { x: tx + tw + gap * 0.5, y: table - tkw * 0.95, w: tkw, rot: 0.08 };
+        } else {
+          // Otherwise it lies sideways near the back of the table
+          const tkw = Math.min(W * 0.14, room * 0.3);
+          tick = { x: W * 0.8, y: table + tkw * 0.75, w: tkw, rot: 1.42 };
+        }
+        const r = (L.coinR = Math.min(W * 0.045, room * 0.09)), cr = W * 0.05 + cw;
+        coins = [[cr + r * 1.5, table + room * 0.24, 20], [cr + r * 1.4, table + room * 0.24 + r * 2, 50], [cr + r * 3.6, table + room * 0.3, 10]];
+      }
+      L.cas = cas;
+
+      // Bus ticket: thin pink paper with a punched hole
+      g.save();
+      g.translate(tick.x, tick.y);
+      g.rotate(tick.rot);
+      const tw2 = tick.w, th2 = tick.w * 1.9;
+      g.fillStyle = "rgba(0, 0, 0, 0.25)";
+      g.fillRect(-tw2 / 2 + 2, -th2 / 2 + 3, tw2, th2);
+      g.fillStyle = "#f4b6c2";
+      g.fillRect(-tw2 / 2, -th2 / 2, tw2, th2);
+      g.fillStyle = "#b8455e";
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      g.font = `400 ${tw2 * 0.24}px VT323, monospace`;
+      g.fillText("TIKET BAS", 0, -th2 * 0.4);
+      g.fillRect(-tw2 * 0.42, -th2 * 0.33, tw2 * 0.84, Math.max(0.6, tw2 * 0.015));
+      g.font = `400 ${tw2 * 0.2}px VT323, monospace`;
+      g.fillText("No 048213", 0, -th2 * 0.25);
+      g.font = `400 ${tw2 * 0.16}px VT323, monospace`;
+      for (let i = 0; i < 5; i++) {
+        g.fillText(String(i + 1), -tw2 * 0.22, -th2 * 0.12 + i * th2 * 0.085);
+        g.fillText(String(i + 6), tw2 * 0.22, -th2 * 0.12 + i * th2 * 0.085);
+      }
+      g.font = `400 ${tw2 * 0.22}px VT323, monospace`;
+      g.fillText("50 SEN", 0, th2 * 0.38);
+      g.fillStyle = "#5a3a28";
+      g.beginPath();
+      g.arc(tw2 * 0.22, -th2 * 0.12 + 2 * th2 * 0.085, tw2 * 0.06, 0, TAU);
+      g.fill();
+      g.restore();
+
+      // Coins lying on the table
+      coins.forEach(([x, y, v]) => {
+        const r = L.coinR * (v === 50 ? 1.15 : v === 20 ? 1 : 0.85);
+        g.fillStyle = "rgba(0, 0, 0, 0.3)";
+        g.beginPath();
+        g.ellipse(x + r * 0.1, y + r * 0.2, r, r * 0.62, 0, 0, TAU);
+        g.fill();
+        g.fillStyle = "#8f9296";
+        g.beginPath();
+        g.ellipse(x, y + r * 0.08, r, r * 0.62, 0, 0, TAU);
+        g.fill();
+        const face = g.createLinearGradient(x - r, y - r, x + r, y + r);
+        face.addColorStop(0, "#eef0f0");
+        face.addColorStop(1, "#a9adb2");
+        g.fillStyle = face;
+        g.beginPath();
+        g.ellipse(x, y, r, r * 0.62, 0, 0, TAU);
+        g.fill();
+        g.strokeStyle = "rgba(90, 95, 100, 0.6)";
+        g.lineWidth = Math.max(0.5, r * 0.06);
+        g.beginPath();
+        g.ellipse(x, y, r * 0.82, r * 0.5, 0, 0, TAU);
+        g.stroke();
+        g.save();
+        g.translate(x, y);
+        g.scale(1, 0.62);
+        g.fillStyle = "#6f7378";
+        g.font = `400 ${r * 0.9}px Righteous, sans-serif`;
+        g.textAlign = "center";
+        g.textBaseline = "middle";
+        g.fillText(String(v), 0, -r * 0.08);
+        g.font = `400 ${r * 0.34}px Righteous, sans-serif`;
+        g.fillText("SEN", 0, r * 0.5);
+        g.restore();
+      });
+
+      // Cassette shell, label and window. The reels are drawn live.
+      g.save();
+      g.translate(cas.x, cas.y);
+      g.rotate(cas.rot);
+      const w = cas.w, h = w * 0.63;
+      g.fillStyle = "rgba(0, 0, 0, 0.3)";
+      rr(g, -w / 2 + w * 0.02, -h / 2 + w * 0.03, w, h, w * 0.04);
+      g.fill();
+      g.fillStyle = "#2d2b33";
+      rr(g, -w / 2, -h / 2, w, h, w * 0.04);
+      g.fill();
+      g.fillStyle = "#3b3942";
+      g.beginPath();
+      g.moveTo(-w * 0.34, h / 2);
+      g.lineTo(-w * 0.28, h * 0.26);
+      g.lineTo(w * 0.28, h * 0.26);
+      g.lineTo(w * 0.34, h / 2);
+      g.fill();
+      g.fillStyle = "#1c1b21";
+      [-0.18, -0.06, 0.06, 0.18].forEach((k) => { g.beginPath(); g.arc(w * k, h * 0.4, w * 0.018, 0, TAU); g.fill(); });
+      g.fillStyle = "#8a8890";
+      [[-0.45, -0.4], [0.45, -0.4], [-0.45, 0.4], [0.45, 0.4]].forEach(([kx, ky]) => { g.beginPath(); g.arc(w * kx, h * ky, w * 0.015, 0, TAU); g.fill(); });
+      // Label with stripes
+      g.fillStyle = "#f3ead2";
+      rr(g, -w * 0.43, -h * 0.42, w * 0.86, h * 0.62, w * 0.02);
+      g.fill();
+      ["#ff8a4a", "#ffd23f", "#ff4fa3"].forEach((c, i) => {
+        g.fillStyle = c;
+        g.fillRect(-w * 0.43, h * (0.03 + i * 0.045), w * 0.86, h * 0.04);
+      });
+      g.fillStyle = "#2d2b33";
+      g.font = `400 ${h * 0.12}px Righteous, sans-serif`;
+      g.textAlign = "left";
+      g.textBaseline = "middle";
+      g.fillText("A", -w * 0.4, -h * 0.33);
+      g.fillStyle = "#1f3f9a";
+      g.font = `400 ${h * 0.12}px "Permanent Marker", cursive`;
+      g.textAlign = "center";
+      g.fillText("Lagu kegemaran", w * 0.02, -h * 0.31);
+      g.strokeStyle = "rgba(31, 63, 154, 0.3)";
+      g.lineWidth = Math.max(0.5, h * 0.006);
+      g.beginPath();
+      g.moveTo(-w * 0.3, -h * 0.23);
+      g.lineTo(w * 0.36, -h * 0.23);
+      g.stroke();
+      // Window
+      g.fillStyle = "#4a3a36";
+      rr(g, -w * 0.25, -h * 0.2, w * 0.5, h * 0.2, h * 0.05);
+      g.fill();
+      g.fillStyle = "rgba(210, 220, 230, 0.35)";
+      rr(g, -w * 0.25, -h * 0.2, w * 0.5, h * 0.2, h * 0.05);
+      g.fill();
+      L.reel = { dx: w * 0.155, y: -h * 0.1, r: h * 0.085, w, h };
+      g.restore();
+    }
+
+    // ---- What the TV shows ----
+    function drawBars(g, sw, sh) {
+      const top = ["#bfbfbf", "#c0c000", "#00c0c0", "#00c000", "#c000c0", "#c00000", "#0000c0"];
+      const mid = ["#0000c0", "#131313", "#c000c0", "#131313", "#00c0c0", "#131313", "#bfbfbf"];
+      const bw = sw / 7;
+      top.forEach((c, i) => { g.fillStyle = c; g.fillRect(i * bw, 0, bw + 1, sh * 0.67); });
+      mid.forEach((c, i) => { g.fillStyle = c; g.fillRect(i * bw, sh * 0.67, bw + 1, sh * 0.08); });
+      const bottom = [["#00214c", 1.25], ["#ffffff", 1.25], ["#32006a", 1.25], ["#131313", 1.25], ["#090909", 1 / 3], ["#131313", 1 / 3], ["#1d1d1d", 1 / 3], ["#131313", 1]];
+      let x = 0;
+      bottom.forEach(([c, k]) => { g.fillStyle = c; g.fillRect(x, sh * 0.75, bw * k + 1, sh * 0.25); x += bw * k; });
+      // Test card touches: a circle and a caption box
+      g.strokeStyle = "rgba(255, 255, 255, 0.8)";
+      g.lineWidth = Math.max(1, sh * 0.012);
+      g.beginPath();
+      g.arc(sw / 2, sh * 0.42, sh * 0.3, 0, TAU);
+      g.stroke();
+      g.beginPath();
+      g.moveTo(sw / 2, sh * 0.12);
+      g.lineTo(sw / 2, sh * 0.72);
+      g.moveTo(sw / 2 - sh * 0.3, sh * 0.42);
+      g.lineTo(sw / 2 + sh * 0.3, sh * 0.42);
+      g.stroke();
+      const fs = sh * 0.11;
+      g.font = `400 ${fs}px VT323, monospace`;
+      const label = "SIARAN UJIAN";
+      const lw = g.measureText(label).width;
+      g.fillStyle = "#111";
+      g.fillRect(sw / 2 - lw / 2 - fs * 0.4, sh * 0.42 - fs * 0.6, lw + fs * 0.8, fs * 1.2);
+      g.fillStyle = "#f2f2f2";
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      g.fillText(label, sw / 2, sh * 0.42 + fs * 0.04);
+    }
+
+    function drawCard(g, sw, sh, t) {
+      const bg = g.createLinearGradient(0, 0, sw, sh);
+      bg.addColorStop(0, C.bg);
+      bg.addColorStop(1, "#6a2a6e");
+      g.fillStyle = bg;
+      g.fillRect(0, 0, sw, sh);
+      const w = (n) => (TAU * n * t) / LOOP;
+      const m = Math.min(sw, sh);
+      // 90s shapes drifting gently
+      g.lineCap = "round";
+      g.lineJoin = "round";
+      g.save();
+      g.translate(sw * 0.14, sh * 0.2 + Math.sin(w(2)) * m * 0.03);
+      g.rotate(Math.sin(w(1)) * 0.2);
+      g.strokeStyle = C.accent2;
+      g.lineWidth = m * 0.035;
+      g.beginPath();
+      for (let i = 0; i <= 5; i++) g.lineTo(i * m * 0.05, (i % 2 ? -1 : 1) * m * 0.035);
+      g.stroke();
+      g.restore();
+      g.save();
+      g.translate(sw * 0.86, sh * 0.78 + Math.sin(w(2) + 1) * m * 0.03);
+      g.rotate(w(1));
+      g.strokeStyle = C.ink;
+      g.lineWidth = m * 0.025;
+      g.beginPath();
+      g.moveTo(0, -m * 0.08);
+      g.lineTo(m * 0.07, m * 0.05);
+      g.lineTo(-m * 0.07, m * 0.05);
+      g.closePath();
+      g.stroke();
+      g.restore();
+      g.fillStyle = C.accent;
+      g.beginPath();
+      g.arc(sw * 0.84 + Math.sin(w(1)) * m * 0.03, sh * 0.2, m * 0.055, 0, TAU);
+      g.fill();
+      g.fillStyle = "rgba(255, 255, 255, 0.35)";
+      for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
+        g.beginPath();
+        g.arc(sw * 0.1 + i * m * 0.05, sh * 0.72 + j * m * 0.05 + Math.sin(w(2)) * m * 0.01, m * 0.01, 0, TAU);
+        g.fill();
+      }
+
+      // Title letters pop in, with a 90s offset shadow
+      const fs = L.fs;
+      g.font = TITLE.replace("100px", `${fs}px`);
+      g.textBaseline = "middle";
+      g.textAlign = "left";
+      let li = 0;
+      lines.forEach((line, row) => {
+        const lw = g.measureText(line).width;
+        let x = (sw - lw) / 2;
+        const y = sh / 2 + (row - (lines.length - 1) / 2) * fs * 1.05;
+        for (const ch of line) {
+          const cw = g.measureText(ch).width, p = letters[li++].p;
+          if (p > 0.001 && ch !== " ") {
+            g.save();
+            g.translate(x + cw / 2, y + (1 - Math.min(1, p)) * fs * 0.3);
+            g.rotate((1 - Math.min(1, p)) * -0.4);
+            g.scale(p, p);
+            g.fillStyle = C.accent;
+            g.fillText(ch, -cw / 2 + fs * 0.07, fs * 0.07);
+            g.fillStyle = C.accent2;
+            g.fillText(ch, -cw / 2 - fs * 0.04, -fs * 0.03);
+            g.fillStyle = C.ink;
+            g.fillText(ch, -cw / 2, 0);
+            g.restore();
+          }
+          x += cw;
+        }
+      });
+    }
+
+    // ---- Draw one moment ----
+    function draw(t, calm) {
+      const { sx, sy, sw, sh, sr } = L;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(layers.bg, 0, 0);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // Power light
+      ctx.fillStyle = S.led > 0.5 ? "#ff3b3b" : "#5a2a2a";
+      ctx.beginPath();
+      ctx.arc(L.led.x, L.led.y, L.led.r, 0, TAU);
+      ctx.fill();
+      if (S.led > 0.5) {
+        ctx.fillStyle = "rgba(255, 80, 80, 0.3)";
+        ctx.beginPath();
+        ctx.arc(L.led.x, L.led.y, L.led.r * 2.4, 0, TAU);
+        ctx.fill();
+      }
+
+      // Screen: dark glass when off
+      ctx.save();
+      rr(ctx, sx, sy, sw, sh, sr);
+      ctx.clip();
+      ctx.fillStyle = "#23292a";
+      ctx.fillRect(sx, sy, sw, sh);
+      const visW = sw * S.lineW * S.offX, visH = sh * S.lineH * S.offY;
+      if (visW > 0.5) {
+        const g = layers.sg;
+        g.save();
+        g.clearRect(0, 0, sw, sh);
+        if (S.bars > 0) { g.globalAlpha = S.bars; drawBars(g, sw, sh); }
+        if (S.card > 0) { g.globalAlpha = S.card; drawCard(g, sw, sh, t); }
+        if (S.noise > 0) {
+          g.globalAlpha = S.noise * 0.85;
+          g.imageSmoothingEnabled = false;
+          g.drawImage(statics[calm ? 0 : Math.floor(t * 15) % 3], 0, 0, sw, sh);
+          g.imageSmoothingEnabled = true;
+        }
+        // Bright when squeezed into a line, and a soft flash as it opens
+        const squeeze = 1 - Math.min(1, visH / sh);
+        const white = Math.max(S.flash, squeeze * 0.9);
+        if (white > 0) {
+          g.globalAlpha = white;
+          g.fillStyle = "#eef4ff";
+          g.fillRect(0, 0, sw, sh);
+        }
+        g.restore();
+        const h = Math.max(1.5, visH);
+        ctx.shadowColor = "rgba(220, 235, 255, 0.8)";
+        ctx.shadowBlur = squeeze > 0.5 ? u * 0.03 : 0;
+        ctx.drawImage(layers.screen, sx + (sw - visW) / 2, sy + (sh - h) / 2, visW, h);
+        ctx.shadowBlur = 0;
+      }
+      if (S.dot > 0) {
+        const glow = ctx.createRadialGradient(sx + sw / 2, sy + sh / 2, 0, sx + sw / 2, sy + sh / 2, sw * 0.06);
+        glow.addColorStop(0, `rgba(240, 248, 255, ${S.dot})`);
+        glow.addColorStop(1, "rgba(200, 220, 255, 0)");
+        ctx.fillStyle = glow;
+        ctx.fillRect(sx, sy, sw, sh);
+      }
+      ctx.drawImage(layers.glass, sx, sy, sw, sh);
+      ctx.restore();
+
+      // Cassette reels turning
+      const c = L.cas, r = L.reel;
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.rotate(c.rot);
+      [-1, 1].forEach((side, i) => {
+        const x = side * r.dx, spin = (TAU * 6 * t) / LOOP * (calm ? 0 : 1);
+        ctx.fillStyle = "#5a3a2a";
+        ctx.beginPath();
+        ctx.arc(x, r.y, r.r * (i ? 1.05 : 1.45), 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = "#f2efe8";
+        ctx.beginPath();
+        ctx.arc(x, r.y, r.r * 0.72, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = "#2d2b33";
+        for (let k = 0; k < 6; k++) {
+          const an = spin + (k / 6) * TAU;
+          ctx.beginPath();
+          ctx.arc(x + Math.cos(an) * r.r * 0.48, r.y + Math.sin(an) * r.r * 0.48, r.r * 0.13, 0, TAU);
+          ctx.fill();
+        }
+        ctx.beginPath();
+        ctx.arc(x, r.y, r.r * 0.2, 0, TAU);
+        ctx.fill();
+      });
+      ctx.restore();
+
+      // Tape tracking band rolling down the whole picture
+      if (!calm && S.track >= 0 && S.track <= 1) {
+        const bh = Math.max(8, H * 0.07), y = -bh + S.track * (H + bh);
+        const shift = u * 0.012;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        const yy = Math.max(0, Math.round(y * dpr)), hh = Math.min(canvas.height - yy, Math.round(bh * dpr));
+        if (hh > 0) ctx.drawImage(canvas, 0, yy, canvas.width, hh, shift * dpr, yy, canvas.width, hh);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const rb = rand(Math.floor(t * 20) + 3);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
+        ctx.fillRect(0, y, W, bh);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+        for (let i = 0; i < 10; i++) ctx.fillRect(rb() * W, y + rb() * bh, rb() * W * 0.2, 1);
+      }
+
+      // Grain, scanlines and vignette over everything
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = layers.grain[calm ? 0 : Math.floor(t * 12) % 4];
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(layers.over, 0, 0);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // Camcorder overlay: PLAY and a date stamp
+      const fs = L.osd, pad = L.pad;
+      ctx.font = OSD.replace("100px", `${fs}px`);
+      ctx.textBaseline = "top";
+      ctx.textAlign = "left";
+      ctx.shadowColor = "rgba(0, 0, 0, 0.6)";
+      ctx.shadowOffsetX = ctx.shadowOffsetY = Math.max(1, fs * 0.06);
+      ctx.fillStyle = "#f4f4ec";
+      ctx.fillText("PLAY", pad, pad);
+      const pw = ctx.measureText("PLAY ").width;
+      ctx.beginPath();
+      ctx.moveTo(pad + pw, pad + fs * 0.18);
+      ctx.lineTo(pad + pw + fs * 0.5, pad + fs * 0.43);
+      ctx.lineTo(pad + pw, pad + fs * 0.68);
+      ctx.fill();
+      ctx.textAlign = "right";
+      ctx.textBaseline = "bottom";
+      ctx.fillStyle = "#ffcf5a";
+      ctx.fillText("PM 8:30", W - pad, H - pad - fs * 0.9);
+      ctx.fillText("31. 8. 1994", W - pad, H - pad);
+      ctx.shadowColor = "transparent";
+      ctx.shadowOffsetX = ctx.shadowOffsetY = 0;
+    }
+
+    // ---- Timeline ----
+    let tl;
+    function makeTimeline() {
+      tl = gsap.timeline({ repeat: -1, onUpdate: () => draw(tl.time(), false) });
+      tl.set(S, { lineW: 0, lineH: 0, flash: 0, bars: 0, noise: 0, card: 0, offY: 1, offX: 1, dot: 0, led: 0, track: -1 }, 0)
+        .set(letters, { p: 0 }, 0)
+        // Switch on: a white line opens into colour bars
+        .set(S, { led: 1 }, 0.5)
+        .to(S, { lineW: 1, duration: 0.2, ease: "power2.out" }, 0.6)
+        .to(S, { lineH: 1, duration: 0.35, ease: "power2.inOut" }, 0.8)
+        .set(S, { flash: 0.55, bars: 1 }, 0.8)
+        .to(S, { flash: 0, duration: 0.5, ease: "sine.out" }, 1.1)
+        // A little static, then the title card
+        .to(S, { noise: 1, duration: 0.25 }, 3.7)
+        .set(S, { bars: 0, card: 1 }, 4.05)
+        .to(S, { noise: 0, duration: 0.35 }, 4.1)
+        .to(letters, { p: 1, duration: 0.55, stagger: 0.07, ease: "back.out(2.2)" }, 4.4)
+        // Gentle tape tracking, twice
+        .fromTo(S, { track: 0 }, { track: 1, duration: 1, ease: "none", immediateRender: false }, 2.4)
+        .set(S, { track: -1 }, 3.41)
+        .fromTo(S, { track: 0 }, { track: 1, duration: 1, ease: "none", immediateRender: false }, 7.6)
+        .set(S, { track: -1 }, 8.61)
+        // Switch off: squeeze to a line, then a dot that fades
+        .to(S, { offY: 0, duration: 0.3, ease: "power2.in" }, 9.9)
+        .to(S, { offX: 0, duration: 0.25, ease: "power2.in" }, 10.2)
+        .set(S, { dot: 0.9 }, 10.4)
+        .to(S, { dot: 0, duration: 0.8, ease: "sine.out" }, 10.4)
+        .set(S, { led: 0, card: 0 }, 10.6)
+        .set({}, {}, LOOP);
+    }
+
+    // Reduced motion: a still of the title card, no grain or tracking.
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    const STILL = 7;
+    function apply() {
+      if (reduce.matches) {
+        tl.pause(STILL);
+        draw(STILL, true);
+      } else tl.play();
+    }
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => { build(); draw(tl.time(), reduce.matches); }, 120);
+    });
+
+    // Wait briefly for the fonts so text is drawn in the right faces.
+    Promise.race([
+      Promise.all([document.fonts.load(TITLE), document.fonts.load(OSD), document.fonts.load(HAND)]),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(() => {
+      build();
+      makeTimeline();
+      apply();
+      reduce.addEventListener("change", apply);
+    });
+  </script>
+</body>
+</html>

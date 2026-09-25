@@ -1,0 +1,19 @@
+Make my video in this style: Food menu.
+
+Look and motion
+- A top-down flat lay, looking straight down at a table, like a food photo on social media. Draw everything as clean, flat illustration with soft shadows.
+- The table is warm wood or linen. In the middle sits a plate or bowl for the dish from my request. If I attach a photo of my food, match its ingredients, colours and plating.
+- The ingredients drop onto the plate one by one and land with a little bounce, until the dish is complete. Add a few small props on the table around it (for example herbs, a lime or chillies).
+- Soft steam curls up from anything hot.
+- Hand-lettered labels appear around the plate, each with a little curved arrow that draws itself towards its ingredient.
+- A menu card slides in with the dish name, a short description and the price from my request, and the price gets stamped on as a round badge.
+- At the end, the labels fade, the card slides away and the food lifts off, so the video can loop.
+
+Type and colour
+- A casual handwritten font (like Caveat) for the labels, an elegant serif (like DM Serif Display) for the dish name, and a rounded bold sans serif (like Nunito) for small details.
+- Use my brand colours if I give them. Otherwise use warm wood #c48a58, cream card #fff7ea, dark brown text #3b2418, tomato red #d8452b and leaf green #3f8a3c.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

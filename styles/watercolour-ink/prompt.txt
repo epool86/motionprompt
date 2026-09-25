@@ -1,0 +1,17 @@
+Make my video in this style: Watercolour ink.
+
+Look and motion
+- Calm and artistic, like a painting coming to life on textured cold press paper. Show the paper grain the whole time.
+- Soft watercolour washes bloom and bleed outward, with wet, feathered edges that dry into darker rims. Pigment settles into the paper grain, and colours mix where the washes meet.
+- A simple ink brush painting paints itself stroke by stroke, like a flowering branch or bamboo, with dry brush streaks at the ends. Pick a subject that suits my request, and a few petals or leaves drift down.
+- My headline appears as if painted with a brush, letter by letter, with a short line under it. Then a small red seal stamp presses down beside it.
+- Keep plenty of empty paper and slow, gentle timing. At the end, let everything fade back to clean paper.
+
+Type and colour
+- A brushy, hand painted script font for the headline (like Kaushan Script) and an elegant italic serif for the small line (like Cormorant Garamond).
+- Use my brand colours if I give them. Otherwise use warm paper #f3ede0, indigo ink #26314d, muted indigo #6377ad, dusty rose #c67b86, ochre #cda45e and seal red #b4382c.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with Canvas) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

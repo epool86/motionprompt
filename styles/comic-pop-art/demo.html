@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Comic pop art demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/bangers@5.3.0/index.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=fbf1dc&ink=16161b&accent=e8262b&accent2=ffd21f */
+    :root { --bg: #fbf1dc; }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    .stage {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+    }
+    .cam {
+      position: absolute;
+      inset: 0;
+    }
+    .layer {
+      position: absolute;
+      left: 0;
+      top: 0;
+      overflow: visible;
+      will-change: transform;
+    }
+    svg text {
+      font-family: Bangers, Impact, "Arial Black", sans-serif;
+      letter-spacing: 0.02em;
+    }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage" role="img">
+    <div class="cam" id="cam">
+      <svg class="layer" id="paper" aria-hidden="true"></svg>
+      <svg class="layer" id="p0" aria-hidden="true"></svg>
+      <svg class="layer" id="p1" aria-hidden="true"></svg>
+      <svg class="layer" id="p2" aria-hidden="true"></svg>
+      <svg class="layer" id="hl" aria-hidden="true"></svg>
+    </div>
+    <svg class="layer" id="wipe" aria-hidden="true"></svg>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => "#" + (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const C = { paper: hex("bg", "fbf1dc"), ink: hex("ink", "16161b"), red: hex("accent", "e8262b"), yellow: hex("accent2", "ffd21f"), cyan: "#27b1e6" };
+    document.documentElement.style.setProperty("--bg", C.paper);
+    const headline = (params.get("text") || "Big news!").trim().slice(0, 40).toUpperCase();
+
+    const $ = (id) => document.getElementById(id);
+    const stage = $("stage"), cam = $("cam");
+    const paper = $("paper"), panelLayers = [$("p0"), $("p1"), $("p2")], hl = $("hl"), wipe = $("wipe");
+    stage.setAttribute("aria-label", `Comic book pop art: three panels slam in with a megaphone, speech and thought bubbles, a product box that pops open with a POW, then a burst that reads ${headline}`);
+
+    // Mix two hex colours, t from 0 to 1.
+    const mix = (a, b, t) => "#" + [1, 3, 5].map((i) => {
+      const v = Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - t) + parseInt(b.slice(i, i + 2), 16) * t);
+      return v.toString(16).padStart(2, "0");
+    }).join("");
+
+    function seeded(seed) {
+      return () => {
+        seed = (seed + 0x6d2b79f5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    const f = (n) => Math.round(n * 10) / 10;
+    const pts = (list) => list.map(([x, y]) => `${f(x)},${f(y)}`).join(" ");
+
+    // Text is measured on a canvas in the comic font.
+    const meter = document.createElement("canvas").getContext("2d");
+    const FONT = "100px Bangers";
+    const width100 = (s) => { meter.font = FONT; return meter.measureText(s).width; };
+
+    // Best size for a string in a box, on one or two lines.
+    function fit(str, boxW, boxH, lh = 0.95) {
+      const words = str.split(/\s+/).filter(Boolean);
+      const options = [[words.join(" ")]];
+      for (let a = 1; a < words.length; a++) options.push([words.slice(0, a).join(" "), words.slice(a).join(" ")]);
+      let best = null;
+      for (const lines of options) {
+        const wide = Math.max(...lines.map(width100)) / 100;
+        const size = Math.min(boxW / wide, boxH / (lines.length * lh));
+        if (!best || size > best.size * 1.1) best = { lines, size, lh };
+      }
+      return best;
+    }
+
+    // Lines of text centred on (cx, cy). Extra attributes go on the text element.
+    function textLines(cx, cy, t, attrs) {
+      const n = t.lines.length;
+      return `<text text-anchor="middle" font-size="${f(t.size)}" ${attrs}>` + t.lines.map((line, i) =>
+        `<tspan x="${f(cx)}" y="${f(cy + (i - (n - 1) / 2) * t.size * t.lh + t.size * 0.36)}">${line.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</tspan>`
+      ).join("") + "</text>";
+    }
+
+    // Jagged burst around (0, 0).
+    function burst(rx, ry, n, seed, inner = 0.66) {
+      const r = seeded(seed), out = [];
+      for (let i = 0; i < n * 2; i++) {
+        const a = (i / (n * 2)) * Math.PI * 2 - Math.PI / 2 + (r() - 0.5) * 0.14;
+        const k = i % 2 ? inner * (0.9 + r() * 0.16) : 0.86 + r() * 0.18;
+        out.push([Math.cos(a) * rx * k, Math.sin(a) * ry * k]);
+      }
+      return pts(out);
+    }
+
+    // Thin black wedges radiating from (cx, cy), between r0 and r1.
+    function actionLines(cx, cy, r0, r1, n, seed, width = 0.018) {
+      const r = seeded(seed);
+      let d = "";
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + (r() - 0.5) * 0.18;
+        const w = width * (0.5 + r());
+        const s = r0 * (0.9 + r() * 0.5);
+        d += `M${f(cx + Math.cos(a) * s)} ${f(cy + Math.sin(a) * s)}L${f(cx + Math.cos(a - w) * r1)} ${f(cy + Math.sin(a - w) * r1)}L${f(cx + Math.cos(a + w) * r1)} ${f(cy + Math.sin(a + w) * r1)}Z`;
+      }
+      return d;
+    }
+
+    // A 5 point star around (cx, cy).
+    function star(cx, cy, r, inner = 0.45, spin = 0) {
+      const out = [];
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2 - Math.PI / 2 + spin;
+        const k = i % 2 ? r * inner : r;
+        out.push([cx + Math.cos(a) * k, cy + Math.sin(a) * k]);
+      }
+      return pts(out);
+    }
+
+    let W = 0, H = 0, U = 0, LW = 2;
+    let tl = null;
+    const refs = {};
+
+    // ---- Panel layout: rows when tall, columns when wide, two over one in between ----
+    function panelShapes() {
+      const m = U * 0.045, g = Math.max(4, U * 0.03);
+      const x0 = m, y0 = m, x1 = W - m, y1 = H - m, pw = x1 - x0, ph = y1 - y0;
+      const a = W / H;
+      if (a < 0.72) {
+        const d = pw * 0.035;
+        const yA = y0 + ph * 0.3, yB = y0 + ph * 0.6;
+        return { kind: "tall", polys: [
+          [[x0, y0], [x1, y0], [x1, yA - d - g / 2], [x0, yA + d - g / 2]],
+          [[x0, yA + d + g / 2], [x1, yA - d + g / 2], [x1, yB + d - g / 2], [x0, yB - d - g / 2]],
+          [[x0, yB - d + g / 2], [x1, yB + d + g / 2], [x1, y1], [x0, y1]],
+        ], from: [[-1, 0], [1, 0], [0, 1]] };
+      }
+      if (a > 1.3) {
+        const d = ph * 0.035;
+        const xA = x0 + pw * 0.3, xB = x0 + pw * 0.6;
+        return { kind: "wide", polys: [
+          [[x0, y0], [xA + d - g / 2, y0], [xA - d - g / 2, y1], [x0, y1]],
+          [[xA + d + g / 2, y0], [xB - d - g / 2, y0], [xB + d - g / 2, y1], [xA - d + g / 2, y1]],
+          [[xB - d + g / 2, y0], [x1, y0], [x1, y1], [xB + d + g / 2, y1]],
+        ], from: [[0, -1], [0, 1], [1, 0]] };
+      }
+      const d = pw * 0.035, yM = y0 + ph * 0.46, xM = x0 + pw * 0.5;
+      return { kind: "mid", polys: [
+        [[x0, y0], [xM + d - g / 2, y0], [xM - d - g / 2, yM - g / 2], [x0, yM - g / 2]],
+        [[xM + d + g / 2, y0], [x1, y0], [x1, yM - g / 2], [xM - d + g / 2, yM - g / 2]],
+        [[x0, yM + g / 2], [x1, yM + g / 2], [x1, y1], [x0, y1]],
+      ], from: [[-1, 0], [1, 0], [0, 1]] };
+    }
+
+    // The largest upright box inside a panel, with some padding.
+    function inner(poly, pad) {
+      const [tl_, tr, br, bl] = poly;
+      const x = Math.max(tl_[0], bl[0]) + pad, right = Math.min(tr[0], br[0]) - pad;
+      const y = Math.max(tl_[1], tr[1]) + pad, bottom = Math.min(bl[1], br[1]) - pad;
+      return { x, y, w: right - x, h: bottom - y, cx: (x + right) / 2, cy: (y + bottom) / 2 };
+    }
+    const bbox = (poly) => {
+      const xs = poly.map((p) => p[0]), ys = poly.map((p) => p[1]);
+      return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+    };
+
+    // Fit art drawn in a local box (lw x lh) into a target box, centred.
+    function place(box, lw, lh) {
+      const s = Math.min(box.w / lw, box.h / lh);
+      return { s, x: box.x + (box.w - lw * s) / 2, y: box.y + (box.h - lh * s) / 2 };
+    }
+    const at = (p, lx, ly) => [p.x + lx * p.s, p.y + ly * p.s];
+
+    // ---- Art, drawn in local units with outlines scaled back to screen pixels ----
+    function megaphone(p) {
+      const k = (LW * 0.85) / p.s;
+      const o = `stroke="${C.ink}" stroke-width="${f(k * 10) / 10}" stroke-linejoin="round"`;
+      return `<g transform="translate(${f(p.x)} ${f(p.y)}) scale(${p.s.toFixed(4)})"><g id="mega">
+        <polygon points="38,50 48,50 52,76 42,76" fill="${C.yellow}" ${o}/>
+        <rect x="3" y="32" width="16" height="16" rx="3" fill="${C.ink}" ${o}/>
+        <polygon points="18,31 18,49 78,74 78,6" fill="${C.red}" ${o}/>
+        <polygon points="18,44 18,49 78,74 78,58" fill="url(#dotInk)" opacity="0.55"/>
+        <polygon points="22,34 74,14 74,20 22,38" fill="#fff" opacity="0.9"/>
+        <ellipse cx="78" cy="40" rx="9" ry="34" fill="${C.yellow}" ${o}/>
+        <ellipse cx="80" cy="40" rx="5" ry="27" fill="${C.ink}"/>
+        <g fill="none" stroke="${C.ink}" stroke-width="${f(k * 1.3 * 10) / 10}" stroke-linecap="round">
+          <path class="wave" d="M92 28 Q98 40 92 52"/>
+          <path class="wave" d="M98 20 Q108 40 98 60"/>
+          <path class="wave" d="M104 12 Q118 40 104 68"/>
+        </g>
+      </g></g>`;
+    }
+
+    // The product box. Open adds a lid that can fly off and rays from inside.
+    function box(p, id, open) {
+      const k = (LW * 0.85) / p.s;
+      const o = `stroke="${C.ink}" stroke-width="${f(k * 10) / 10}" stroke-linejoin="round"`;
+      const top = "12,38 34,22 88,22 66,38";
+      let rays = "", lid = "", sparks = "";
+      if (open) {
+        const r = seeded(4);
+        let d = "";
+        for (let i = 0; i < 9; i++) {
+          const a = -Math.PI / 2 + (i - 4) * 0.3 + (r() - 0.5) * 0.08;
+          const w = 0.07 + r() * 0.04;
+          d += `M50 30L${f(50 + Math.cos(a - w) * 90)} ${f(30 + Math.sin(a - w) * 90)}L${f(50 + Math.cos(a + w) * 90)} ${f(30 + Math.sin(a + w) * 90)}Z`;
+        }
+        rays = `<g id="${id}-rays" opacity="0"><path d="${d}" fill="#fff" ${o}/></g>`;
+        lid = `<g id="${id}-lid"><polygon points="${top}" fill="${C.yellow}" ${o}/><polygon points="12,38 66,38 66,42 12,42" fill="${mix(C.yellow, C.ink, 0.25)}" ${o}/></g>`;
+        sparks = [[18, 8, 7], [84, 2, 6], [52, -14, 8]].map(([x, y, s], i) =>
+          `<g transform="translate(${x} ${y})"><g class="${id}-spark" id="${id}-spark${i}"><polygon points="${star(0, 0, s, 0.42)}" fill="${C.yellow}" ${o}/></g></g>`).join("");
+      } else {
+        lid = `<polygon points="${top}" fill="${C.yellow}" ${o}/>`;
+      }
+      return `<g transform="translate(${f(p.x)} ${f(p.y)}) scale(${p.s.toFixed(4)})"><g id="${id}">
+        ${rays}
+        <polygon points="${top}" fill="${C.ink}" ${o}/>
+        <polygon points="66,38 88,22 88,76 66,92" fill="${mix(C.red, C.ink, 0.3)}" ${o}/>
+        <polygon points="66,38 88,22 88,76 66,92" fill="url(#dotInk)" opacity="0.45"/>
+        <rect x="12" y="38" width="54" height="54" fill="${C.red}" ${o}/>
+        <polygon points="${star(39, 66, 17)}" fill="${C.yellow}" ${o}/>
+        <path d="M17 44 L17 60" stroke="#fff" stroke-width="${f(k * 1.6 * 10) / 10}" stroke-linecap="round"/>
+        ${lid}
+        ${sparks}
+      </g></g>`;
+    }
+
+    // Speech bubble centred on (cx, cy), with a tail pointing at target.
+    function speech(id, b, target, text) {
+      const rx = b.w / 2, ry = b.h / 2, cx = b.x + rx, cy = b.y + ry;
+      let dx = target[0] - cx, dy = target[1] - cy;
+      const dist = Math.hypot(dx, dy) || 1;
+      dx /= dist; dy /= dist;
+      const edge = 1 / Math.hypot(dx / rx, dy / ry);
+      const len = Math.max(edge + Math.min(rx, ry) * 0.3, Math.min(dist - U * 0.02, edge + Math.min(rx, ry) * 0.8));
+      const hw = Math.min(rx, ry) * 0.3;
+      const tail = pts([[-dy * hw, dx * hw], [dy * hw, -dx * hw], [dx * len + dy * hw * 0.5, dy * len - dx * hw * 0.5]]);
+      const t = fit(text, rx * 1.3, ry * 1.1);
+      const sw = LW * 1.8;
+      return `<g transform="translate(${f(cx)} ${f(cy)})"><g id="${id}">
+        <g fill="${C.ink}" stroke="${C.ink}" stroke-width="${f(sw)}" stroke-linejoin="round"><ellipse rx="${f(rx)}" ry="${f(ry)}"/><polygon points="${tail}"/></g>
+        <g fill="#fff"><ellipse rx="${f(rx)}" ry="${f(ry)}"/><polygon points="${tail}"/></g>
+        ${textLines(0, 0, t, `fill="${C.ink}"`)}
+      </g></g>`;
+    }
+
+    // Cloud shaped thought bubble with little circles trailing towards target.
+    function thought(id, b, target, text) {
+      const rx = b.w / 2 * 0.92, ry = b.h / 2 * 0.88, cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+      const n = 11;
+      const ring = [];
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        ring.push([Math.cos(a) * rx, Math.sin(a) * ry]);
+      }
+      let d = `M${f(ring[0][0])} ${f(ring[0][1])}`;
+      for (let i = 0; i < n; i++) {
+        const [ax, ay] = ring[i], [bx, by] = ring[(i + 1) % n];
+        const r = Math.hypot(bx - ax, by - ay) * 0.6;
+        d += `A${f(r)} ${f(r)} 0 0 1 ${f(bx)} ${f(by)}`;
+      }
+      const tx = target[0] - cx, ty = target[1] - cy;
+      const dist = Math.hypot(tx, ty) || 1;
+      const edge = 1 / Math.hypot(tx / dist / rx, ty / dist / ry);
+      const dots = [0.22, 0.5, 0.78].map((k, i) => {
+        const along = edge * 1.12 + (Math.max(dist * 0.8, edge * 1.4) - edge * 1.12) * k;
+        const r = Math.min(rx, ry) * (0.2 - i * 0.05);
+        return `<circle class="${id}-dot" cx="${f((tx / dist) * along)}" cy="${f((ty / dist) * along)}" r="${f(Math.max(1.5, r))}"/>`;
+      }).join("");
+      const t = fit(text, rx * 1.3, ry * 1.05);
+      return `<g transform="translate(${f(cx)} ${f(cy)})"><g id="${id}">
+        <g fill="#fff" stroke="${C.ink}" stroke-width="${f(LW)}">${dots}</g>
+        <g id="${id}-cloud"><path d="${d}Z" fill="#fff" stroke="${C.ink}" stroke-width="${f(LW)}" stroke-linejoin="round"/>
+        ${textLines(0, 0, t, `fill="${C.ink}"`)}</g>
+      </g></g>`;
+    }
+
+    // A comic sound effect burst: outer shape, inner shape and a word.
+    function effect(id, cx, cy, rx, ry, word, seed, outer, innerFill, textFill, tilt) {
+      const t = fit(word, rx * 1.05, ry * 0.95, 0.9);
+      const sw = Math.max(1.2, LW * 1.1);
+      const sh = Math.max(2, U * 0.012);
+      return `<g transform="translate(${f(cx)} ${f(cy)})"><g id="${id}">
+        <polygon points="${burst(rx, ry, 13, seed, 0.7)}" fill="${C.ink}" transform="translate(${f(sh)} ${f(sh)})"/>
+        <polygon points="${burst(rx, ry, 13, seed, 0.7)}" fill="${outer}" stroke="${C.ink}" stroke-width="${f(sw)}" stroke-linejoin="round"/>
+        <polygon points="${burst(rx * 0.8, ry * 0.8, 11, seed + 9, 0.78)}" fill="${innerFill}"/>
+        <g transform="rotate(${tilt})">
+          ${textLines(sh * 0.7, sh * 0.7, t, `fill="${C.ink}"`)}
+          ${textLines(0, 0, t, `fill="${textFill}" stroke="${C.ink}" stroke-width="${f(Math.max(1, t.size * 0.06))}" stroke-linejoin="round" paint-order="stroke"`)}
+        </g>
+      </g></g>`;
+    }
+
+    // ---- Build every layer for the current window size ----
+    function draw() {
+      W = innerWidth; H = innerHeight; U = Math.min(W, H);
+      LW = Math.max(1.4, U * 0.009);
+      for (const el of [paper, ...panelLayers, hl, wipe]) {
+        el.setAttribute("width", W);
+        el.setAttribute("height", H);
+        el.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      }
+      const s = Math.max(3.2, U * 0.017);
+      const dot = (id, color, r) => `<pattern id="${id}" width="${f(s)}" height="${f(s)}" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><circle cx="${f(s / 2)}" cy="${f(s / 2)}" r="${f(s * r)}" fill="${color}"/></pattern>`;
+      const fade = (id, x1, y1, x2, y2) => `<linearGradient id="${id}g" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"><stop offset="0" stop-color="#fff"/><stop offset="0.75" stop-color="#000"/></linearGradient><mask id="${id}" maskContentUnits="objectBoundingBox"><rect width="1" height="1" fill="url(#${id}g)"/></mask>`;
+      paper.innerHTML = `<defs>
+        ${dot("dotInk", "#000", 0.3)}${dot("dotBlue", mix(C.cyan, "#0b2f8a", 0.6), 0.36)}${dot("dotRed", C.red, 0.34)}
+        ${dot("dotOrange", mix(C.red, C.yellow, 0.35), 0.36)}${dot("dotPaper", mix(C.paper, C.ink, 0.07), 0.22)}
+        ${fade("fadeBR", 1, 1, 0, 0)}${fade("fadeTL", 0, 0, 1, 1)}${fade("fadeB", 0, 1, 0, 0)}
+      </defs>
+      <rect width="${W}" height="${H}" fill="${C.paper}"/>
+      <rect width="${W}" height="${H}" fill="url(#dotPaper)"/>`;
+
+      const layout = panelShapes();
+      refs.layout = layout;
+      const pad = Math.max(3, U * 0.025);
+      const panelBg = [
+        [C.cyan, "dotBlue", "fadeBR"],
+        ["#fff8ec", "dotRed", "fadeTL"],
+        [C.yellow, "dotOrange", "fadeB"],
+      ];
+      const contents = [];
+
+      // Panel 1: megaphone shouting a speech bubble.
+      {
+        const b = inner(layout.polys[0], pad);
+        let mp, bub;
+        if (b.w / b.h >= 1.2) {
+          mp = place({ x: b.x, y: b.y + b.h * 0.3, w: b.w * 0.46, h: b.h * 0.7 }, 118, 80);
+          bub = { x: b.x + b.w * 0.48, y: b.y, w: b.w * 0.52, h: b.h * 0.62 };
+        } else {
+          mp = place({ x: b.x, y: b.y + b.h * 0.5, w: b.w * 0.9, h: b.h * 0.5 }, 118, 80);
+          bub = { x: b.x + b.w * 0.08, y: b.y, w: b.w * 0.92, h: b.h * 0.44 };
+        }
+        contents.push(megaphone(mp) + speech("say", bub, at(mp, 96, 34), "Listen up!"));
+      }
+      // Panel 2: the closed box wondering, with a thought bubble.
+      {
+        const b = inner(layout.polys[1], pad);
+        let bx, bub;
+        if (b.w / b.h >= 1.2) {
+          bx = place({ x: b.x + b.w * 0.58, y: b.y + b.h * 0.2, w: b.w * 0.42, h: b.h * 0.8 }, 100, 100);
+          bub = { x: b.x, y: b.y, w: b.w * 0.56, h: b.h * 0.64 };
+        } else {
+          bx = place({ x: b.x + b.w * 0.1, y: b.y + b.h * 0.5, w: b.w * 0.9, h: b.h * 0.5 }, 100, 100);
+          bub = { x: b.x, y: b.y, w: b.w * 0.92, h: b.h * 0.42 };
+        }
+        const q = bx.s * 22;
+        contents.push(box(bx, "box1", false) + thought("think", bub, at(bx, 40, 24), "What's inside?")
+          + `<g transform="translate(${f(at(bx, 92, 14)[0])} ${f(at(bx, 92, 14)[1])})"><g id="quiz">${textLines(0, 0, { lines: ["?!"], size: q, lh: 1 }, `fill="${C.red}" stroke="${C.ink}" stroke-width="${f(Math.max(1, q * 0.07))}" paint-order="stroke" stroke-linejoin="round"`)}</g></g>`);
+      }
+      // Panel 3: the box pops open with action lines and a POW.
+      {
+        const b = inner(layout.polys[2], pad);
+        const wide = b.w / b.h >= 1.2;
+        const size = Math.min(b.h * 0.8, b.w * (wide ? 0.55 : 0.8));
+        const bxBox = wide
+          ? { x: b.x + b.w * 0.58 - size / 2, y: b.y + b.h - size, w: size, h: size }
+          : { x: b.cx - size / 2, y: b.y + b.h - size, w: size, h: size };
+        const bx = place(bxBox, 100, 100);
+        const center = at(bx, 50, 50);
+        const bb = bbox(layout.polys[2]);
+        const reach = Math.hypot(bb.w, bb.h);
+        const pr = wide ? Math.min(b.h * 0.42, b.w * 0.2) : Math.min(b.w * 0.3, b.h * 0.24);
+        const pcx = wide ? b.x + pr * 1.08 : b.x + pr * 1.1;
+        const pcy = wide ? b.y + pr * 1.0 : b.y + pr * 0.95;
+        contents.push(`<g id="lines3"><path d="${actionLines(center[0], center[1], size * 0.55, reach, 36, 3, 0.02)}" fill="${C.ink}" opacity="0.85"/></g>`
+          + box(bx, "box2", true)
+          + effect("pow", pcx, pcy, pr * 1.15, pr, "POW!", 21, "#fff", C.red, C.yellow, -8));
+      }
+
+      layout.polys.forEach((poly, i) => {
+        const [bg, dots, mask] = panelBg[i];
+        const bb = bbox(poly);
+        panelLayers[i].innerHTML = `<defs><clipPath id="clip${i}"><polygon points="${pts(poly)}"/></clipPath></defs>
+          <g clip-path="url(#clip${i})">
+            <polygon points="${pts(poly)}" fill="${bg}"/>
+            <rect x="${f(bb.x)}" y="${f(bb.y)}" width="${f(bb.w)}" height="${f(bb.h)}" fill="url(#${dots})" mask="url(#${mask})"/>
+            ${contents[i]}
+          </g>
+          <polygon points="${pts(poly)}" fill="none" stroke="${C.ink}" stroke-width="${f(LW * 1.6)}" stroke-linejoin="round"/>`;
+      });
+
+      // The headline burst sits over the first two panels, leaving the open box in view.
+      {
+        const a = bbox(layout.polys[0]), b = bbox(layout.polys[1]);
+        const rx0 = Math.min(a.x, b.x), ry0 = Math.min(a.y, b.y);
+        const reg = { x: rx0, y: ry0, w: Math.max(a.x + a.w, b.x + b.w) - rx0, h: Math.max(a.y + a.h, b.y + b.h) - ry0 };
+        let ry = Math.min(Math.max(reg.h * 0.6, U * 0.32), (H / 2 - 6) / 1.08);
+        let rx = Math.min(reg.w * 0.56, (W / 2 - 6) / 1.08);
+        rx = Math.min(Math.max(rx, ry * 0.8), ry * 1.7);
+        ry = Math.min(ry, rx * 1.15);
+        const cx = Math.min(Math.max(reg.x + reg.w / 2, rx * 1.08 + 4), W - rx * 1.08 - 6);
+        const cy = Math.min(Math.max(reg.y + reg.h / 2, ry * 1.08 + 4), H - ry * 1.08 - 6);
+        hl.innerHTML = `<g id="hlLines" transform="translate(${f(cx)} ${f(cy)})"><path d="${actionLines(0, 0, Math.max(rx, ry) * 1.06, Math.max(rx, ry) * 1.38, 34, 8, 0.02)}" fill="${C.ink}"/></g>`
+          + effect("big", cx, cy, rx, ry, headline, 5, C.red, C.yellow, C.red, -5);
+      }
+
+      // Diagonal red wipe with dots, wide enough to cover the frame.
+      const sk = H * 0.35;
+      wipe.innerHTML = `<polygon points="${pts([[-sk, 0], [W + sk, 0], [W, H], [-sk * 2, H]])}" fill="${C.red}"/>
+        <polygon points="${pts([[-sk, 0], [W + sk, 0], [W, H], [-sk * 2, H]])}" fill="url(#dotInk)" opacity="0.25"/>
+        <polygon points="${pts([[W + sk - U * 0.03, 0], [W + sk, 0], [W, H], [W - U * 0.03, H]])}" fill="${C.ink}"/>`;
+    }
+
+    // ---- Timeline ----
+    const S = (sel) => document.querySelectorAll(sel);
+
+    // A quick camera shake that settles back to rest.
+    function shake(t, when, amp, steps = 7) {
+      const r = seeded(Math.round(when * 100));
+      for (let i = 0; i < steps; i++) {
+        const k = amp * (1 - i / steps);
+        t.to(cam, { x: (r() - 0.5) * 2 * k, y: (r() - 0.5) * 2 * k, rotation: (r() - 0.5) * k * 0.08, duration: 0.035, ease: "none" }, when + i * 0.035);
+      }
+      t.to(cam, { x: 0, y: 0, rotation: 0, duration: 0.05, ease: "power1.out" }, when + steps * 0.035);
+      t.fromTo(cam, { scale: 1.035 }, { scale: 1, duration: 0.3, ease: "power2.out" }, when);
+    }
+
+    // Small stepped wobble, like a hand drawn boil.
+    function boil(t, el, from, to, angle) {
+      for (let s = from, i = 0; s < to; s += 0.16, i++) {
+        t.set(el, { rotation: i % 2 ? angle : -angle }, s);
+      }
+      t.set(el, { rotation: 0 }, to);
+    }
+
+    function build() {
+      const saved = tl ? tl.time() : 0;
+      if (tl) tl.kill();
+      gsap.set([cam, ...panelLayers, hl, wipe], { clearProps: "transform" });
+      draw();
+
+      // Pivot points, set once while nothing is transformed yet.
+      for (const [sel, origin] of [["#say", "0 0"], ["#think-cloud", "0 0"], ["#quiz", "0 0"], ["#pow", "0 0"], ["#big", "0 0"],
+        ["#hlLines", "0 0"], [".box2-spark", "0 0"], ["#mega", "18 40"], ["#box1", "50 92"], ["#box2-lid", "50 30"], ["#box2-rays", "50 30"]]) {
+        gsap.set(sel, { svgOrigin: origin });
+      }
+      gsap.set(".think-dot", { transformOrigin: "50% 50%" });
+
+      tl = gsap.timeline({ repeat: -1 });
+      const layout = refs.layout;
+      tl.set([...panelLayers, hl], { autoAlpha: 0 }, 0).set(wipe, { autoAlpha: 0 }, 0);
+
+      // Panels slide in fast and slam to a stop with a shake.
+      [0.15, 1.35, 2.55].forEach((when, i) => {
+        const [fx, fy] = layout.from[i];
+        tl.set(panelLayers[i], { autoAlpha: 1, x: fx * W * 1.05, y: fy * H * 1.05 }, when)
+          .to(panelLayers[i], { x: 0, y: 0, duration: 0.3, ease: "power3.in" }, when);
+        shake(tl, when + 0.3, U * 0.022);
+      });
+
+      // Panel 1: the bubble pops, the megaphone pulses and its sound waves flash.
+      tl.fromTo("#say", { scale: 0, rotation: -12 }, { scale: 1, rotation: 0, duration: 0.45, ease: "back.out(2.4)" }, 0.62);
+      const waves = S("#mega .wave");
+      tl.set(waves, { opacity: 0 }, 0);
+      for (let s = 0.5, i = 0; s < 8.9; s += 0.18, i++) {
+        tl.set(waves, { opacity: (j) => ((i % 4) > j ? 1 : 0) }, s);
+      }
+      tl.to("#mega", { scale: 1.06, duration: 0.09, yoyo: true, repeat: 5, ease: "power1.inOut" }, 0.55);
+
+      // Panel 2: the thought bubble grows dot by dot, the box wobbles.
+      tl.fromTo(S(".think-dot"), { scale: 0 }, { scale: 1, duration: 0.2, stagger: 0.1, ease: "back.out(3)" }, 1.75)
+        .fromTo("#think-cloud", { scale: 0 }, { scale: 1, duration: 0.45, ease: "back.out(2)" }, 2.0)
+        .fromTo("#quiz", { scale: 0, rotation: -30 }, { scale: 1, rotation: 10, duration: 0.35, ease: "back.out(3)" }, 2.2);
+      boil(tl, "#box1", 1.7, 8.9, 3);
+
+      // Panel 3: the lid flies off, rays and stars burst out, POW slams in.
+      tl.set("#box2-lid", { x: 0, y: 0, rotation: 0 }, 0)
+        .to("#box2-lid", { x: 10, y: -30, rotation: -16, duration: 0.4, ease: "back.out(2.5)" }, 3.1)
+        .fromTo("#box2-rays", { opacity: 0, scale: 0.2 }, { opacity: 1, scale: 1, duration: 0.35, ease: "power3.out" }, 3.12)
+        .to("#box2-rays", { scale: 0.9, duration: 0.3, yoyo: true, repeat: 17, ease: "sine.inOut" }, 3.5);
+      S(".box2-spark").forEach((el, i) => {
+        tl.fromTo(el, { scale: 0, rotation: -90 }, { scale: 1, rotation: 0, duration: 0.4, ease: "back.out(3)" }, 3.2 + i * 0.08);
+        boil(tl, el, 3.8 + i * 0.05, 8.9, 14);
+      });
+      tl.fromTo("#box2", { y: 0 }, { y: -6, duration: 0.14, yoyo: true, repeat: 1, ease: "power2.out" }, 3.1)
+        .fromTo("#lines3", { opacity: 0 }, { opacity: 1, duration: 0.15 }, 3.1)
+        .fromTo("#pow", { scale: 2.6, rotation: -30, opacity: 0 }, { scale: 1, rotation: 0, opacity: 1, duration: 0.28, ease: "power4.in" }, 3.3);
+      shake(tl, 3.58, U * 0.03);
+      boil(tl, "#pow", 3.9, 8.9, 2.5);
+
+      // The headline burst smashes in over the page.
+      tl.set(hl, { autoAlpha: 1 }, 4.7)
+        .fromTo("#big", { scale: 3.4, rotation: 28, opacity: 0 }, { scale: 1, rotation: 0, opacity: 1, duration: 0.3, ease: "power4.in" }, 4.7)
+        .fromTo("#hlLines", { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.3, ease: "power3.out" }, 5.0);
+      shake(tl, 5.0, U * 0.045, 9);
+      tl.to("#big", { scale: 1.05, duration: 0.14, yoyo: true, repeat: 1, ease: "power2.out" }, 6.4)
+        .to("#big", { scale: 1.05, duration: 0.14, yoyo: true, repeat: 1, ease: "power2.out" }, 6.75);
+      boil(tl, "#big", 5.4, 8.9, 1.5);
+      for (let s = 5.4, i = 0; s < 8.9; s += 0.16, i++) tl.set("#hlLines", { rotation: i % 2 ? 1.5 : 0 }, s);
+
+      // A red wipe clears the page, then the next loop starts on blank paper.
+      tl.set(wipe, { autoAlpha: 1, x: -(W + H * 0.8) }, 9.0)
+        .to(wipe, { x: 0, duration: 0.35, ease: "power3.in" }, 9.0)
+        .set([...panelLayers, hl], { autoAlpha: 0 }, 9.36)
+        .to(wipe, { x: W + H * 0.8, duration: 0.4, ease: "power3.out" }, 9.36)
+        .set(wipe, { autoAlpha: 0 }, 9.8)
+        .set({}, {}, 10);
+
+      tl.time(saved);
+      apply();
+    }
+
+    // Reduced motion: hold the full page with the headline, no shake.
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    function apply() {
+      if (reduce.matches) {
+        tl.pause().time(6.2, false);
+        gsap.set(cam, { x: 0, y: 0, rotation: 0, scale: 1 });
+      } else {
+        tl.play();
+      }
+    }
+    reduce.addEventListener("change", apply);
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(build, 120);
+    });
+
+    // Wait briefly for the font so text is measured in the right face.
+    Promise.race([
+      document.fonts.load(FONT),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(build);
+  </script>
+</body>
+</html>

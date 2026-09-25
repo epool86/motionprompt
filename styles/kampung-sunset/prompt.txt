@@ -1,0 +1,19 @@
+Make my video in this style: Kampung sunset.
+
+Look and motion
+- A warm, painterly flat illustration of a Malaysian village (kampung) at golden hour. Soft shapes, gentle gradients and a light paper grain, like a storybook picture.
+- Build a scene that fits my message: for example a traditional Malay wooden house on stilts with a pitched zinc or attap roof, wooden stairs and open windows glowing warm inside, coconut palms, and golden paddy fields with a raised path.
+- Keep everything moving softly: palms sway, the paddy ripples in waves of wind, clouds drift and birds fly home across the sky.
+- Add small, heartwarming details, like a child cycling along the path, chickens pecking or a cat on the stairs.
+- Over the video the sun sets slowly into dusk. The sky turns from gold to purple, the house lights glow brighter and fireflies appear.
+- Show my message in the sky as a warm, friendly title, letters rising in one by one. Write my text in the language I use, Malay or English.
+- End by fading gently back to golden light so the video could loop.
+
+Type and colour
+- A rounded, friendly bold font (like Baloo 2) in warm cream, with a soft glow so it reads on the sky.
+- Use my brand colours if I give them. Otherwise use golden orange #f7a23b, sunset coral #f08a6a, paddy gold #e3a638, palm green #3f6a3c, lavender sky #7d6aa8 and dusk purple #4a2f6b.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

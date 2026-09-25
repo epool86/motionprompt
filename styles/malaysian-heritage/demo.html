@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Malaysian heritage demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/cinzel@5.3.0/700.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/nunito@5.3.0/700.css">
+  <style>
+    /* Colours can be set from the URL: ?text=Title|Small line&bg=f8d894&ink=fbeccb&accent=d9a53a&accent2=6e1129 */
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #1c0b06;
+    }
+
+    svg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .title {
+      font-family: "Cinzel", Georgia, serif;
+      font-weight: 700;
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+
+    .sub {
+      font-family: "Nunito", "Trebuchet MS", system-ui, sans-serif;
+      font-weight: 700;
+      text-anchor: middle;
+      dominant-baseline: central;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <svg id="scene" role="img" xmlns="http://www.w3.org/2000/svg"></svg>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => "#" + (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const C = {
+      sky: hex("bg", "f8d894"),
+      ink: hex("ink", "fbeccb"),
+      gold: hex("accent", "d9a53a"),
+      maroon: hex("accent2", "6e1129"),
+      blue: "#1f3f8f",
+      emerald: "#0f6b4a",
+      turmeric: "#f2b431",
+      red: "#c42a3e",
+      wax: "#fdf1d6",
+      night: "#1c0b06",
+      shadow: "#2a0f08",
+    };
+
+    // ?text=Title|Small line. The default is a Malay greeting with an English line under it.
+    const raw = (params.get("text") || "").trim();
+    const [title, subtitle] = raw
+      ? [raw.split("|")[0].trim().slice(0, 40), (raw.split("|")[1] || "").trim().slice(0, 50)]
+      : ["Selamat Datang", "Welcome to Malaysia"];
+
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.getElementById("scene");
+    svg.setAttribute("aria-label", `Malaysian heritage animation: a wayang kulit shadow screen opens onto wau bulan kites, batik flowers and a kampung sky, then the title ${title} in a gold songket frame`);
+
+    function el(name, attrs, parent) {
+      const node = document.createElementNS(NS, name);
+      for (const k in attrs) node.setAttribute(k, attrs[k]);
+      if (parent) parent.append(node);
+      return node;
+    }
+
+    // Small geometry helpers. Shapes are drawn in local units and scaled into place.
+    const TAU = Math.PI * 2;
+    const rad = (d) => (d * Math.PI) / 180;
+    const n3 = (v) => +v.toFixed(4);
+    const P = (p) => `${n3(p[0])} ${n3(p[1])}`;
+    const polar = (r, deg, c = [0, 0]) => [c[0] + r * Math.cos(rad(deg)), c[1] + r * Math.sin(rad(deg))];
+
+    // A smooth line through points. A repeated point makes a sharp corner.
+    function smooth(pts, close) {
+      const n = pts.length, at = (i) => pts[close ? (i + n) % n : Math.max(0, Math.min(n - 1, i))];
+      let d = `M${P(pts[0])}`;
+      for (let i = 0; i < (close ? n : n - 1); i++) {
+        const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
+        d += `C${P([p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6])} ${P([p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6])} ${P(p2)}`;
+      }
+      return d + (close ? "Z" : "");
+    }
+    // Right half from the top centre to the bottom centre, mirrored into a closed outline.
+    const mirror = (right) => right.concat(right.slice(1, -1).reverse().map(([x, y]) => [-x, y]));
+    const cubicPts = (a, b, c, d, n = 10) => Array.from({ length: n + 1 }, (_, i) => {
+      const t = i / n, s = 1 - t;
+      return [0, 1].map((k) => s * s * s * a[k] + 3 * s * s * t * b[k] + 3 * s * t * t * c[k] + t * t * t * d[k]);
+    });
+    // A curl at the end of a line: heading in degrees, cw = 1 turns right, -1 turns left.
+    function curl(end, heading, r0, turns, cw = 1) {
+      const c = polar(r0, heading + cw * 90, end), a0 = heading + cw * 90 + 180, out = [];
+      for (let i = 1; i <= 18; i++) {
+        const k = i / 18;
+        out.push(polar(r0 * (1 - 0.72 * k), a0 + cw * k * turns * 360, c));
+      }
+      return out;
+    }
+    const drop = (x, y, len, deg, w = 0.35) =>
+      `M${P([x, y])}` + [[0.3, -w], [0.8, -w * 0.6], [1, 0], [0.8, w * 0.6], [0.3, w], [0, 0]]
+        .map((q, i, a) => (i % 3 === 0 ? "C" : "") + P(polar(Math.hypot(q[0], q[1]) * len, deg + (Math.atan2(q[1], q[0]) * 180) / Math.PI, [x, y])) + " ")
+        .join("") + "Z";
+    const circle = (x, y, r) => `M${P([x - r, y])}a${n3(r)} ${n3(r)} 0 1 0 ${n3(r * 2)} 0a${n3(r)} ${n3(r)} 0 1 0 ${n3(-r * 2)} 0Z`;
+
+    // A loop is 12 seconds; every sway repeats a whole number of times per loop.
+    const LOOP = 12, STILL = 9.6;
+    const wave = (t, cycles, phase = 0) => Math.sin(TAU * (t * cycles) / LOOP + phase);
+
+    let W, H, u, tl, S, R, defs;
+
+    function layout() {
+      const r = W / H, L = {};
+      if (r < 0.9) {
+        L.horizon = H * 0.63;
+        L.panel = { x: W / 2, y: H * 0.575, w: W * 0.9, h: Math.min(W * 0.6, H * 0.34) };
+        const k0 = Math.min(W * 0.3, H * 0.2), k1 = Math.min(W * 0.17, H * 0.12);
+        L.kitesA = [{ x: W * 0.36, y: H * 0.29, s: k0 }, { x: W * 0.78, y: Math.max(H * 0.15, H * 0.05 + k1), s: k1 }];
+        L.flowers = [{ x: W * 0.17, y: H * 0.9, s: W * 0.15, flip: 1 }, { x: W * 0.85, y: H * 0.935, s: W * 0.11, flip: -1 }];
+      } else if (r < 1.3) {
+        L.horizon = H * 0.64;
+        L.panel = { x: W / 2, y: H * 0.56, w: W * 0.82, h: H * 0.32 };
+        L.kitesA = [{ x: W * 0.35, y: H * 0.3, s: u * 0.24 }, { x: W * 0.77, y: H * 0.19, s: u * 0.15 }];
+        L.flowers = [{ x: W * 0.13, y: H * 0.88, s: u * 0.11, flip: 1 }, { x: W * 0.88, y: H * 0.905, s: u * 0.085, flip: -1 }];
+      } else {
+        L.horizon = H * 0.66;
+        L.panel = { x: W / 2, y: H * 0.5, w: Math.min(W * 0.56, H * 1.3), h: H * 0.52 };
+        L.kitesA = [{ x: W * 0.3, y: H * 0.36, s: H * 0.28 }, { x: W * 0.72, y: H * 0.26, s: H * 0.18 }];
+        L.flowers = [{ x: W * 0.09, y: H * 0.81, s: H * 0.14, flip: 1 }, { x: W * 0.915, y: H * 0.85, s: H * 0.11, flip: -1 }];
+      }
+      // Where the kites fly while the title is on screen.
+      const p = L.panel, top = p.y - p.h / 2;
+      if (r < 1.3) {
+        const r0 = H * 0.04, rh = top - H * 0.03 - r0, s = Math.min(W * 0.24, rh * 0.46);
+        L.kitesB = [{ x: W * 0.3, y: r0 + rh * 0.55, s }, { x: W * 0.76, y: r0 + rh * 0.42, s: s * 0.66 }];
+      } else {
+        const side = (W - p.w) / 2, s = Math.min(side * 0.46, H * 0.26);
+        L.kitesB = [{ x: side / 2, y: H * 0.38, s }, { x: W - side / 2, y: H * 0.3, s: s * 0.8 }];
+      }
+      return L;
+    }
+
+    // ---------- Wau bulan ----------
+    function kitePath() {
+      const segs = [
+        [[0.05, -0.79], [0.11, -0.68], [0.1, -0.62]],
+        [[0.09, -0.57], [0.06, -0.56], [0.06, -0.53]],
+        [[0.4, -0.62], [0.78, -0.66], [1, -0.53]],
+        [[0.92, -0.34], [0.68, -0.14], [0.42, -0.11]],
+        [[0.22, -0.09], [0.1, -0.07], [0.09, 0.04]],
+        [[0.09, 0.3], [0.5, 0.45], [0.77, 0.15]],
+        [[0.82, 0.52], [0.46, 0.86], [0, 0.86]],
+      ];
+      const start = [0, -0.8], ends = [start, ...segs.map((s) => s[2])];
+      let d = `M${P(start)}`;
+      for (const [a, b, c] of segs) d += `C${P(a)} ${P(b)} ${P(c)}`;
+      for (let i = segs.length - 1; i >= 0; i--) {
+        const [a, b] = segs[i], m = ([x, y]) => [-x, y];
+        d += `C${P(m(b))} ${P(m(a))} ${P(m(ends[i]))}`;
+      }
+      return d + "Z";
+    }
+
+    function buildKite(parent, pal, id) {
+      const g = el("g", {}, parent);
+      const d = kitePath();
+      // The busur (bow) sits behind the head.
+      el("path", { d: "M-0.86 -0.6Q0 -1.1 0.86 -0.6", fill: "none", stroke: "#4a2616", "stroke-width": 0.035, "stroke-linecap": "round" }, g);
+      el("path", { d: "M-0.86 -0.6L0.86 -0.6", stroke: "#fff4d8", "stroke-width": 0.012, opacity: 0.7 }, g);
+      const clip = el("clipPath", { id: `${id}-clip` }, defs);
+      el("path", { d }, clip);
+      const body = el("g", { "clip-path": `url(#${id}-clip)` }, g);
+      // Layered coloured paper: an outer band, an inner band, then the centre colour.
+      el("path", { d, fill: pal[2] }, body);
+      el("path", { d, fill: "none", stroke: pal[1], "stroke-width": 0.26 }, body);
+      el("path", { d, fill: "none", stroke: pal[0], "stroke-width": 0.12 }, body);
+      // Cut-work: a floral vine on each side, mirrored along the spine.
+      for (const side of [1, -1]) {
+        const m = el("g", { transform: `scale(${side} 1)` }, body);
+        const vine = cubicPts([0.08, -0.4], [0.28, -0.52], [0.5, -0.3], [0.64, -0.41]);
+        el("path", { d: smooth(vine.concat(curl([0.64, -0.41], -38, 0.055, 1.1, -1))), fill: "none", stroke: pal[3], "stroke-width": 0.03, "stroke-linecap": "round" }, m);
+        el("path", { d: drop(0.27, -0.47, 0.13, -95) + drop(0.44, -0.36, 0.12, 80) + drop(0.53, -0.37, 0.1, -60), fill: pal[3] }, m);
+        el("path", { d: circle(0.36, -0.42, 0.025) + circle(0.2, -0.39, 0.02), fill: pal[4] }, m);
+        const tail = cubicPts([0.03, 0.66], [0.24, 0.72], [0.44, 0.6], [0.52, 0.44]);
+        el("path", { d: smooth(tail.concat(curl([0.52, 0.44], -60, 0.05, 1.1, -1))), fill: "none", stroke: pal[3], "stroke-width": 0.03, "stroke-linecap": "round" }, m);
+        el("path", { d: drop(0.28, 0.68, 0.12, 60) + drop(0.4, 0.55, 0.1, -130), fill: pal[3] }, m);
+        el("path", { d: drop(0.12, -0.2, 0.12, 40) + circle(0.66, -0.52, 0.02), fill: pal[3] }, m);
+      }
+      // A flower on the spine and a diamond at the waist.
+      let rosette = "";
+      for (let i = 0; i < 8; i++) rosette += drop(0, -0.3, 0.11, i * 45, 0.42);
+      el("path", { d: rosette, fill: pal[3] }, body);
+      el("path", { d: circle(0, -0.3, 0.035) + "M0 0.03L0.05 0.13L0 0.23L-0.05 0.13Z" + circle(0, 0.76, 0.03), fill: pal[4] }, body);
+      el("path", { d: "M0 -0.8V0.86", stroke: "rgba(40,16,8,0.35)", "stroke-width": 0.014 }, body);
+      el("path", { d, fill: "none", stroke: "#3a1a10", "stroke-width": 0.016, "stroke-linejoin": "round" }, g);
+      // Streamer tassels (rambu) on the ends of the bow.
+      const tassels = [-1, 1].map((side) => {
+        const t = el("g", {}, g);
+        [C.red, C.turmeric, C.blue].forEach((c, i) => {
+          el("path", { d: "M-0.014 0Q-0.05 0.22 -0.012 0.44L0.012 0.44Q-0.014 0.22 0.014 0Z", fill: c, transform: `rotate(${(i - 1) * 16})` }, t);
+        });
+        return { g: t, side };
+      });
+      return { g, tassels };
+    }
+
+    // ---------- Batik ----------
+    // Every batik line is drawn like wax from a canting, then the colour dyes in.
+    const wax = [], dyes = [], fills = [];
+    function waxLine(parent, d, attrs, order) {
+      const p = el("path", { d, stroke: C.wax, "stroke-linecap": "round", "stroke-linejoin": "round", ...attrs }, parent);
+      wax.push({ p, order });
+      return p;
+    }
+
+    function buildFlower(parent, F) {
+      const g = el("g", { transform: `translate(${F.x} ${F.y}) scale(${F.s * F.flip} ${F.s})` }, parent);
+      const sw = 0.035;
+      // Awan larat tendrils: a dye band with a wax line on top.
+      const tendrils = [
+        cubicPts([0.35, -0.55], [0.7, -0.95], [1.05, -1.05], [1.3, -0.92]).concat(curl([1.3, -0.92], 20, 0.2, 1.3, 1)),
+        cubicPts([-0.55, -0.62], [-0.8, -0.9], [-0.7, -1.2], [-0.45, -1.3]).concat(curl([-0.45, -1.3], 10, 0.16, 1.3, 1)),
+        cubicPts([0.85, 0.2], [1.2, 0.2], [1.4, -0.05], [1.45, -0.3]).concat(curl([1.45, -0.3], -80, 0.13, 1.2, -1)),
+      ];
+      tendrils.forEach((pts, i) => {
+        const d = smooth(pts);
+        const dye = el("path", { d, fill: "none", stroke: C.blue, "stroke-width": 0, "stroke-linecap": "round" }, g);
+        dyes.push({ p: dye, w: 0.1, order: i * 0.1 });
+        waxLine(g, d, { fill: "none", "stroke-width": sw }, i * 0.12);
+      });
+      // Leaves with veins.
+      const leaves = [[0.15, -0.55, 1.25, -72], [0.6, -0.15, 1.05, -22], [-0.45, -0.35, 0.85, -128]];
+      leaves.forEach(([x, y, len, deg], i) => {
+        const p = waxLine(g, drop(x, y, len, deg, 0.34), { fill: "url(#mh-leaf)", "fill-opacity": 0, "stroke-width": sw }, 0.2 + i * 0.12);
+        fills.push({ p, order: 0.1 + i * 0.1 });
+        let veins = `M${P([x, y])}L${P(polar(len * 0.92, deg, [x, y]))}`;
+        for (let k = 1; k <= 3; k++) {
+          const a = polar(len * k * 0.22, deg, [x, y]);
+          veins += `M${P(a)}L${P(polar(len * 0.2, deg - 38, a))}M${P(a)}L${P(polar(len * 0.2, deg + 38, a))}`;
+        }
+        waxLine(g, veins, { fill: "none", "stroke-width": sw * 0.6 }, 0.4 + i * 0.12);
+      });
+      // Bunga raya: five ruffled petals.
+      for (let i = 0; i < 5; i++) {
+        const a = -100 + i * 72;
+        const pts = [[0, 0], [0, 0], polar(0.45, a - 40), polar(0.9, a - 33), polar(1, a - 18), polar(0.93, a - 5),
+          polar(1.02, a + 9), polar(0.96, a + 23), polar(0.88, a + 34), polar(0.45, a + 40)];
+        const p = waxLine(g, smooth(pts, true), { fill: "url(#mh-petal)", "fill-opacity": 0, "stroke-width": sw }, 0.45 + i * 0.08);
+        fills.push({ p, order: 0.35 + i * 0.06 });
+        let veins = "";
+        for (const k of [-14, 0, 14]) veins += `M${P(polar(0.22, a + k * 0.5))}L${P(polar(0.72, a + k))}`;
+        waxLine(g, veins, { fill: "none", "stroke-width": sw * 0.6 }, 0.8 + i * 0.05);
+      }
+      fills.push({ p: waxLine(g, circle(0, 0, 0.15), { fill: C.maroon, "fill-opacity": 0, "stroke-width": sw }, 0.9), order: 0.6 });
+      // The long stamen with pollen and stigma dots.
+      const tip = polar(1.3, -58);
+      const stem = `M0 0Q${P(polar(0.75, -80))} ${P(tip)}`;
+      const st = el("path", { d: stem, fill: "none", stroke: C.turmeric, "stroke-width": 0, "stroke-linecap": "round" }, g);
+      dyes.push({ p: st, w: 0.07, order: 0.5 });
+      waxLine(g, stem, { fill: "none", "stroke-width": sw * 0.8 }, 1);
+      let dots = "";
+      for (let i = 0; i < 6; i++) {
+        const t = 0.62 + i * 0.06, q = polar(0.75, -80);
+        const x = 2 * (1 - t) * t * q[0] + t * t * tip[0], y = 2 * (1 - t) * t * q[1] + t * t * tip[1];
+        dots += circle(x + (i % 2 ? 0.07 : -0.07), y, 0.045);
+      }
+      const pol = waxLine(g, dots, { fill: C.turmeric, "fill-opacity": 0, "stroke-width": sw * 0.6 }, 1.05);
+      fills.push({ p: pol, order: 0.7 });
+      let stig = "";
+      for (let i = 0; i < 5; i++) stig += circle(...polar(0.1, -150 + i * 30, tip), 0.05);
+      const sg = waxLine(g, stig, { fill: C.red, "fill-opacity": 0, "stroke-width": sw * 0.6 }, 1.1);
+      fills.push({ p: sg, order: 0.75 });
+      // A few isen dots around the motif, like batik filler.
+      let isen = "";
+      [[-0.95, -0.9], [0.95, -0.55], [-1.05, 0.1], [0.2, -1.35], [1.15, 0.45]].forEach(([x, y]) => (isen += circle(x, y, 0.04)));
+      const dotsP = el("path", { d: isen, fill: C.wax, "fill-opacity": 0 }, g);
+      fills.push({ p: dotsP, order: 0.8 });
+    }
+
+    function buildCloud(parent, x, y, s) {
+      const g = el("g", { transform: `translate(${x} ${y}) scale(${s})` }, parent);
+      const d = "M-1.25 0.28A0.4 0.4 0 0 1 -0.6 -0.12A0.52 0.52 0 0 1 0.3 -0.34A0.44 0.44 0 0 1 1.02 -0.04A0.26 0.26 0 0 1 1.3 0.28Q0.9 0.22 0.6 0.3Q0.2 0.2 -0.2 0.3Q-0.7 0.22 -1.25 0.28Z";
+      const body = waxLine(g, d, { fill: "#fff5dc", "fill-opacity": 0, stroke: "#b8612a", "stroke-width": 0.045 }, 0);
+      fills.push({ p: body, order: 0, max: 0.92 });
+      [[-0.86, 0.12, 0.22, 0], [-0.1, -0.02, 0.3, 0.1], [0.66, 0.1, 0.22, 0.2]].forEach(([cx, cy, r, o]) => {
+        const pts = [];
+        for (let i = 0; i <= 26; i++) {
+          const k = i / 26;
+          pts.push(polar(r * (1 - 0.8 * k), 200 + k * 520, [cx, cy]));
+        }
+        waxLine(g, smooth(pts), { fill: "none", stroke: "#b8612a", "stroke-width": 0.035 }, 0.2 + o);
+      });
+    }
+
+    // ---------- Kampung horizon ----------
+    function buildHorizon(parent, L) {
+      const hz = L.horizon;
+      // Distant trees
+      const tree = [];
+      for (let i = -1; i <= 21; i++) {
+        const x = (i / 20) * W;
+        tree.push([x, hz - u * (0.03 + 0.018 * Math.abs(Math.sin(i * 1.7)) + 0.012 * Math.sin(i * 0.6))]);
+      }
+      el("path", { d: smooth(tree) + `L${W * 1.06} ${hz + u * 0.05}L${-W * 0.06} ${hz + u * 0.05}Z`, fill: "#3b6e45" }, parent);
+      const dark = "#1d4632";
+      // Coconut palms
+      const palm = (x, h, lean) => {
+        const b = [x, hz + u * 0.01], top = [x + lean * h * 0.3, hz - h];
+        el("path", { d: `M${P(b)}Q${P([x + lean * h * 0.02, hz - h * 0.5])} ${P(top)}`, fill: "none", stroke: dark, "stroke-width": h * 0.035, "stroke-linecap": "round" }, parent);
+        let fr = "";
+        for (let i = 0; i < 8; i++) {
+          const a = -170 + i * 23 + (i > 3 ? 12 : 0), len = h * (0.42 + 0.08 * Math.cos(i * 1.9));
+          const tip = polar(len, a, top), mid = polar(len * 0.55, a, top);
+          const droop = [tip[0], tip[1] + len * 0.45];
+          const c1 = [mid[0], mid[1] - len * 0.12], c2 = [mid[0], mid[1] + len * 0.05];
+          fr += `M${P(top)}Q${P(c1)} ${P(droop)}Q${P(c2)} ${P(top)}Z`;
+        }
+        el("path", { d: fr, fill: dark }, parent);
+      };
+      const ph = u * 0.2;
+      palm(W * 0.1, ph, -0.4);
+      palm(W * 0.2, ph * 0.78, 0.3);
+      palm(W * 0.93, ph * 0.9, 0.35);
+      // A rumah kampung on stilts, with crossed silang gunting at the roof peak.
+      const hs = u * 0.17, hx = W * 0.66, by = hz + u * 0.012;
+      const wood = "#4a1c18";
+      const hg = el("g", {}, parent);
+      let stilts = "";
+      for (const k of [-0.36, -0.12, 0.12, 0.36, 0.62]) stilts += `M${P([hx + hs * k, by - hs * 0.3])}V${n3(by)}`;
+      el("path", { d: stilts, stroke: wood, "stroke-width": hs * 0.035 }, hg);
+      el("path", { d: `M${P([hx + hs * 0.36, by - hs * 0.52])}L${P([hx + hs * 0.8, by - hs * 0.6])}L${P([hx + hs * 0.84, by - hs * 0.46])}L${P([hx + hs * 0.36, by - hs * 0.4])}Z`, fill: "#5c2620" }, hg);
+      el("path", { d: `M${P([hx + hs * 0.4, by - hs * 0.42])}H${n3(hx + hs * 0.72)}V${n3(by - hs * 0.28)}H${n3(hx + hs * 0.4)}Z`, fill: wood }, hg);
+      el("rect", { x: hx - hs * 0.42, y: by - hs * 0.56, width: hs * 0.84, height: hs * 0.28, fill: wood }, hg);
+      const roof = `M${P([hx - hs * 0.56, by - hs * 0.5])}Q${P([hx - hs * 0.3, by - hs * 0.66])} ${P([hx, by - hs * 1.06])}Q${P([hx + hs * 0.3, by - hs * 0.66])} ${P([hx + hs * 0.56, by - hs * 0.5])}Z`;
+      el("path", { d: roof, fill: "#5c2620" }, hg);
+      el("path", { d: `M${P([hx - hs * 0.3, by - hs * 0.58])}L${P([hx, by - hs * 0.92])}L${P([hx + hs * 0.3, by - hs * 0.58])}Z`, fill: C.turmeric, opacity: 0.35 }, hg);
+      el("path", { d: `M${P([hx - hs * 0.1, by - hs * 0.98])}L${P([hx + hs * 0.08, by - hs * 1.18])}M${P([hx + hs * 0.1, by - hs * 0.98])}L${P([hx - hs * 0.08, by - hs * 1.18])}`, stroke: wood, "stroke-width": hs * 0.035, "stroke-linecap": "round" }, hg);
+      el("path", { d: `M${P([hx - hs * 0.3, by - hs * 0.5])}h${n3(hs * 0.14)}v${n3(hs * 0.14)}h${n3(-hs * 0.14)}ZM${P([hx + hs * 0.16, by - hs * 0.5])}h${n3(hs * 0.14)}v${n3(hs * 0.14)}h${n3(-hs * 0.14)}Z`, fill: "#ffcf6b" }, hg);
+      el("path", { d: `M${P([hx - hs * 0.42, by - hs * 0.3])}L${P([hx - hs * 0.62, by])}`, stroke: wood, "stroke-width": hs * 0.04 }, hg);
+      // Paddy fields in three bands, with rows of rice.
+      const cols = ["#a8c35e", "#6fae54", "#3f8a4a"], tops = [0, 0.3, 0.62];
+      tops.forEach((k, i) => {
+        const y0 = hz + (H - hz) * k;
+        const edge = (dy) => {
+          const pts = [];
+          for (let j = -1; j <= 9; j++) pts.push([(j / 8) * W, y0 + dy + Math.sin(j * 1.3 + i * 2) * u * 0.006]);
+          return pts;
+        };
+        el("path", { d: smooth(edge(0)) + `L${W * 1.2} ${H + 2}L${-W * 0.2} ${H + 2}Z`, fill: cols[i] }, parent);
+        let rows = "";
+        const bandH = (H - hz) * ((tops[i + 1] ?? 1) - k);
+        for (let r = 1; r <= 3; r++) rows += smooth(edge(bandH * (r / 4) * (0.7 + 0.1 * r)));
+        el("path", { d: rows, fill: "none", stroke: i ? "#2c6e3c" : "#7d9f45", "stroke-width": Math.max(0.6, u * 0.003), opacity: 0.45 }, parent);
+      });
+    }
+
+    // ---------- Wayang kulit ----------
+    // Puppets are shadow shapes with punched holes. Each hole is a sub-path cut out with the even-odd rule.
+    const cut = (parent, d) => el("path", { d, fill: C.shadow, "fill-rule": "evenodd" }, parent);
+
+    function gunungan(g) {
+      const right = [[0, -1], [0, -1], [0.1, -0.82], [0.26, -0.56], [0.44, -0.28], [0.56, 0], [0.58, 0.24], [0.5, 0.46], [0.36, 0.62], [0.3, 0.68], [0.3, 0.68],
+        [0.36, 0.7], [0.36, 0.7], [0.36, 0.82], [0.36, 0.82], [0, 0.82]];
+      // Leaf shaped frame: a border of punched dots, a row of teardrops, an open field inside.
+      let d = smooth(mirror(right), true);
+      const ring = right.slice(1, 10), along = (i, t, sx, sy) => {
+        const a = ring[i], b = ring[i + 1];
+        return [(a[0] + (b[0] - a[0]) * t) * sx, 0.03 + (a[1] + (b[1] - a[1]) * t - 0.03) * sy];
+      };
+      for (const s of [1, -1]) {
+        for (let i = 0; i < ring.length - 1; i++) {
+          for (let k = 0; k < (i < ring.length - 2 ? 3 : 1); k++) {
+            const [x, y] = along(i, k / 3, 0.91, 0.92);
+            d += circle(x * s, y, 0.018);
+          }
+          for (let k = 0; k < 2; k++) {
+            const [x, y] = along(i, (k + 0.5) / 2, 0.83, 0.85);
+            if (y < 0.45) d += drop(x * s, y, 0.04, (Math.atan2(0.1 - y, -x * s) * 180) / Math.PI, 0.45);
+          }
+        }
+      }
+      d += smooth(mirror(right.slice(0, 9).concat([[0.2, 0.66], [0, 0.66]])).map(([x, y]) => [x * 0.74, 0.04 + (y - 0.04) * 0.76]), true);
+      // Base like a small gate, with slits between its tiers.
+      d += "M-0.06 0.815V0.76A0.06 0.06 0 0 1 0.06 0.76V0.815Z" + circle(-0.19, 0.77, 0.022) + circle(0.19, 0.77, 0.022) + circle(-0.13, 0.66, 0.015) + circle(0.13, 0.66, 0.015)
+        + "M-0.22 0.695H-0.1V0.705H-0.22ZM0.1 0.695H0.22V0.705H0.1Z";
+      cut(g, d);
+      // The tree of life: a trunk, curling branches with leaves and small flowers.
+      let branches = "", leaves = "M-0.05 0.64C-0.02 0.2 -0.03 -0.3 -0.012 -0.66L0.012 -0.66C0.03 -0.3 0.02 0.2 0.05 0.64Z" + drop(0, -0.64, 0.2, -90, 0.35);
+      [[0.4, 0.33, 0.2], [0.12, 0.34, 0.22], [-0.16, 0.27, 0.2], [-0.4, 0.17, 0.14]].forEach(([y, len, up]) => {
+        for (const s of [1, -1]) {
+          const pts = cubicPts([0, y], [len * 0.35, y - up * 0.05], [len * 0.75, y - up * 0.3], [len, y - up], 8).concat(curl([len, y - up], -60, 0.06, 1.25, 1));
+          branches += smooth(pts.map(([x, yy]) => [x * s, yy]));
+          leaves += drop(len * 0.3 * s, y - up * 0.08, 0.09, s > 0 ? -70 : -110, 0.4) + drop(len * 0.45 * s, y - up * 0.2, 0.08, s > 0 ? 60 : 120, 0.4)
+            + drop(len * 0.66 * s, y - up * 0.5, 0.09, s > 0 ? -50 : -130, 0.4) + drop(len * 0.8 * s, y - up * 0.72, 0.07, s > 0 ? 40 : 140, 0.4);
+          const fc = polar(0.055, s > 0 ? 50 : 130, [len * s, y - up]);
+          for (let k = 0; k < 6; k++) leaves += drop(fc[0], fc[1], 0.045, k * 60, 0.5);
+        }
+      });
+      el("path", { d: branches, fill: "none", stroke: C.shadow, "stroke-width": 0.03, "stroke-linecap": "round" }, g);
+      el("path", { d: leaves, fill: C.shadow }, g);
+    }
+
+    function figure(g) {
+      const body = [[-0.05, -0.6], [0.05, -0.6], [0.05, -0.6], [0.07, -0.56], [0.085, -0.52], [0.085, -0.52], [0.13, -0.49], [0.19, -0.465], [0.19, -0.465],
+        [0.1, -0.455], [0.1, -0.455], [0.105, -0.435], [0.085, -0.425], [0.09, -0.405], [0.09, -0.405], [0.05, -0.38], [0.045, -0.35],
+        [0.11, -0.31], [0.15, -0.24], [0.14, -0.14], [0.07, -0.03], [0.07, -0.03], [0.1, 0], [0.1, 0], [0.1, 0.05], [0.1, 0.05],
+        [0.17, 0.2], [0.24, 0.42], [0.24, 0.42], [0.16, 0.42], [0.16, 0.42],
+        [0.2, 0.62], [0.24, 0.86], [0.26, 0.93], [0.37, 0.98], [0.37, 0.98], [0.14, 0.99], [0.14, 0.99], [0.16, 0.9], [0.12, 0.7], [0.07, 0.46], [0.07, 0.46],
+        [0, 0.46], [0, 0.46], [-0.06, 0.62], [-0.14, 0.86], [-0.12, 0.94], [-0.04, 0.98], [-0.04, 0.98], [-0.25, 0.99], [-0.25, 0.99], [-0.22, 0.9], [-0.16, 0.62], [-0.14, 0.42], [-0.14, 0.42],
+        [-0.27, 0.42], [-0.27, 0.42], [-0.2, 0.2], [-0.12, 0.05], [-0.12, 0.05], [-0.09, -0.03], [-0.13, -0.18], [-0.13, -0.3],
+        [-0.06, -0.37], [-0.07, -0.46], [-0.08, -0.55]];
+      const flap = [[0.02, 0.04], [0.02, 0.04], [0.1, 0.3], [0.13, 0.64], [0.13, 0.64], [0.05, 0.4], [-0.02, 0.1]];
+      const crown = [[-0.07, -0.58], [-0.07, -0.58], [-0.085, -0.66], [-0.06, -0.68], [-0.06, -0.68], [-0.065, -0.75], [-0.04, -0.77], [-0.04, -0.77], [-0.035, -0.86],
+        [0, -1], [0, -1], [0.035, -0.86], [0.04, -0.77], [0.04, -0.77], [0.065, -0.75], [0.06, -0.68], [0.06, -0.68], [0.085, -0.66], [0.07, -0.58], [0.07, -0.58]];
+      const flare = [[-0.06, -0.66], [-0.06, -0.66], [-0.2, -0.68], [-0.27, -0.6], [-0.23, -0.52], [-0.16, -0.54], [-0.19, -0.59], [-0.19, -0.59], [-0.07, -0.56]];
+      // Perforations: eye, necklace, belt, chest jewel and a lattice on the cloth.
+      let holes = "M0.035 -0.515Q0.06 -0.53 0.075 -0.512Q0.055 -0.502 0.035 -0.515Z";
+      for (let i = 0; i < 6; i++) holes += circle(0.045 + i * 0.015, -0.32 + i * 0.025, 0.008);
+      for (let i = 0; i < 6; i++) holes += `M${P([-0.09 + i * 0.035, 0.03])}l0.012 -0.012l0.012 0.012l-0.012 0.012Z`;
+      for (let y = 0.13; y < 0.4; y += 0.075) {
+        const x0 = -0.12 - (y - 0.05) * 0.4 + 0.05, x1 = 0.1 + (y - 0.05) * 0.4 - 0.05;
+        for (let x = x0; x < x1; x += 0.06) if (Math.abs(x - 0.06) > 0.04) holes += `M${P([x, y - 0.02])}l0.016 0.02l-0.016 0.02l-0.016 -0.02Z`;
+      }
+      holes += `M${P([0.02, -0.25])}l0.03 0.04l-0.03 0.04l-0.03 -0.04Z`;
+      let flapDots = "";
+      for (let k = 0; k < 4; k++) flapDots += circle(0.05 + k * 0.022, 0.16 + k * 0.1, 0.012);
+      let crownDots = "";
+      for (const y of [-0.9, -0.81, -0.72, -0.64]) crownDots += circle(0, y, 0.012);
+      cut(g, smooth(body, true) + holes + flapDots);
+      cut(g, smooth(flap, true) + flapDots);
+      cut(g, smooth(crown, true) + crownDots);
+      cut(g, smooth(flare, true) + circle(-0.2, -0.62, 0.016) + circle(-0.14, -0.62, 0.012));
+    }
+
+    function buildKelir(parent, L) {
+      const m = u * 0.045, K = { x: m, y: m, w: W - 2 * m, h: H - 2 * m }, box = { x: m, y: m, width: K.w, height: K.h };
+      const g = el("g", {}, parent);
+      el("rect", { x: -W, y: -H, width: W * 3, height: H * 3, fill: C.night }, g);
+      const glow = el("radialGradient", { id: "mh-kelir", gradientUnits: "userSpaceOnUse", cx: W / 2, cy: K.y + K.h * 0.58, r: Math.max(K.w, K.h) * 0.72 }, defs);
+      [[0, "#ffe9b0"], [0.4, "#f7bd5e"], [0.78, "#c0602a"], [1, "#6a2812"]].forEach(([o, c]) => el("stop", { offset: o, "stop-color": c }, glow));
+      el("rect", { ...box, fill: "url(#mh-kelir)" }, g);
+      const hot = el("radialGradient", { id: "mh-hot", gradientUnits: "userSpaceOnUse", cx: W / 2, cy: K.y + K.h * 0.55, r: Math.max(K.w, K.h) * 0.5 }, defs);
+      [[0, "#fff8e0", 1], [1, "#fff8e0", 0]].forEach(([o, c, a]) => el("stop", { offset: o, "stop-color": c, "stop-opacity": a }, hot));
+      const hotRect = el("rect", { ...box, fill: "url(#mh-hot)" }, g);
+      el("rect", { x: m * 0.45, y: m * 0.45, width: W - m * 0.9, height: H - m * 0.9, fill: "none", stroke: C.maroon, "stroke-width": m * 0.5 }, g);
+      el("rect", { x: m * 0.82, y: m * 0.82, width: W - m * 1.64, height: H - m * 1.64, fill: "none", stroke: C.gold, "stroke-width": Math.max(0.8, m * 0.06), opacity: 0.8 }, g);
+      const clip = el("clipPath", { id: "mh-kclip" }, defs);
+      el("rect", box, clip);
+      const stage = el("g", { "clip-path": "url(#mh-kclip)" }, g);
+
+      // Sizes: the tree of life in the middle, two puppets beside it.
+      const sg = Math.min((K.h * 0.8) / 1.82, (K.w * 0.6) / 1.24), sf = sg * 0.62;
+      const base = Math.min(K.y + K.h * 0.95, H / 2 + sg * 0.9);
+      const blur = (id) => { const f = el("filter", { id, x: "-30%", y: "-30%", width: "160%", height: "160%" }, defs); return el("feGaussianBlur", { stdDeviation: 0 }, f); };
+
+      const gw = el("g", {}, stage);
+      const gi = el("g", {}, gw);
+      el("path", { d: "M0 0.815V3", stroke: C.shadow, "stroke-width": 0.022 }, gi);
+      gunungan(gi);
+      // Before it rises, the tree waits fully below the screen.
+      const gun = { wrap: gw, inner: gi, blur: blur("mh-gblur"), x: W / 2, base, s: sg, drop: K.y + K.h - base + sg * 1.95 };
+
+      const figs = [1, -1].map((side, i) => {
+        const x = W / 2 - side * Math.max(sg * 0.62 + sf * 0.3, 0) ;
+        const fx = side > 0 ? Math.max(K.x + sf * 0.34, x) : Math.min(K.x + K.w - sf * 0.34, x);
+        const wrap = el("g", {}, stage);
+        const rods = el("path", { fill: "none", stroke: C.shadow, "stroke-width": Math.max(0.8, sf * 0.012) }, wrap);
+        const inner = el("g", {}, wrap);
+        const armBack = el("g", {}, inner), foreBack = el("g", {}, inner);
+        figure(inner);
+        const armFront = el("g", {}, inner), foreFront = el("g", {}, inner);
+        const upper = "M-0.03 0L0.03 0L0.018 0.36L-0.018 0.36Z" + circle(0, 0, 0.032) + circle(0, 0.12, 0.026);
+        const fore = "M-0.02 0L0.02 0L0.011 0.33L-0.011 0.33Z" + circle(0, 0, 0.022) + "M-0.012 0.32Q-0.04 0.38 0.01 0.43Q0.03 0.38 0.012 0.32Z";
+        for (const a of [armBack, armFront]) el("path", { d: upper, fill: C.shadow }, a);
+        for (const a of [foreBack, foreFront]) el("path", { d: fore, fill: C.shadow }, a);
+        return { side, wrap, inner, rods, armBack, foreBack, armFront, foreFront, blur: blur(`mh-fblur${i}`), x: fx, base: base, s: sf, phase: i * 1.7 };
+      });
+      return { g, hotRect, gun, figs, K };
+    }
+
+    // ---------- Songket title panel ----------
+    function buildPanel(parent, L) {
+      const p = L.panel, x0 = p.x - p.w / 2, y0 = p.y - p.h / 2, h = p.h;
+      const g = el("g", {}, parent);
+      const inner = el("g", { filter: "url(#mh-drop)" }, g);
+      const f = el("filter", { id: "mh-drop", x: "-10%", y: "-10%", width: "120%", height: "130%" }, defs);
+      el("feDropShadow", { dx: 0, dy: h * 0.03, stdDeviation: h * 0.035, "flood-color": "#2a0a06", "flood-opacity": 0.45 }, f);
+      el("rect", { x: x0, y: y0, width: p.w, height: h, rx: h * 0.02, fill: C.maroon }, inner);
+      // Scattered bunga tabur, the small gold motifs woven through songket cloth.
+      const ps = h * 0.16;
+      const pat = el("pattern", { id: "mh-tabur", width: ps, height: ps, patternUnits: "userSpaceOnUse", x: x0, y: y0 }, defs);
+      el("path", { d: `M${ps / 2} ${ps * 0.3}L${ps * 0.6} ${ps / 2}L${ps / 2} ${ps * 0.7}L${ps * 0.4} ${ps / 2}Z` + circle(0, 0, ps * 0.04) + circle(ps, 0, ps * 0.04) + circle(0, ps, ps * 0.04) + circle(ps, ps, ps * 0.04), fill: C.gold, opacity: 0.35 }, pat);
+      el("rect", { x: x0, y: y0, width: p.w, height: h, rx: h * 0.02, fill: "url(#mh-tabur)" }, inner);
+      const i1 = h * 0.04, i2 = h * 0.085;
+      el("rect", { x: x0 + i1, y: y0 + i1, width: p.w - 2 * i1, height: h - 2 * i1, fill: "none", stroke: "url(#mh-gold)", "stroke-width": h * 0.018 }, inner);
+      el("rect", { x: x0 + i2, y: y0 + i2, width: p.w - 2 * i2, height: h - 2 * i2, fill: "none", stroke: "url(#mh-gold)", "stroke-width": h * 0.007 }, inner);
+      // Pucuk rebung: rows of bamboo shoot triangles along the top and bottom.
+      const th = h * 0.13, bw = p.w - 2 * i2 - h * 0.04, n = Math.max(5, Math.round(bw / (th * 0.72))), tw = bw / n;
+      const tris = [];
+      for (const dir of [1, -1]) {
+        const yb = dir > 0 ? y0 + i2 + h * 0.02 : y0 + h - i2 - h * 0.02;
+        for (let i = 0; i < n; i++) {
+          const xl = x0 + i2 + h * 0.02 + i * tw, cx = xl + tw / 2;
+          const tg = el("g", {}, inner);
+          const tri = (k, fill) => el("path", { d: `M${P([cx - (tw / 2) * k, yb + dir * th * (1 - k) * 0.1])}L${P([cx + (tw / 2) * k, yb + dir * th * (1 - k) * 0.1])}L${P([cx, yb + dir * th * (1 - (1 - k) * 0.35)])}Z`, fill }, tg);
+          tri(0.92, "url(#mh-gold)");
+          tri(0.6, C.maroon);
+          tri(0.3, "url(#mh-gold)");
+          el("path", { d: circle(xl, yb + dir * th * 0.2, h * 0.012), fill: "url(#mh-gold)" }, tg);
+          tris.push({ g: tg, dir, cx, yb, i, n });
+        }
+      }
+      // Title and small line
+      const aw = p.w - 2 * i2 - h * 0.16, ah = h - 2 * (i2 + th + h * 0.05);
+      const probe = el("text", { class: "title", "font-size": 100 }, svg);
+      const measure = (s, cls = "title") => { probe.setAttribute("class", cls); probe.textContent = s; return probe.getComputedTextLength(); };
+      const words = title.split(/\s+/);
+      const options = [[title]];
+      for (let i = 1; i < words.length; i++) options.push([words.slice(0, i).join(" "), words.slice(i).join(" ")]);
+      const subW = subtitle ? measure(subtitle, "sub") : 0;
+      let best = null;
+      for (const lines of options) {
+        const wMax = Math.max(...lines.map((s) => measure(s)));
+        const fs = Math.min((aw * 100) / wMax, ah / (lines.length * 1.08 + (subtitle ? 0.72 : 0)));
+        if (!best || fs > best.fs * 1.12) best = { lines, fs };
+      }
+      probe.remove();
+      const fs = best.fs, lines = best.lines;
+      const sfs = subtitle ? Math.min(fs * 0.3, (aw * 100) / subW, h * 0.075) : 0;
+      const blockH = lines.length * fs * 1.08 + (subtitle ? sfs * 2.2 : 0);
+      let y = p.y - blockH / 2 + fs * 0.54;
+      const lineEls = lines.map((s) => {
+        const t = el("text", { class: "title", x: p.x, y: y + fs * 0.02, "font-size": fs, fill: "url(#mh-gold)" }, g);
+        t.textContent = s;
+        y += fs * 1.08;
+        return t;
+      });
+      let subEls = [];
+      if (subtitle) {
+        const dy = y - fs * 0.54 + sfs * 0.45;
+        const dv = el("path", { d: `M${P([p.x - aw * 0.22, dy])}H${n3(p.x - sfs * 0.6)}M${P([p.x + sfs * 0.6, dy])}H${n3(p.x + aw * 0.22)}M${P([p.x, dy - sfs * 0.35])}l${n3(sfs * 0.35)} ${n3(sfs * 0.35)}l${n3(-sfs * 0.35)} ${n3(sfs * 0.35)}l${n3(-sfs * 0.35)} ${n3(-sfs * 0.35)}Z`, stroke: "url(#mh-gold)", "stroke-width": Math.max(0.6, h * 0.006), fill: "url(#mh-gold)" }, g);
+        const st = el("text", { class: "sub", x: p.x, y: dy + sfs * 1.35, "font-size": sfs, fill: C.ink }, g);
+        st.textContent = subtitle;
+        subEls = [dv, st];
+      }
+      return { g, tris, lineEls, subEls, fs };
+    }
+
+    // ---------- Build the whole scene and its timeline ----------
+    function build() {
+      W = innerWidth;
+      H = innerHeight;
+      u = Math.min(W, H);
+      wax.length = dyes.length = fills.length = 0;
+      svg.replaceChildren();
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      defs = el("defs", {}, svg);
+      const L = layout();
+
+      const sky = el("linearGradient", { id: "mh-sky", x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
+      [[0, "#f3b25c"], [0.45, C.sky], [1, "#fbe9c0"]].forEach(([o, c]) => el("stop", { offset: o, "stop-color": c }, sky));
+      const sun = el("radialGradient", { id: "mh-sun" }, defs);
+      [[0, "#fffaf0", 1], [0.35, "#fff1c4", 1], [0.42, "#ffe29a", 0.55], [1, "#ffd27a", 0]].forEach(([o, c, a]) => el("stop", { offset: o, "stop-color": c, "stop-opacity": a }, sun));
+      const petal = el("radialGradient", { id: "mh-petal", gradientUnits: "userSpaceOnUse", cx: 0, cy: 0, r: 1 }, defs);
+      [[0, "#5e0b20"], [0.3, "#a3182f"], [0.75, C.red], [1, "#e8634f"]].forEach(([o, c]) => el("stop", { offset: o, "stop-color": c }, petal));
+      const leaf = el("linearGradient", { id: "mh-leaf", x1: 0, y1: 0, x2: 1, y2: 1 }, defs);
+      [[0, "#1c8a5a"], [1, "#0b5238"]].forEach(([o, c]) => el("stop", { offset: o, "stop-color": c }, leaf));
+      // Gold with a travelling glint for the songket.
+      const p = L.panel;
+      const gold = el("linearGradient", { id: "mh-gold", gradientUnits: "userSpaceOnUse", x1: p.x - p.w / 2, y1: p.y - p.h / 2, x2: p.x + p.w / 2, y2: p.y + p.h / 2 }, defs);
+      [[0, "#c39033"], [0.38, C.gold], [0.5, "#fff4cc"], [0.62, C.gold], [1, "#c39033"]].forEach(([o, c]) => el("stop", { offset: o, "stop-color": c }, gold));
+
+      // Sky world
+      const world = el("g", {}, svg);
+      el("rect", { width: W, height: H, fill: "url(#mh-sky)" }, world);
+      const sunG = el("g", {}, world);
+      el("circle", { cx: W * 0.6, cy: L.horizon - u * 0.1, r: u * 0.3, fill: "url(#mh-sun)" }, sunG);
+      const clouds = el("g", {}, world);
+      buildCloud(clouds, W * 0.2, L.horizon * 0.14, u * 0.09);
+      buildCloud(clouds, W * 0.84, L.horizon * 0.5, u * 0.075);
+      const land = el("g", {}, world);
+      buildHorizon(land, L);
+      const strings = el("g", { fill: "none", stroke: "#5b3a24", "stroke-width": Math.max(0.7, u * 0.0024), opacity: 0.6 }, world);
+      const kites = [
+        buildKite(world, [C.blue, C.turmeric, C.maroon, "#fbe7b0", C.turmeric], "mh-k0"),
+        buildKite(world, [C.emerald, C.red, C.turmeric, C.maroon, C.emerald], "mh-k1"),
+      ];
+      kites.forEach((k, i) => (k.str = el("path", {}, strings)));
+      const batik = el("g", {}, world);
+      L.flowers.forEach((F) => buildFlower(batik, F));
+      const panel = buildPanel(world, L);
+      const kel = buildKelir(svg, L);
+
+      // Wax lines get a dash so they can draw themselves.
+      for (const w of wax) {
+        const len = w.p.getTotalLength();
+        w.p.setAttribute("stroke-dasharray", `${n3(len)} ${n3(len)}`);
+        w.p.setAttribute("stroke-dashoffset", n3(len));
+        w.len = len;
+      }
+
+      // Animated values, read by update() on every frame.
+      S = {
+        kel: { o: 1, s: 1, glow: 0.1 },
+        gun: { y: 1, blur: 5, sx: 1, o: 1 },
+        figs: [{ dx: 1, blur: 6, o: 0 }, { dx: 1, blur: 6, o: 0 }],
+        kites: L.kitesA.map((a, i) => ({ x: a.x - (i ? -1 : 1) * W * 0.12, y: H + a.s * 1.3, s: a.s })),
+        panel: { sy: 0, o: 0 },
+        land: { y: u * 0.06 },
+      };
+      R = { L, kel, kites, panel, land, sunG, world };
+
+      tl = gsap.timeline({ repeat: -1, onUpdate: update });
+      tl.set({}, {}, LOOP);
+      // 1. Wayang kulit: lamp comes up, the tree of life is planted, two puppets step in.
+      tl.fromTo(S.kel, { glow: 0.1 }, { glow: 0.45, duration: 0.8, ease: "sine.out" }, 0)
+        .fromTo(S.gun, { y: 1, blur: 5 }, { y: 0, blur: 0, duration: 1.1, ease: "power3.out" }, 0.05)
+        .fromTo(S.figs, { dx: 1, blur: 7, o: 0 }, { dx: 0, blur: 0, o: 1, duration: 0.8, ease: "power2.out", stagger: 0.15 }, 0.9)
+        .fromTo(S.gun, { sx: 1 }, { sx: -1, duration: 0.3, ease: "power1.inOut", yoyo: true, repeat: 1, immediateRender: false }, 2.0)
+        .fromTo(S.kel, { glow: 0.45 }, { glow: 1, duration: 0.6, ease: "sine.in", immediateRender: false }, 2.6)
+        .fromTo([S.gun, ...S.figs], { o: 1 }, { o: 0, duration: 0.5, ease: "sine.in", immediateRender: false }, 2.75)
+        .fromTo(S.kel, { o: 1, s: 1 }, { o: 0, s: 1.18, duration: 0.7, ease: "power2.in", immediateRender: false }, 2.95);
+      // 2. The sky: land settles, kites rise, batik draws itself and dyes in.
+      tl.fromTo(S.land, { y: u * 0.06 }, { y: 0, duration: 1.2, ease: "power2.out" }, 3.0);
+      S.kites.forEach((k, i) => {
+        const a = L.kitesA[i], b = L.kitesB[i];
+        tl.fromTo(k, { x: a.x - (i ? -1 : 1) * W * 0.12, y: H + a.s * 1.3, s: a.s }, { x: a.x, y: a.y, duration: 1.7, ease: "power2.out" }, 3.2 + i * 0.35)
+          .to(k, { x: b.x, y: b.y, s: b.s, duration: 1.3, ease: "power2.inOut" }, 6.5 + i * 0.1);
+      });
+      const batikAt = 4.1;
+      for (const w of wax) {
+        const inCloud = w.p.closest("g").parentNode === clouds;
+        tl.fromTo(w.p, { attr: { "stroke-dashoffset": w.len } }, { attr: { "stroke-dashoffset": 0 }, duration: 0.7, ease: "sine.inOut" }, (inCloud ? 3.5 : batikAt) + w.order);
+      }
+      for (const fl of fills) {
+        const inCloud = fl.p.closest("g").parentNode === clouds;
+        tl.fromTo(fl.p, { attr: { "fill-opacity": 0 } }, { attr: { "fill-opacity": fl.max ?? 1 }, duration: 0.7, ease: "sine.out" }, (inCloud ? 4.2 : batikAt + 1.1) + fl.order);
+      }
+      for (const d of dyes) tl.fromTo(d.p, { attr: { "stroke-width": 0 } }, { attr: { "stroke-width": d.w }, duration: 0.6, ease: "sine.out" }, batikAt + 1 + d.order);
+      // 3. Songket frame unrolls, triangles rise, the title appears.
+      tl.fromTo(S.panel, { sy: 0.02, o: 0 }, { sy: 1, o: 1, duration: 0.7, ease: "power3.out" }, 6.8);
+      panel.tris.forEach((t) => {
+        const from = Math.abs(t.i - (t.n - 1) / 2);
+        tl.fromTo(t.g, { scaleY: 0, svgOrigin: `${t.cx} ${t.yb}` }, { scaleY: 1, duration: 0.35, ease: "back.out(2)" }, 7.15 + from * 0.05);
+      });
+      tl.fromTo(panel.lineEls, { opacity: 0, y: panel.fs * 0.35 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out", stagger: 0.15 }, 7.4);
+      if (panel.subEls.length) tl.fromTo(panel.subEls, { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "sine.out" }, 8.05);
+      // 4. Everything folds back into the dark screen, ready to loop.
+      tl.to(S.panel, { sy: 0.02, o: 0, duration: 0.5, ease: "power2.in" }, 10.7)
+        .set(S.gun, { y: 1, blur: 5, o: 1, sx: 1 }, 11)
+        .fromTo(S.kel, { o: 0, s: 1.18, glow: 0.1 }, { o: 1, s: 1, duration: 1, ease: "power2.out", immediateRender: false }, 11);
+    }
+
+    // Per-frame work: sways, flicker, puppet arms, kite strings and the gold glint.
+    function update() {
+      const t = tl.time();
+      const { L, kel, kites, panel, land, sunG } = R;
+
+      kel.g.setAttribute("opacity", n3(S.kel.o));
+      R.world.style.display = S.kel.o > 0.999 && S.kel.s < 1.001 ? "none" : "";
+      kel.g.style.display = S.kel.o < 0.005 ? "none" : "";
+      kel.g.setAttribute("transform", `translate(${W / 2} ${H / 2}) scale(${n3(S.kel.s)}) translate(${-W / 2} ${-H / 2})`);
+      const flicker = 0.07 * wave(t, 23) + 0.05 * wave(t, 37, 1) + 0.03 * wave(t, 61, 2);
+      kel.hotRect.setAttribute("opacity", n3(Math.max(0, Math.min(1, S.kel.glow + flicker))));
+
+      const setBlur = (wrap, node, b, id) => {
+        if (b > 0.05) { node.setAttribute("stdDeviation", n3(b * u * 0.004)); wrap.setAttribute("filter", `url(#${id})`); }
+        else wrap.removeAttribute("filter");
+      };
+      const G = kel.gun;
+      const gsway = 3 * wave(t, 6);
+      G.wrap.setAttribute("opacity", n3(S.gun.o));
+      setBlur(G.wrap, G.blur, S.gun.blur, "mh-gblur");
+      G.inner.setAttribute("transform", `translate(${n3(G.x)} ${n3(G.base + S.gun.y * G.drop)}) rotate(${n3(gsway)}) scale(${n3(G.s * S.gun.sx)} ${n3(G.s)}) translate(0 -0.82)`);
+
+      kel.figs.forEach((F, i) => {
+        const st = S.figs[i];
+        F.wrap.setAttribute("opacity", n3(st.o));
+        if (st.o < 0.005) return;
+        setBlur(F.wrap, F.blur, st.blur, `mh-fblur${i}`);
+        const fx = F.x - F.side * st.dx * F.s * 0.5, bob = F.s * 0.015 * wave(t, 8, F.phase);
+        F.inner.setAttribute("transform", `translate(${n3(fx)} ${n3(F.base + bob)}) scale(${n3(F.side * F.s)} ${n3(F.s)}) translate(0 -1)`);
+        // Arms: angles from straight down, positive is forward.
+        const dir = (a) => [Math.sin(rad(a)), Math.cos(rad(a))];
+        const pose = (sh, a1, a2, up, fo) => {
+          const e = [sh[0] + dir(a1)[0] * 0.36, sh[1] + dir(a1)[1] * 0.36];
+          up.setAttribute("transform", `translate(${P(sh)}) rotate(${n3(-a1)})`);
+          fo.setAttribute("transform", `translate(${P(e)}) rotate(${n3(-a2)})`);
+          return [e[0] + dir(a2)[0] * 0.4, e[1] + dir(a2)[1] * 0.4];
+        };
+        const w1 = wave(t, 9, F.phase), w2 = wave(t, 9, F.phase + 1.2);
+        const hf = pose([0.02, -0.29], 30 + 22 * w1, 95 + 30 * w2, F.armFront, F.foreFront);
+        const hb = pose([-0.05, -0.28], -8 + 6 * w2, 25 + 10 * w1, F.armBack, F.foreBack);
+        const toPx = ([x, y]) => [fx + F.side * F.s * x, F.base + bob + F.s * (y - 1)];
+        const foot = toPx([0.04, 0.5]);
+        let d = `M${P(foot)}L${P([foot[0] - F.side * F.s * 0.05, kel.K.y + kel.K.h + 4])}`;
+        for (const h of [hf, hb]) {
+          const a = toPx(h);
+          d += `M${P(a)}L${P([a[0] - F.side * F.s * 0.12, kel.K.y + kel.K.h + 4])}`;
+        }
+        F.rods.setAttribute("d", d);
+      });
+
+      land.setAttribute("transform", `translate(0 ${n3(S.land.y)})`);
+      sunG.setAttribute("transform", `translate(0 ${n3(S.land.y * 1.6)})`);
+
+      kites.forEach((k, i) => {
+        const st = S.kites[i];
+        const rot = 5 * wave(t, 3, i * 2) + 2 * wave(t, 8, i);
+        const x = st.x + st.s * 0.08 * wave(t, 2, i * 3), y = st.y + st.s * 0.06 * wave(t, 4, i);
+        k.g.setAttribute("transform", `translate(${n3(x)} ${n3(y)}) rotate(${n3(rot)}) scale(${n3(st.s)})`);
+        k.tassels.forEach((tas, j) => tas.g.setAttribute("transform", `translate(${tas.side * 0.86} -0.6) rotate(${n3(-rot * 0.8 + 14 * wave(t, 20, i + j * 2) + tas.side * 8)})`));
+        const b = polar(st.s * 0.08, 90 + rot, [x, y]);
+        const side = i ? 1 : -1, a = [st.x + side * W * 0.18, H + u * 0.05];
+        const c = [(b[0] + a[0]) / 2 - side * u * 0.06, (b[1] + a[1]) / 2 + u * 0.02];
+        k.str.setAttribute("d", `M${P(b)}Q${P(c)} ${P(a)}`);
+      });
+
+      const pg = panel.g, p = L.panel;
+      pg.setAttribute("opacity", n3(S.panel.o));
+      pg.style.display = S.panel.o < 0.005 ? "none" : "";
+      pg.setAttribute("transform", `translate(0 ${n3(p.y)}) scale(1 ${n3(Math.max(0.001, S.panel.sy))}) translate(0 ${n3(-p.y)})`);
+      const glint = ((t % 3) / 3) * 2.6 - 1.3;
+      document.getElementById("mh-gold").setAttribute("gradientTransform", `translate(${n3(glint * p.w)} ${n3(glint * p.h)})`);
+    }
+
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    // Reduced motion: one still frame with the title, kites and batik in place.
+    function apply() {
+      if (reduce.matches) tl.pause(STILL);
+      else tl.play();
+      update();
+    }
+    reduce.addEventListener("change", apply);
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        const at = tl.time();
+        tl.kill();
+        build();
+        tl.time(at);
+        apply();
+      }, 150);
+    });
+
+    // Wait briefly for the fonts so the title is measured in the right face.
+    Promise.race([
+      Promise.all([document.fonts.load("700 1em Cinzel"), document.fonts.load("700 1em Nunito")]),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(() => { build(); apply(); });
+  </script>
+</body>
+</html>

@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kopitiam demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/cabin-sketch@5.3.0/700.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/caveat@5.3.0/700.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=f4e8c8&ink=263229&accent=3f8f6b&accent2=f5d677 */
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #f4e8c8;
+    }
+
+    svg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .title {
+      font-family: "Cabin Sketch", "Comic Sans MS", cursive;
+      font-weight: 700;
+    }
+
+    .menu {
+      font-family: "Caveat", "Comic Sans MS", cursive;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <svg id="scene" role="img" xmlns="http://www.w3.org/2000/svg"></svg>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => "#" + (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const C = {
+      wall: hex("bg", "f4e8c8"),
+      board: hex("ink", "263229"),
+      green: hex("accent", "3f8f6b"),
+      chalkHi: hex("accent2", "f5d677"),
+      chalk: "#f7f3e8",
+      cream: "#f1e6c8",
+      grout: "#d8cba8",
+      wood: "#8b5a36",
+      woodDark: "#5c381f",
+      marble: "#f8f6f0",
+      marbleEdge: "#d9d3c6",
+      vein: "#b4ada2",
+      tea: "#b77a47",
+      teaDark: "#8a5531",
+      teaLight: "#dcae7c",
+      froth: "#efdcb9",
+      cup: "#fdfcf6",
+      cupShade: "#d9d4c6",
+      skin: "#9a6440",
+      skinDark: "#6e4127",
+      toast: "#dea059",
+      crust: "#9c5b27",
+      kaya: "#8f7a2e",
+      butter: "#f8e19b",
+      yolk: "#f3a51c",
+      soy: "#3e2716",
+      blade: "#e2d4b3",
+      bladeDark: "#a8966f",
+    };
+    document.body.style.background = C.wall;
+    const title = (params.get("text") || "Pagi yang sempurna").trim().slice(0, 48);
+    const MENU = [["Teh tarik", "RM2.50"], ["Kopi O", "RM1.80"], ["Roti bakar kaya", "RM3.20"], ["Telur separuh masak", "RM2.80"]];
+
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.getElementById("scene");
+    svg.setAttribute("aria-label", `A sunny kopitiam morning: a chalkboard menu writes "${title}", teh tarik is pulled and kaya toast is served`);
+
+    function el(name, attrs, parent) {
+      const node = document.createElementNS(NS, name);
+      for (const key in attrs) node.setAttribute(key, attrs[key]);
+      if (parent) parent.append(node);
+      return node;
+    }
+    const n = (v) => +v.toFixed(2);
+    const P = (x, y) => `${n(x)} ${n(y)}`;
+    const TAU = Math.PI * 2;
+    const LOOP = 12, STILL = 6.3;
+    // A wave that repeats a whole number of times per loop, so the loop is seamless.
+    const wave = (t, cycles, phase = 0) => Math.sin(TAU * ((t * cycles) / LOOP + phase));
+    const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+    const frac = (v) => v - Math.floor(v);
+    const rot = (x, y, deg) => {
+      const a = (deg * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
+      return [x * c - y * s, x * s + y * c];
+    };
+
+    // Chalk texture: mostly solid with small dusty gaps, made once per colour.
+    function chalkTexture(color) {
+      const size = 64, c = document.createElement("canvas");
+      c.width = c.height = size;
+      const g = c.getContext("2d"), img = g.createImageData(size, size);
+      const rgb = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16));
+      for (let i = 0; i < img.data.length; i += 4) {
+        const v = Math.random();
+        img.data[i] = rgb[0];
+        img.data[i + 1] = rgb[1];
+        img.data[i + 2] = rgb[2];
+        img.data[i + 3] = v < 0.22 ? 30 + v * 250 : 200 + Math.random() * 55;
+      }
+      g.putImageData(img, 0, 0);
+      return c.toDataURL();
+    }
+    const chalkWhite = chalkTexture(C.chalk), chalkYellow = chalkTexture(C.chalkHi);
+
+    // Seeded random, so shapes stay the same after a resize.
+    let seed = 7;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+
+    let W, H, u, k, L, S, R, tl;
+
+    // Where everything goes, for tall, square-ish and wide windows.
+    function layout() {
+      const a = W / H;
+      let o;
+      if (a < 0.9) {
+        o = {
+          fan: { x: W * 0.5, y: H * 0.065, r: Math.min(W * 0.36, H * 0.2) },
+          board: { x: W * 0.06, y: H * 0.13, w: W * 0.58, h: H * 0.3 },
+          win: { x: W * 0.74, y: H * 0.15, w: W * 0.34, h: H * 0.27 },
+          tileY: H * 0.47,
+          table: { cx: W * 0.5, top: H * 0.61, rx: W * 0.74 },
+          k: Math.min(W * 0.2, H * 0.11),
+        };
+      } else if (a < 1.3) {
+        o = {
+          fan: { x: W * 0.52, y: H * 0.07, r: Math.min(W * 0.3, H * 0.26) },
+          board: { x: W * 0.05, y: H * 0.13, w: W * 0.5, h: H * 0.36 },
+          win: { x: W * 0.72, y: H * 0.13, w: W * 0.34, h: H * 0.33 },
+          tileY: H * 0.5,
+          table: { cx: W * 0.52, top: H * 0.6, rx: W * 0.74 },
+          k: Math.min(W * 0.16, H * 0.14),
+        };
+      } else {
+        o = {
+          fan: { x: W * 0.3, y: H * 0.075, r: Math.min(W * 0.17, H * 0.3) },
+          board: { x: W * 0.05, y: H * 0.17, w: Math.min(W * 0.36, H * 0.72), h: H * 0.47 },
+          win: { x: W * 0.8, y: H * 0.08, w: W * 0.24, h: H * 0.44 },
+          tileY: H * 0.46,
+          table: { cx: W * 0.56, top: H * 0.6, rx: W * 0.62 },
+          k: Math.min(H * 0.17, W * 0.1),
+        };
+      }
+      const T = o.table;
+      T.ry = Math.min(T.rx * 0.34, H * 0.2);
+      T.cy = T.top + T.ry;
+      // Props sit on the table top.
+      o.mugAt = [T.cx + T.rx * 0.08, T.cy - T.ry * 0.42];
+      o.cupAt = [T.cx - T.rx * 0.36, T.cy - T.ry * 0.02];
+      o.eggAt = [T.cx + T.rx * 0.4, T.cy + T.ry * 0.05];
+      o.toastAt = [T.cx - T.rx * 0.02, T.cy + T.ry * 0.5];
+      // Tall and square frames: move the low mug right so the stream clears the menu.
+      if (a < 0.9) {
+        o.mugAt = [T.cx + T.rx * 0.2, T.cy - T.ry * 0.42];
+        o.eggAt = [T.cx + T.rx * 0.46, T.cy + T.ry * 0.28];
+        o.toastAt = [T.cx - T.rx * 0.08, T.cy + T.ry * 0.5];
+      } else if (a < 1.3) {
+        o.mugAt = [T.cx + T.rx * 0.14, T.cy - T.ry * 0.42];
+      }
+      return o;
+    }
+
+    // ---------- Props, drawn in units of k with the table contact point at 0 0 ----------
+
+    // Tall aluminium pulling mug. front=true draws only the rim and froth (in front of the stream).
+    function drawSteelMug(g, withFroth) {
+      el("path", { d: "M0.62 -0.86 C0.9 -0.84 0.92 -0.28 0.6 -0.22", fill: "none", stroke: "#8d949b", "stroke-width": 0.1, "stroke-linecap": "round" }, g);
+      el("path", { d: "M-0.37 -1 L-0.33 -0.04 Q0 0.04 0.33 -0.04 L0.37 -1 Z", fill: "url(#kt-steel)" }, g);
+      el("path", { d: "M-0.33 -0.12 Q0 -0.05 0.33 -0.12", fill: "none", stroke: "#7c838a", "stroke-width": 0.03 }, g);
+      el("ellipse", { cx: 0, cy: -1, rx: 0.37, ry: 0.085, fill: "#5e656c" }, g);
+      if (withFroth) {
+        el("ellipse", { cx: 0, cy: -1, rx: 0.33, ry: 0.065, fill: C.tea }, g);
+      }
+    }
+
+    function drawCup(g) {
+      // Saucer
+      el("ellipse", { cx: 0, cy: 0.02, rx: 0.86, ry: 0.22, fill: C.cupShade }, g);
+      el("ellipse", { cx: 0, cy: -0.02, rx: 0.84, ry: 0.2, fill: C.cup }, g);
+      el("ellipse", { cx: 0, cy: -0.02, rx: 0.78, ry: 0.17, fill: "none", stroke: C.green, "stroke-width": 0.035 }, g);
+      el("ellipse", { cx: 0, cy: -0.04, rx: 0.42, ry: 0.09, fill: C.cupShade }, g);
+      // Handle
+      el("path", { d: "M0.46 -0.58 C0.86 -0.62 0.86 -0.2 0.36 -0.2", fill: "none", stroke: C.cup, "stroke-width": 0.14, "stroke-linecap": "round" }, g);
+      el("path", { d: "M0.46 -0.58 C0.86 -0.62 0.86 -0.2 0.36 -0.2", fill: "none", stroke: C.cupShade, "stroke-width": 0.03, "stroke-linecap": "round", transform: "translate(0.03 0.03)" }, g);
+      // Thick body, a little flared
+      el("path", { d: "M-0.56 -0.7 C-0.54 -0.35 -0.44 -0.1 -0.32 -0.06 Q0 0.02 0.32 -0.06 C0.44 -0.1 0.54 -0.35 0.56 -0.7 Z", fill: "url(#kt-cup)" }, g);
+      // Green rim band and a thin red line under it
+      el("path", { d: "M-0.555 -0.62 Q0 -0.48 0.555 -0.62", fill: "none", stroke: C.green, "stroke-width": 0.065 }, g);
+      el("path", { d: "M-0.545 -0.54 Q0 -0.4 0.545 -0.54", fill: "none", stroke: "#c8463a", "stroke-width": 0.022 }, g);
+      // Thick rim and the tea
+      el("ellipse", { cx: 0, cy: -0.7, rx: 0.56, ry: 0.14, fill: C.cup, stroke: C.cupShade, "stroke-width": 0.015 }, g);
+      el("ellipse", { cx: 0, cy: -0.69, rx: 0.45, ry: 0.1, fill: C.tea }, g);
+      el("ellipse", { cx: -0.04, cy: -0.7, rx: 0.3, ry: 0.06, fill: C.teaLight, opacity: 0.7 }, g);
+      el("ellipse", { cx: -0.12, cy: -0.71, rx: 0.1, ry: 0.025, fill: "#f3dcbc", opacity: 0.8 }, g);
+    }
+
+    function drawToast(g) {
+      // Plate with a green rim
+      el("ellipse", { cx: 0, cy: 0.03, rx: 1.12, ry: 0.3, fill: C.cupShade }, g);
+      el("ellipse", { cx: 0, cy: 0, rx: 1.1, ry: 0.28, fill: C.cup }, g);
+      el("ellipse", { cx: 0, cy: 0, rx: 0.98, ry: 0.23, fill: "none", stroke: C.green, "stroke-width": 0.04 }, g);
+      // One stack: toast, kaya, a thick slab of cold butter, kaya, toast.
+      const stack = (x, y, w, lean) => {
+        const s = el("g", { transform: `translate(${x} ${y}) rotate(${lean})` }, g);
+        const layer = (y0, h, fill, inset = 0, stroke) => el("rect", { x: -w / 2 + inset, y: y0 - h, width: w - inset * 2, height: h, rx: 0.03, fill, stroke: stroke || "none", "stroke-width": 0.02 }, s);
+        layer(0, 0.12, C.toast, 0, C.crust);
+        layer(-0.12, 0.035, C.kaya, 0.02);
+        layer(-0.155, 0.1, C.butter, 0.14);
+        layer(-0.255, 0.03, C.kaya, 0.03);
+        layer(-0.285, 0.12, C.toast, 0, C.crust);
+        // Top face with charcoal grill marks
+        el("path", { d: `M${-w / 2} -0.405 L${-w / 2 + 0.12} -0.5 L${w / 2 + 0.12} -0.5 L${w / 2} -0.405 Z`, fill: "#e8b270", stroke: C.crust, "stroke-width": 0.02 }, s);
+        for (let i = 1; i < 5; i++) {
+          const gx = -w / 2 + (w * i) / 5;
+          el("path", { d: `M${gx} -0.41 L${gx + 0.1} -0.49`, stroke: "#8a4b1e", "stroke-width": 0.03, opacity: 0.6 }, s);
+        }
+        // Kaya dripping a little
+        el("path", { d: `M${-w * 0.2} -0.12 q0.03 0.06 0.06 0`, fill: C.kaya }, s);
+      };
+      stack(-0.34, -0.02, 0.9, 0);
+      stack(0.46, 0.02, 0.8, 8);
+    }
+
+    function drawEggs(g) {
+      // Two cracked shells beside the bowl
+      const shell = (x, y, r) => el("path", { d: `M${x - 0.16 * r} ${y} Q${x} ${y + 0.16 * r} ${x + 0.16 * r} ${y} l-0.04 -0.05 l-0.04 0.04 l-0.04 -0.05 l-0.04 0.04 l-0.04 -0.05 Z`, fill: "#f2dfc4", stroke: "#cdb591", "stroke-width": 0.015 }, g);
+      shell(0.68, -0.04, 1.3);
+      shell(0.56, 0.08, 1.1);
+      // Small bowl with a green band
+      el("path", { d: "M-0.56 -0.44 C-0.52 -0.1 -0.3 0 0 0 C0.3 0 0.52 -0.1 0.56 -0.44 Z", fill: "url(#kt-cup)" }, g);
+      el("path", { d: "M-0.53 -0.33 Q0 -0.18 0.53 -0.33", fill: "none", stroke: C.green, "stroke-width": 0.04 }, g);
+      el("ellipse", { cx: 0, cy: -0.44, rx: 0.56, ry: 0.15, fill: C.cup, stroke: C.cupShade, "stroke-width": 0.015 }, g);
+      el("ellipse", { cx: 0, cy: -0.43, rx: 0.48, ry: 0.115, fill: "#efe7d2" }, g);
+      // Soft whites, two runny yolks, soy sauce and white pepper
+      el("path", { d: "M-0.4 -0.44 C-0.36 -0.54 -0.08 -0.53 0.02 -0.5 C0.2 -0.56 0.4 -0.5 0.38 -0.42 C0.36 -0.35 0.1 -0.34 -0.02 -0.37 C-0.2 -0.33 -0.42 -0.36 -0.4 -0.44 Z", fill: "#faf6ea", opacity: 0.95 }, g);
+      el("ellipse", { cx: -0.16, cy: -0.45, rx: 0.12, ry: 0.055, fill: C.yolk }, g);
+      el("ellipse", { cx: 0.16, cy: -0.44, rx: 0.11, ry: 0.05, fill: C.yolk }, g);
+      el("ellipse", { cx: -0.19, cy: -0.465, rx: 0.04, ry: 0.015, fill: "#ffe1a0" }, g);
+      el("ellipse", { cx: 0.13, cy: -0.455, rx: 0.035, ry: 0.013, fill: "#ffe1a0" }, g);
+      el("path", { d: "M-0.3 -0.4 C-0.1 -0.36 0.1 -0.42 0.3 -0.37", fill: "none", stroke: C.soy, "stroke-width": 0.035, "stroke-linecap": "round", opacity: 0.85 }, g);
+      for (let i = 0; i < 9; i++) el("circle", { cx: -0.3 + rand() * 0.6, cy: -0.5 + rand() * 0.12, r: 0.009, fill: "#6b5a48" }, g);
+    }
+
+    // Steam: a few soft wisps, reshaped every frame.
+    function makeSteam(parent, count, spread) {
+      const g = el("g", { fill: "none", stroke: "url(#kt-steam)", "stroke-linecap": "round" }, parent);
+      return Array.from({ length: count }, (_, i) => ({ p: el("path", { "stroke-width": 0.07 }, g), x: (i - (count - 1) / 2) * spread, ph: i * 0.37 }));
+    }
+    function steamPath(w, t, top) {
+      let d = "";
+      for (let j = 0; j <= 8; j++) {
+        const y = top - j * 0.17;
+        const x = w.x + Math.sin(j * 0.9 - TAU * (t / 1.5) + w.ph * 6) * 0.06 * (0.3 + j * 0.12);
+        d += (j ? "L" : "M") + P(x, y);
+      }
+      return d;
+    }
+
+    // ---------- Build the scene ----------
+    function build() {
+      W = innerWidth;
+      H = innerHeight;
+      u = Math.min(W, H);
+      seed = 7;
+      svg.replaceChildren();
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      L = layout();
+      k = L.k;
+      const T = L.table, B = L.board, Wn = L.win;
+      const defs = el("defs", {}, svg);
+      const grad = (tag, id, attrs, stops) => {
+        const g = el(tag, { id, ...attrs }, defs);
+        stops.forEach(([o, c, a = 1]) => el("stop", { offset: o, "stop-color": c, "stop-opacity": a }, g));
+        return g;
+      };
+      grad("linearGradient", "kt-steel", { x1: 0, y1: 0, x2: 1, y2: 0 }, [[0, "#7a8188"], [0.25, "#eef1f3"], [0.45, "#c3c9ce"], [0.8, "#9aa1a8"], [1, "#6c737a"]]);
+      grad("linearGradient", "kt-cup", { x1: 0, y1: 0, x2: 1, y2: 0 }, [[0, "#e4dfd2"], [0.3, "#ffffff"], [0.75, "#f6f3ea"], [1, "#d6d0c1"]]);
+      grad("linearGradient", "kt-steam", { gradientUnits: "userSpaceOnUse", x1: 0, y1: -0.7, x2: 0, y2: -2.2 }, [[0, "#ffffff", 0], [0.2, "#ffffff", 0.55], [1, "#ffffff", 0]]);
+      grad("radialGradient", "kt-marble", { cx: 0.38, cy: 0.3, r: 0.8 }, [[0, "#ffffff"], [0.6, C.marble], [1, "#e6e1d6"]]);
+      grad("radialGradient", "kt-board", { cx: 0.4, cy: 0.35, r: 0.8 }, [[0, "#35443a"], [1, C.board]]);
+      grad("radialGradient", "kt-glow", {}, [[0, "#fff4d2", 0.75], [1, "#fff4d2", 0]]);
+      grad("radialGradient", "kt-patch", {}, [[0, "#fff1c8", 0.8], [0.6, "#fff1c8", 0.35], [1, "#fff1c8", 0]]);
+      grad("radialGradient", "kt-vignette", { r: 0.75 }, [[0.55, "#5a3418", 0], [1, "#5a3418", 0.28]]);
+      grad("linearGradient", "kt-sky", { x1: 0, y1: 0, x2: 0, y2: 1 }, [[0, "#fff9e6"], [1, "#ffe6a6"]]);
+      const streamG = grad("linearGradient", "kt-stream", { gradientUnits: "userSpaceOnUse" }, [[0, "#c68a55"], [0.5, C.tea], [1, "#a86c3c"]]);
+      // Sunbeams run from the window down to the left.
+      const dir = [-1, 0.78], dl = Math.hypot(...dir), d = [dir[0] / dl, dir[1] / dl];
+      const beamLen = Math.hypot(W, H) * 1.1;
+      const bx0 = Wn.x + Wn.w * 0.3, by0 = Wn.y + Wn.h * 0.5;
+      grad("linearGradient", "kt-beam", { gradientUnits: "userSpaceOnUse", x1: bx0, y1: by0, x2: bx0 + d[0] * beamLen * 0.8, y2: by0 + d[1] * beamLen * 0.8 }, [[0, "#fff3cf", 0.55], [0.5, "#fff3cf", 0.22], [1, "#fff3cf", 0]]);
+      const pat = (id, img) => {
+        const p = el("pattern", { id, width: 40, height: 40, patternUnits: "userSpaceOnUse" }, defs);
+        el("image", { href: img, width: 40, height: 40 }, p);
+      };
+      pat("kt-chalk", chalkWhite);
+      pat("kt-chalk-hi", chalkYellow);
+
+      // Wall, warm near the window
+      el("rect", { width: W, height: H, fill: C.wall }, svg);
+      el("ellipse", { cx: Wn.x + Wn.w * 0.3, cy: Wn.y + Wn.h * 0.5, rx: u * 0.7, ry: u * 0.6, fill: "url(#kt-glow)" }, svg);
+
+      // Retro green and cream tiles, with a dark green trim on top
+      const ts = Math.max(8, u * 0.055);
+      const tp = el("pattern", { id: "kt-tiles", width: ts * 2, height: ts * 2, patternUnits: "userSpaceOnUse", y: L.tileY }, defs);
+      [[0, 0, C.green], [ts, 0, C.cream], [0, ts, C.cream], [ts, ts, C.green]].forEach(([x, y, c]) => {
+        el("rect", { x, y, width: ts, height: ts, fill: c, stroke: C.grout, "stroke-width": Math.max(0.6, ts * 0.06) }, tp);
+        el("rect", { x: x + ts * 0.14, y: y + ts * 0.14, width: ts * 0.3, height: ts * 0.08, fill: "#ffffff", opacity: 0.25 }, tp);
+      });
+      el("rect", { x: 0, y: L.tileY, width: W, height: H - L.tileY, fill: "url(#kt-tiles)" }, svg);
+      el("rect", { x: 0, y: L.tileY - ts * 0.35, width: W, height: ts * 0.45, fill: "#2c6a50" }, svg);
+      el("rect", { x: 0, y: L.tileY - ts * 0.35, width: W, height: ts * 0.1, fill: "#ffffff", opacity: 0.2 }, svg);
+      // Floor, only seen below the table in tall frames
+      const floorY = T.cy + T.ry * 0.55;
+      if (floorY < H) {
+        el("rect", { x: 0, y: floorY, width: W, height: H - floorY, fill: "#bda988" }, svg);
+        el("rect", { x: 0, y: floorY, width: W, height: Math.max(1, u * 0.008), fill: "#8f7b5c" }, svg);
+        for (let i = 0; i < 60; i++) el("circle", { cx: rand() * W, cy: floorY + rand() * (H - floorY), r: u * (0.002 + rand() * 0.003), fill: rand() > 0.5 ? "#8e7c60" : "#e4d6bb" }, svg);
+      }
+
+      // Louvred window: bright morning sky behind glass slats and an iron grille
+      const win = el("g", {}, svg);
+      const fwn = Math.max(3, Wn.w * 0.07);
+      el("rect", { x: Wn.x - fwn, y: Wn.y - fwn, width: Wn.w + fwn * 2, height: Wn.h + fwn * 2, rx: fwn * 0.3, fill: "#2f6f55" }, win);
+      el("rect", { x: Wn.x, y: Wn.y, width: Wn.w, height: Wn.h, fill: "url(#kt-sky)" }, win);
+      // A palm frond silhouette outside
+      el("path", { d: `M${P(Wn.x + Wn.w * 0.9, Wn.y + Wn.h)} Q${P(Wn.x + Wn.w * 0.6, Wn.y + Wn.h * 0.4)} ${P(Wn.x + Wn.w * 0.15, Wn.y + Wn.h * 0.2)}`, fill: "none", stroke: "#b8c79a", "stroke-width": Math.max(1, Wn.w * 0.02) }, win);
+      for (let i = 1; i < 9; i++) {
+        const tt = i / 9, px = Wn.x + Wn.w * (0.9 - 0.75 * tt), py = Wn.y + Wn.h * (1 - 0.8 * tt + 0.25 * tt * tt);
+        el("path", { d: `M${P(px, py)} l${P(-Wn.w * 0.05, Wn.h * 0.14)} M${P(px, py)} l${P(Wn.w * 0.1, -Wn.h * 0.05)}`, stroke: "#c3d0a5", "stroke-width": Math.max(1, Wn.w * 0.018), "stroke-linecap": "round" }, win);
+      }
+      const slats = 7, sh = Wn.h / slats;
+      for (let i = 0; i < slats; i++) {
+        const y = Wn.y + i * sh;
+        el("path", { d: `M${P(Wn.x, y + sh * 0.15)} L${P(Wn.x + Wn.w, y)} L${P(Wn.x + Wn.w, y + sh * 0.62)} L${P(Wn.x, y + sh * 0.78)} Z`, fill: "#d9ece2", opacity: 0.45 }, win);
+        el("path", { d: `M${P(Wn.x, y + sh * 0.78)} L${P(Wn.x + Wn.w, y + sh * 0.62)}`, stroke: "#ffffff", "stroke-width": Math.max(0.8, sh * 0.06), opacity: 0.8 }, win);
+      }
+      for (let i = 1; i < 4; i++) el("rect", { x: Wn.x + (Wn.w * i) / 4 - fwn * 0.12, y: Wn.y, width: fwn * 0.24, height: Wn.h, fill: "#34403a" }, win);
+      el("rect", { x: Wn.x - fwn * 1.3, y: Wn.y + Wn.h + fwn * 0.6, width: Wn.w + fwn * 2.6, height: fwn * 0.9, fill: "#27604a" }, win);
+
+      // Chalkboard
+      const board = el("g", {}, svg);
+      const fw = Math.min(B.w, B.h) * 0.055;
+      const ix = B.x + fw, iy = B.y + fw, iw = B.w - fw * 2, ih = B.h - fw * 2;
+      el("rect", { x: B.x + fw * 0.4, y: B.y + fw * 0.6, width: B.w, height: B.h, rx: fw * 0.4, fill: "#000", opacity: 0.18 }, board);
+      el("rect", { x: B.x, y: B.y, width: B.w, height: B.h, rx: fw * 0.4, fill: C.wood }, board);
+      el("rect", { x: B.x, y: B.y, width: B.w, height: fw * 0.35, rx: fw * 0.2, fill: "#b07a4d" }, board);
+      el("rect", { x: ix, y: iy, width: iw, height: ih, fill: "url(#kt-board)" }, board);
+      // Old chalk smudges
+      for (let i = 0; i < 4; i++) {
+        el("ellipse", { cx: ix + iw * (0.15 + rand() * 0.7), cy: iy + ih * (0.2 + rand() * 0.6), rx: iw * (0.12 + rand() * 0.12), ry: ih * 0.05, fill: "#ffffff", opacity: 0.035, transform: `rotate(${-8 + rand() * 16} ${ix + iw / 2} ${iy + ih / 2})` }, board);
+      }
+      // Chalk tray with two sticks
+      el("rect", { x: B.x - fw * 0.2, y: B.y + B.h - fw * 0.2, width: B.w + fw * 0.4, height: fw * 0.8, rx: fw * 0.2, fill: C.woodDark }, board);
+      el("rect", { x: ix + iw * 0.12, y: B.y + B.h - fw * 0.55, width: fw * 1.6, height: fw * 0.38, rx: fw * 0.15, fill: C.chalk }, board);
+      el("rect", { x: ix + iw * 0.22, y: B.y + B.h - fw * 0.55, width: fw * 1.1, height: fw * 0.38, rx: fw * 0.15, fill: C.chalkHi }, board);
+
+      // Board text: title on one or two lines, then the menu with prices.
+      const pad = iw * 0.07;
+      const eraseClip = el("clipPath", { id: "kt-erase" }, defs);
+      const eraseRect = el("rect", { x: ix, y: iy, width: iw, height: ih }, eraseClip);
+      const textG = el("g", { "clip-path": "url(#kt-erase)" }, board);
+      const probe = el("text", { class: "title", "font-size": 100 }, svg);
+      const measure = (s, cls) => { probe.setAttribute("class", cls); probe.textContent = s; return probe.getComputedTextLength() / 100; };
+      const words = title.split(/\s+/);
+      let best = { lines: [title], fs: 0 };
+      const titleH = ih * 0.4, availW = iw - pad * 2;
+      const tryLines = (lines) => {
+        const wmax = Math.max(...lines.map((x) => measure(x, "title")));
+        const fs = Math.min(availW / wmax, titleH / (lines.length * 1.05 + 0.25));
+        if (fs > best.fs) best = { lines, fs };
+      };
+      tryLines([title]);
+      for (let i = 1; i < words.length; i++) tryLines([words.slice(0, i).join(" "), words.slice(i).join(" ")]);
+      const lines = [];
+      const addLine = (x, y, str, size, cls, fill, anchor = "start") => {
+        const w = measure(str, cls) * size;
+        const x0 = anchor === "end" ? x - w : anchor === "middle" ? x - w / 2 : x;
+        const clip = el("clipPath", { id: `kt-line${lines.length}` }, defs);
+        const rect = el("rect", { x: x0 - size * 0.2, y: y - size * 1.1, width: 0, height: size * 1.5 }, clip);
+        const node = el("text", { class: cls, x, y, "font-size": size, fill, "text-anchor": anchor, "clip-path": `url(#kt-line${lines.length})` }, textG);
+        node.textContent = str;
+        const line = { rect, x0: x0 - size * 0.2, w: w + size * 0.4, y, size };
+        lines.push(line);
+        return line;
+      };
+      const tfs = best.fs;
+      const tTop = iy + pad * 0.7 + (titleH - best.lines.length * tfs * 1.05) / 2;
+      best.lines.forEach((s, i) => addLine(ix + iw / 2, tTop + tfs * (0.85 + i * 1.05), s, tfs, "title", "url(#kt-chalk)", "middle"));
+      // Wavy underline, drawn with a dash
+      const ulY = tTop + tfs * (best.lines.length * 1.05 + 0.2);
+      const ulW = Math.min(availW, Math.max(...best.lines.map((s) => measure(s, "title"))) * tfs) * 0.7;
+      let ud = `M${P(ix + iw / 2 - ulW / 2, ulY)}`;
+      for (let i = 1; i <= 6; i++) ud += ` Q${P(ix + iw / 2 - ulW / 2 + (ulW * (i - 0.5)) / 6, ulY + (i % 2 ? -1 : 1) * tfs * 0.08)} ${P(ix + iw / 2 - ulW / 2 + (ulW * i) / 6, ulY)}`;
+      const underline = el("path", { d: ud, fill: "none", stroke: "url(#kt-chalk-hi)", "stroke-width": Math.max(1, tfs * 0.07), "stroke-linecap": "round", pathLength: 1, "stroke-dasharray": "1 1", "stroke-dashoffset": 1 }, textG);
+      // Menu lines fit the rest of the board.
+      const menuTop = ulY + tfs * 0.3, menuH = iy + ih - pad * 0.5 - menuTop;
+      let mfs = (menuH / MENU.length) * 0.78;
+      for (const [a, b] of MENU) mfs = Math.min(mfs, availW / (measure(a, "menu") + measure(b, "menu") + 0.9));
+      const rowH = menuH / MENU.length;
+      MENU.forEach(([name, price], i) => {
+        const y = menuTop + rowH * (i + 0.5) + mfs * 0.32;
+        const nl = addLine(ix + pad, y, name, mfs, "menu", "url(#kt-chalk)");
+        const pl = addLine(ix + iw - pad, y, price, mfs, "menu", "url(#kt-chalk-hi)", "end");
+        // Dotted leader between name and price
+        const x1 = ix + pad + measure(name, "menu") * mfs + mfs * 0.25, x2 = ix + iw - pad - measure(price, "menu") * mfs - mfs * 0.25;
+        if (x2 > x1 + mfs * 0.3) {
+          const lead = el("path", { d: `M${P(x1, y - mfs * 0.08)} L${P(x2, y - mfs * 0.08)}`, stroke: C.chalk, opacity: 0.55, "stroke-width": Math.max(0.8, mfs * 0.07), "stroke-dasharray": `0 ${n(mfs * 0.22)}`, "stroke-linecap": "round", "clip-path": `url(#kt-line${lines.length - 2})` }, textG);
+          nl.w = x2 - nl.x0 + mfs * 0.1;
+          nl.rect.setAttribute("width", 0);
+        }
+        nl.menu = pl.menu = true;
+      });
+      probe.remove();
+      // Dusty wash left after the board is wiped
+      const smear = el("rect", { x: ix, y: iy, width: iw, height: ih, fill: "#ffffff", opacity: 0 }, board);
+      // Chalk stick and duster
+      const stick = el("g", { opacity: 0 }, board);
+      el("rect", { x: -tfs * 0.06, y: -tfs * 0.5, width: tfs * 0.14, height: tfs * 0.55, rx: tfs * 0.04, fill: C.chalk, transform: "rotate(25)" }, stick);
+      const duster = el("g", { opacity: 0 }, board);
+      const dw = Math.min(iw * 0.3, ih * 0.5), dh = dw * 0.36;
+      el("rect", { x: -dw / 2, y: -dh / 2, width: dw, height: dh, rx: dh * 0.2, fill: "#a8703f" }, duster);
+      el("rect", { x: -dw / 2, y: dh * 0.15, width: dw, height: dh * 0.35, rx: dh * 0.1, fill: "#e9e4d8" }, duster);
+
+      // Sunbeams through the louvres
+      const beams = el("g", {}, svg);
+      for (let i = 0; i < 4; i++) {
+        const y0 = Wn.y + Wn.h * (0.08 + i * 0.24), y1 = y0 + Wn.h * 0.13;
+        const x = bx0, spread = 1 + i * 0.06;
+        el("path", { d: `M${P(x, y0)} L${P(x, y1)} L${P(x + d[0] * beamLen, y1 + d[1] * beamLen * spread)} L${P(x + d[0] * beamLen, y0 + d[1] * beamLen)} Z`, fill: "url(#kt-beam)" }, beams);
+      }
+
+      // Round white marble table
+      const table = el("g", {}, svg);
+      if (T.cy + T.ry < H) {
+        el("rect", { x: T.cx - k * 0.22, y: T.cy, width: k * 0.44, height: H - T.cy, fill: "#3b332c" }, table);
+        el("rect", { x: T.cx - k * 0.22, y: T.cy, width: k * 0.1, height: H - T.cy, fill: "#5a4f45" }, table);
+      }
+      const th = T.ry * 0.12;
+      el("ellipse", { cx: T.cx, cy: T.cy + th, rx: T.rx, ry: T.ry, fill: "#8a6a4a" }, table);
+      el("ellipse", { cx: T.cx, cy: T.cy + th * 0.4, rx: T.rx, ry: T.ry, fill: C.marbleEdge }, table);
+      el("ellipse", { cx: T.cx, cy: T.cy, rx: T.rx, ry: T.ry, fill: "url(#kt-marble)" }, table);
+      const veinClip = el("clipPath", { id: "kt-top" }, defs);
+      el("ellipse", { cx: T.cx, cy: T.cy, rx: T.rx, ry: T.ry }, veinClip);
+      const veins = el("g", { "clip-path": "url(#kt-top)", fill: "none", stroke: C.vein, "stroke-linecap": "round" }, table);
+      for (let i = 0; i < 7; i++) {
+        let x = T.cx - T.rx + rand() * T.rx * 2, y = T.cy - T.ry + rand() * T.ry * 2;
+        let vd = `M${P(x, y)}`;
+        for (let j = 0; j < 6; j++) {
+          const nx = x + (rand() * 0.5 + 0.2) * T.rx * 0.22, ny = y + (rand() - 0.5) * T.ry * 0.3;
+          vd += ` Q${P((x + nx) / 2 + (rand() - 0.5) * T.rx * 0.05, (y + ny) / 2 + (rand() - 0.5) * T.ry * 0.2)} ${P(nx, ny)}`;
+          x = nx;
+          y = ny;
+        }
+        el("path", { d: vd, "stroke-width": Math.max(0.5, u * (0.001 + rand() * 0.0025)), opacity: 0.35 + rand() * 0.3 }, veins);
+      }
+      const patch = el("ellipse", { cx: T.cx - T.rx * 0.1, cy: T.cy - T.ry * 0.15, rx: T.rx * 0.55, ry: T.ry * 0.55, fill: "url(#kt-patch)" }, table);
+
+      // Props: each has a spot on the table and a group scaled by k.
+      const propLayer = el("g", {}, svg);
+      const makeProp = (at, scale, draw) => {
+        const g = el("g", {}, propLayer);
+        el("ellipse", { cx: 0, cy: 0.04, rx: 0.8, ry: 0.16, fill: "#5a4030", opacity: 0.14 }, g);
+        draw(g);
+        return { g, at, scale };
+      };
+      const mug = makeProp(L.mugAt, 1, (g) => drawSteelMug(g, true));
+      mug.steam = makeSteam(mug.g, 2, 0.2);
+      // The stream and froth sit between the mug body and the other props.
+      const pour = el("g", {}, svg);
+      const streamEdge = el("path", { fill: "none", stroke: C.teaDark, "stroke-width": k * 0.095, pathLength: 1 }, pour);
+      const stream = el("path", { fill: "none", stroke: "url(#kt-stream)", "stroke-width": k * 0.07, pathLength: 1 }, pour);
+      const glint = el("path", { fill: "none", stroke: "#f7e2c2", "stroke-width": k * 0.022, pathLength: 1, opacity: 0.85 }, pour);
+      const frothG = el("g", {}, svg);
+      const froth = el("path", { fill: C.froth }, frothG);
+      const bubbles = Array.from({ length: 7 }, (_, i) => el("circle", { fill: "#fbf1dc", stroke: "#d9bf93", "stroke-width": k * 0.006 }, frothG));
+      const drops = Array.from({ length: 5 }, () => el("circle", { fill: C.teaLight }, frothG));
+      const propLayer2 = el("g", {}, svg);
+      const cup = makeProp(L.cupAt, 1.25, drawCup);
+      propLayer2.append(cup.g);
+      cup.steam = makeSteam(cup.g, 3, 0.2);
+      const eggs = makeProp(L.eggAt, 1.2, drawEggs);
+      propLayer2.append(eggs.g);
+      const toast = makeProp(L.toastAt, 1.2, drawToast);
+      propLayer2.append(toast.g);
+      const props = [mug, cup, eggs, toast];
+
+      // The teh tarik puller's arm and the high mug
+      const armG = el("g", {}, svg);
+      const armEdge = el("path", { fill: "none", stroke: C.skinDark, "stroke-width": k * 0.36, "stroke-linecap": "round" }, armG);
+      const arm = el("path", { fill: "none", stroke: C.skin, "stroke-width": k * 0.3, "stroke-linecap": "round" }, armG);
+      const armHi = el("path", { fill: "none", stroke: "#b47c55", "stroke-width": k * 0.07, "stroke-linecap": "round", opacity: 0.7 }, armG);
+      // Rolled up shirt sleeve
+      const sleeveEdge = el("path", { fill: "none", stroke: "#c9c1b0", "stroke-width": k * 0.56 }, armG);
+      const sleeve = el("path", { fill: "none", stroke: "#f4f1ea", "stroke-width": k * 0.5 }, armG);
+      const cuff = el("path", { fill: "none", stroke: "#dcd5c6", "stroke-width": k * 0.05 }, armG);
+      const upMug = el("g", {}, armG);
+      drawSteelMug(upMug, false);
+      // Hand wrapped round the handle: back of the hand, four fingers and a thumb
+      const fist = el("g", {}, armG);
+      el("path", { d: "M-0.02 -0.2 C0.2 -0.24 0.34 -0.12 0.34 0 C0.34 0.14 0.2 0.22 -0.02 0.2 Z", fill: C.skin, stroke: C.skinDark, "stroke-width": 0.03 }, fist);
+      [-0.15, -0.05, 0.05, 0.15].forEach((y) => el("ellipse", { cx: -0.06, cy: y, rx: 0.09, ry: 0.055, fill: C.skin, stroke: C.skinDark, "stroke-width": 0.025 }, fist));
+      el("path", { d: "M0.12 -0.2 C0.02 -0.3 -0.14 -0.28 -0.16 -0.22", fill: "none", stroke: C.skinDark, "stroke-width": 0.1, "stroke-linecap": "round" }, fist);
+      el("path", { d: "M0.12 -0.2 C0.02 -0.3 -0.14 -0.28 -0.16 -0.22", fill: "none", stroke: C.skin, "stroke-width": 0.07, "stroke-linecap": "round" }, fist);
+
+      // Dust motes floating in the light
+      const motes = Array.from({ length: 26 }, (_, i) => ({
+        c: el("circle", { r: u * (0.0025 + rand() * 0.004), fill: "#fff8e0" }, svg),
+        a: rand(), b: rand(), sp: 1 + (i % 2), ph: rand(),
+      }));
+
+      // Ceiling fan
+      const fanG = el("g", {}, svg);
+      const F = L.fan;
+      el("rect", { x: F.x - k * 0.05, y: -2, width: k * 0.1, height: F.y - k * 0.1 + 2, fill: "#4e4034" }, fanG);
+      const blades = Array.from({ length: 3 }, () => el("path", { stroke: C.bladeDark, "stroke-width": Math.max(0.6, k * 0.012), "stroke-linejoin": "round" }, fanG));
+      const hub = el("g", {}, fanG);
+      el("path", { d: `M${P(F.x - k * 0.3, F.y - k * 0.14)} L${P(F.x + k * 0.3, F.y - k * 0.14)} L${P(F.x + k * 0.34, F.y + k * 0.06)} Q${P(F.x, F.y + k * 0.2)} ${P(F.x - k * 0.34, F.y + k * 0.06)} Z`, fill: "#e9dcbd", stroke: "#a08c66", "stroke-width": Math.max(0.6, k * 0.015) }, hub);
+      el("ellipse", { cx: F.x, cy: F.y - k * 0.14, rx: k * 0.3, ry: k * 0.06, fill: "#f5ecd6", stroke: "#a08c66", "stroke-width": Math.max(0.6, k * 0.012) }, hub);
+      el("path", { d: `M${P(F.x - k * 0.33, F.y)} Q${P(F.x, F.y + k * 0.12)} ${P(F.x + k * 0.33, F.y)}`, fill: "none", stroke: "#b8913f", "stroke-width": k * 0.035 }, hub);
+      el("ellipse", { cx: F.x, cy: F.y + k * 0.12, rx: k * 0.12, ry: k * 0.05, fill: "#6d5a45" }, hub);
+
+      el("rect", { width: W, height: H, fill: "url(#kt-vignette)", "pointer-events": "none" }, svg);
+
+      // Animated values, read by update() on every frame.
+      S = {
+        lines: lines.map(() => ({ p: 0 })),
+        under: { p: 0 },
+        erase: { p: 0, o: 0 },
+        smear: { o: 0 },
+        props: props.map(() => ({ y: 1 })),
+        arm: { out: 1, lift: 2.2, tilt: -15 },
+        flow: { p: 0 },
+        froth: { h: 0 },
+      };
+      R = { lines, underline, eraseRect, smear, stick, duster, ix, iy, iw, ih, beams, patch, props, streamEdge, stream, glint, streamG, froth, bubbles, drops, armEdge, arm, armHi, sleeveEdge, sleeve, cuff, upMug, fist, motes, blades, bx0, by0, d, beamLen, Wn };
+
+      tl = gsap.timeline({ repeat: -1, onUpdate: update });
+      tl.set({}, {}, LOOP);
+      // Breakfast is served: props slide up onto the table.
+      [0, 1, 2, 3].forEach((i, j) => tl.fromTo(S.props[i], { y: 1 }, { y: 0, duration: 0.6, ease: "back.out(2)" }, 0.2 + j * 0.22));
+      // Chalk writes the title, the underline, then each menu line.
+      let at = 0.35;
+      lines.forEach((line, i) => {
+        const dur = line.menu ? 0.42 : 0.75;
+        tl.fromTo(S.lines[i], { p: 0 }, { p: 1, duration: dur, ease: "none" }, at);
+        at += dur + (line.menu ? 0.02 : 0.05);
+        if (i === best.lines.length - 1) {
+          tl.fromTo(S.under, { p: 0 }, { p: 1, duration: 0.3, ease: "power1.inOut" }, at);
+          at += 0.4;
+        }
+      });
+      // Teh tarik: the arm comes in, tips the mug and pulls the stream long, three times.
+      const P0 = 2.4;
+      tl.fromTo(S.arm, { out: 1 }, { out: 0, duration: 0.8, ease: "power3.out" }, P0)
+        .fromTo(S.arm, { tilt: -15 }, { tilt: -104, duration: 0.45, ease: "power2.inOut", immediateRender: false }, P0 + 0.7)
+        .fromTo(S.flow, { p: 0 }, { p: 1, duration: 0.3, ease: "power1.in" }, P0 + 1.0)
+        .fromTo(S.froth, { h: 0 }, { h: 1, duration: 3.8, ease: "sine.inOut" }, P0 + 1.2);
+      const pulls = [4, 1.7, 4.2, 1.9, 3.6, 2.2];
+      let pt = P0 + 1.1;
+      pulls.forEach((lift, i) => {
+        tl.to(S.arm, { lift, duration: i % 2 ? 0.75 : 0.85, ease: "sine.inOut" }, pt);
+        pt += i % 2 ? 0.75 : 0.85;
+      });
+      tl.fromTo(S.flow, { p: 1 }, { p: 2, duration: 0.3, ease: "power1.in", immediateRender: false }, pt - 0.2)
+        .to(S.arm, { tilt: -15, duration: 0.45, ease: "power2.inOut" }, pt)
+        .to(S.arm, { out: 1, duration: 0.7, ease: "power2.in" }, pt + 0.5)
+        .set(S.arm, { lift: 2.2 }, pt + 1.3)
+        .set(S.flow, { p: 0 }, pt + 1.3);
+      // The board is wiped with the duster, then breakfast is cleared.
+      tl.fromTo(S.erase, { o: 0 }, { o: 1, duration: 0.2 }, 10.2)
+        .fromTo(S.erase, { p: 0 }, { p: 1, duration: 0.9, ease: "power1.inOut" }, 10.35)
+        .to(S.erase, { o: 0, duration: 0.2 }, 11.25)
+        .fromTo(S.smear, { o: 0 }, { o: 0.07, duration: 0.6 }, 10.4)
+        .to(S.smear, { o: 0, duration: 0.5 }, 11.3)
+        .set(S.lines, { p: 0 }, 11.4)
+        .set(S.under, { p: 0 }, 11.4)
+        .set(S.erase, { p: 0 }, 11.5)
+        .set(S.froth, { h: 0 }, 11.9);
+      [3, 2, 1, 0].forEach((i, j) => tl.to(S.props[i], { y: 1, duration: 0.5, ease: "power2.in" }, 10.9 + j * 0.15));
+    }
+
+    // Per-frame work: fan, steam, chalk, stream, dust and light.
+    function update() {
+      const t = tl.time();
+      const F = L.fan;
+
+      // Fan turns three times per loop.
+      const kf = 0.2, Rf = F.r;
+      R.blades.forEach((b, i) => {
+        const th = (t / LOOP) * 360 * 3 + i * 120;
+        const pts = [[0.2, 0.06], [0.45, 0.1], [0.97, 0.13], [1.02, 0.06], [1.0, -0.06], [0.95, -0.12], [0.45, -0.08], [0.2, -0.05]].map(([r, w]) => {
+          const [x, y] = rot(r * Rf, w * Rf, th);
+          return P(F.x + x, F.y + y * kf);
+        });
+        b.setAttribute("d", `M${pts.join(" L")} Z`);
+        const lit = 0.5 + 0.5 * Math.sin((th * Math.PI) / 180);
+        b.setAttribute("fill", lit > 0.5 ? C.blade : "#cdbf9d");
+      });
+
+      // Light breathes a little, dust drifts down the beams.
+      R.beams.setAttribute("opacity", n(0.85 + 0.15 * wave(t, 2)));
+      R.patch.setAttribute("opacity", n(0.85 + 0.15 * wave(t, 2)));
+      const { bx0, by0, d, beamLen, Wn } = R;
+      R.motes.forEach((m) => {
+        const along = frac(m.a + (t / LOOP) * m.sp);
+        const across = (m.b - 0.5) * Wn.h * 1.1 + wave(t, 3, m.ph) * u * 0.02;
+        const x = bx0 + d[0] * along * beamLen * 0.7 + wave(t, 2, m.ph) * u * 0.015;
+        const y = by0 + d[1] * along * beamLen * 0.7 + across;
+        m.c.setAttribute("cx", n(x));
+        m.c.setAttribute("cy", n(y));
+        const tw = 0.5 + 0.5 * wave(t, 6, m.ph);
+        m.c.setAttribute("opacity", n(Math.sin(Math.PI * along) * (0.35 + 0.55 * tw)));
+      });
+
+      // Props and their steam
+      R.props.forEach((p, i) => {
+        const [x, y] = p.at, s = k * p.scale;
+        // Served: each prop drops in from just above its spot and settles.
+        const e = S.props[i].y;
+        p.g.setAttribute("transform", `translate(${n(x)} ${n(y - e * s * 0.8)}) scale(${n(s * (1 - e * 0.15))})`);
+        p.g.setAttribute("opacity", n(clamp(1 - e * 1.4)));
+        p.g.style.display = e >= 0.7 ? "none" : "";
+        if (p.steam) p.steam.forEach((w) => w.p.setAttribute("d", steamPath(w, t + w.ph, p === R.props[0] ? -1.05 : -0.78)));
+      });
+
+      // Chalk writing: each line is revealed from left to right.
+      let writing = null;
+      R.lines.forEach((line, i) => {
+        const p = S.lines[i].p;
+        line.rect.setAttribute("width", n(line.w * p));
+        if (p > 0 && p < 1) writing = { x: line.x0 + line.w * p, y: line.y, p, size: line.size };
+      });
+      R.underline.setAttribute("stroke-dashoffset", n(1 - S.under.p));
+      if (writing) {
+        const bob = Math.sin(writing.p * 40) * writing.size * 0.18;
+        R.stick.setAttribute("transform", `translate(${n(writing.x)} ${n(writing.y - writing.size * 0.2 + bob)})`);
+        R.stick.setAttribute("opacity", 1);
+      } else R.stick.setAttribute("opacity", 0);
+
+      // Duster wipes from left to right.
+      const e = S.erase.p;
+      R.eraseRect.setAttribute("x", n(R.ix + R.iw * e));
+      R.eraseRect.setAttribute("width", n(R.iw * (1 - e) + 1));
+      R.duster.setAttribute("opacity", n(S.erase.o));
+      R.duster.setAttribute("transform", `translate(${n(R.ix + R.iw * e)} ${n(R.iy + R.ih * (0.5 + 0.3 * Math.sin(e * Math.PI * 6)))}) rotate(${n(8 * Math.cos(e * Math.PI * 6))})`);
+      R.smear.setAttribute("opacity", n(S.smear.o));
+
+      // Teh tarik stream from the high mug's lip down into the low mug.
+      const mugP = R.props[0], ms = k * mugP.scale;
+      const O2 = [mugP.at[0], mugP.at[1] - ms * 1.0];
+      // Keep the high mug and hand inside the frame.
+      const liftK = clamp((O2[1] - H * 0.03 - k * 0.95) / (4.2 * k), 0.3, 1);
+      const outX = S.arm.out * (W * 0.5 + k * 3), outY = -S.arm.out * (H * 0.4 + k * 3);
+      const lip = [O2[0] + k * 1.0 + outX, O2[1] - S.arm.lift * liftK * k + outY];
+      const lipLocal = rot(-0.37, -1, S.arm.tilt);
+      const origin = [lip[0] - lipLocal[0] * k, lip[1] - lipLocal[1] * k];
+      R.upMug.setAttribute("transform", `translate(${n(origin[0])} ${n(origin[1])}) rotate(${n(S.arm.tilt)}) scale(${n(k)})`);
+      const hl = rot(0.78, -0.55, S.arm.tilt);
+      const hand = [origin[0] + hl[0] * k, origin[1] + hl[1] * k];
+      R.fist.setAttribute("transform", `translate(${n(hand[0])} ${n(hand[1])}) rotate(${n(S.arm.tilt + 90)}) scale(${n(k)})`);
+      const wr = rot(0.3, 0, S.arm.tilt + 90);
+      const wrist = [hand[0] + wr[0] * k, hand[1] + wr[1] * k];
+      const sh = [Math.max(W + k, hand[0] + k * 3.6), hand[1] - k * 1.4];
+      const elbow = [hand[0] + k * 2, hand[1] + k * 0.2];
+      const ad = `M${P(...wrist)} Q${P(...elbow)} ${P(...sh)}`;
+      R.armEdge.setAttribute("d", ad);
+      R.arm.setAttribute("d", ad);
+      R.armHi.setAttribute("d", `M${P(wrist[0] + k * 0.1, wrist[1] - k * 0.09)} Q${P(elbow[0], elbow[1] - k * 0.11)} ${P(sh[0], sh[1] - k * 0.11)}`);
+      // The sleeve covers the last part of the arm.
+      const t0 = 0.62, qa = (a, b, c) => (1 - t0) ** 2 * a + 2 * t0 * (1 - t0) * b + t0 * t0 * c;
+      const s0 = [qa(wrist[0], elbow[0], sh[0]), qa(wrist[1], elbow[1], sh[1])];
+      const sc = [(1 - t0) * elbow[0] + t0 * sh[0], (1 - t0) * elbow[1] + t0 * sh[1]];
+      const sd0 = `M${P(...s0)} Q${P(...sc)} ${P(...sh)}`;
+      R.sleeveEdge.setAttribute("d", sd0);
+      R.sleeve.setAttribute("d", sd0);
+      const nx = sc[0] - s0[0], ny = sc[1] - s0[1], nl = Math.hypot(nx, ny) || 1;
+      const cx0 = s0[0] + (nx / nl) * k * 0.12, cy0 = s0[1] + (ny / nl) * k * 0.12;
+      R.cuff.setAttribute("d", `M${P(cx0 - (ny / nl) * k * 0.25, cy0 + (nx / nl) * k * 0.25)} L${P(cx0 + (ny / nl) * k * 0.25, cy0 - (nx / nl) * k * 0.25)}`);
+
+      const f = S.flow.p;
+      const a = clamp(f - 1), b = clamp(f);
+      const show = b - a > 0.001 && S.props[0].y < 0.1;
+      const ctrl = [O2[0] + k * 0.05, lip[1] - k * 0.3];
+      const sd = `M${P(...lip)} Q${P(...ctrl)} ${P(O2[0], O2[1] - k * 0.05)}`;
+      for (const node of [R.streamEdge, R.stream]) {
+        node.style.display = show ? "" : "none";
+        node.setAttribute("d", sd);
+        node.setAttribute("stroke-dasharray", `${n(b - a + 0.0001)} 3`);
+        node.setAttribute("stroke-dashoffset", n(-a));
+      }
+      R.streamG.setAttribute("x1", n(lip[0]));
+      R.streamG.setAttribute("y1", n(lip[1]));
+      R.streamG.setAttribute("x2", n(O2[0]));
+      R.streamG.setAttribute("y2", n(O2[1]));
+      // Glints flow down the stream, only on the part that is showing.
+      R.glint.style.display = show ? "" : "none";
+      if (show) {
+        R.glint.setAttribute("d", sd);
+        R.glint.setAttribute("transform", `translate(${n(-k * 0.018)} 0)`);
+        const per = 0.12, dash = 0.045, ph = frac(t * 1.6) * per;
+        const arr = [0];
+        let pos = 0;
+        for (let s = -per + ph; s < b; s += per) {
+          const d0 = Math.max(s, a), d1 = Math.min(s + dash, b);
+          if (d1 > d0) { arr.push(n(d0 - pos), n(d1 - d0)); pos = d1; }
+        }
+        arr.push(3);
+        R.glint.setAttribute("stroke-dasharray", arr.join(" "));
+      }
+
+      // Froth builds up in the low mug; drops splash while the stream lands.
+      const fh = S.froth.h, fx = O2[0], fy = O2[1] + ms * 0.0;
+      const rx = ms * 0.335, dome = ms * (0.02 + 0.16 * fh);
+      R.froth.setAttribute("d", `M${P(fx - rx, fy)} C${P(fx - rx, fy - dome * 1.4)} ${P(fx + rx, fy - dome * 1.4)} ${P(fx + rx, fy)} Q${P(fx, fy + ms * 0.07)} ${P(fx - rx, fy)} Z`);
+      R.froth.setAttribute("opacity", n(clamp(fh * 4) * clamp(1 - S.props[0].y * 1.4)));
+      R.bubbles.forEach((c, i) => {
+        const bx = fx + (i / 6 - 0.5) * rx * 1.5, by = fy - dome * (0.5 + 0.4 * Math.sin((i / 6) * Math.PI)) + ms * 0.02;
+        c.setAttribute("cx", n(bx));
+        c.setAttribute("cy", n(by));
+        c.setAttribute("r", n(ms * (0.02 + 0.012 * (0.5 + 0.5 * wave(t, 18, i * 0.13))) * clamp(fh * 3) * clamp(1 - S.props[0].y * 1.4)));
+      });
+      const landing = show && b > 0.98 && a < 0.9;
+      R.drops.forEach((c, i) => {
+        const q = frac(t * 2.2 + i / 5), side = i % 2 ? 1 : -1;
+        c.setAttribute("cx", n(fx + side * (0.05 + q * 0.3) * ms * (0.6 + i * 0.1)));
+        c.setAttribute("cy", n(fy - dome - Math.sin(Math.PI * q) * ms * 0.28));
+        c.setAttribute("r", n(ms * 0.028 * (1 - q * 0.5)));
+        c.setAttribute("opacity", landing ? n(1 - q) : 0);
+      });
+    }
+
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    // Reduced motion: one still frame with the menu written and tea mid pour.
+    function apply() {
+      if (reduce.matches) tl.pause(STILL);
+      else tl.play();
+      update();
+    }
+    reduce.addEventListener("change", apply);
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        const at = tl.time();
+        tl.kill();
+        build();
+        tl.time(at);
+        apply();
+      }, 150);
+    });
+
+    // Wait briefly for the fonts so the chalk text is measured in the right face.
+    Promise.race([
+      Promise.all([document.fonts.load("700 1em 'Cabin Sketch'"), document.fonts.load("700 1em Caveat")]),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(() => { build(); apply(); });
+  </script>
+</body>
+</html>

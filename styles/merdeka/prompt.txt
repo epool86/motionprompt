@@ -1,0 +1,18 @@
+Make my video in this style: Merdeka.
+
+Look and motion
+- A proud Malaysian National Day (Hari Merdeka) or Malaysia Day celebration at night, with fireworks over a Kuala Lumpur skyline silhouette (the Petronas Twin Towers and KL Tower as simple dark shapes).
+- The Malaysian flag, the Jalur Gemilang, waves with a soft cloth ripple, light on the folds and shadow in the dips. Draw the flag accurately: 14 horizontal stripes, red and white, starting with red at the top. A dark blue canton in the top left covers the upper 8 stripes and half the width. Inside it, a yellow crescent opening to the right and a yellow 14-pointed star beside it.
+- Open and close with bold red, white, blue and yellow stripes sweeping across the screen as transitions.
+- Fireworks bloom gently in the sky in flag colours, and confetti in flag colours bursts in when the title lands. Keep any glow soft, never flashing or strobing.
+- Show my message as a big, bold title that slams in letter by letter, with a small line under it between short flag stripe bars. Keep the text short and easy to read.
+- Write my text in the language I use, Malay or English.
+
+Type and colour
+- A tall, bold condensed font (like Bebas Neue) for the title, and a clean bold sans serif (like Montserrat) with wide letter spacing for the small line.
+- Use my brand colours if I give them, but always keep the flag in its true colours. Otherwise use flag red #cc0001, white #ffffff, royal blue #010066, yellow #ffcc00 and a night sky navy #0a0f45.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

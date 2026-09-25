@@ -1,0 +1,19 @@
+Make my video in this style: Kawaii pastel.
+
+Look and motion
+- A cute, soft cartoon world in a chibi style. A friendly cartoon girl mascot presents my message: big head, big sparkly eyes with white highlights, rosy blush cheeks, a small happy smile and simple hair with a bow. Keep her wholesome and original. If I describe or attach my own mascot, use that instead.
+- She bounces in with squash and stretch, waves, blinks, tilts her head and does little happy hops.
+- A light background with soft pastel blobs, polka dots and small clouds that pop in at the start.
+- Add stickers and props that fit my topic, drawn as flat cartoon shapes with a thick white outline and a soft drop shadow. Give some of them tiny smiling faces.
+- Hearts, sparkles and stars pop in with a bouncy overshoot and float gently the whole time.
+- Put my message in a rounded speech bubble next to her. The bubble pops in, then the letters bounce in one by one. Add a sparkle burst on the key moment.
+- At the end, everything bounces out and the scene clears.
+
+Type and colour
+- A big, bubbly, rounded font (like Mochiy Pop One or Fredoka), with letters in a few cheerful colours on the white bubble.
+- Use my brand colours if I give them, softened into pastels. Otherwise use creamy pink #fff0f4 for the background, soft pink #ff9cbf, lilac #c3a8f5, mint #a8e6cf, butter yellow #ffe07a and peach #ffc4a8, with dark plum #4b2a3a for outlines.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

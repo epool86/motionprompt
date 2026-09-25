@@ -1,0 +1,20 @@
+Make my video in this style: Chinese New Year.
+
+Look and motion
+- A festive red and gold greeting card that comes to life, for Chinese New Year.
+- Intricate red paper-cut patterns (flowers, clouds, scrolls) fan open and get cut in, like folded paper opening up.
+- Round red lanterns with gold tassels drop in from the top and sway gently.
+- A gold fu character on a red diamond sits at the centre as an accent. Plum blossom branches grow and bloom, and mandarin oranges and gold coins bounce into place.
+- Soft gold confetti falls and small firecracker sparks bloom and fade. Keep them gentle, with no flashing.
+- Show my greeting and message as the title, rising in word by word with a slow gold shine. Write my text in the language I use. Add a small line under it if I give one.
+- At the end, everything folds away and the lanterns lift out, so the video can loop.
+
+Type and colour
+- An elegant display serif for the title (like DM Serif Display) in gold. A clean, spaced out sans serif (like Jost) for the small line.
+- If I include Chinese characters, draw them in a brush calligraphy style (like Ma Shan Zheng).
+- Use my brand colours if I give them, with gold as the accent. Otherwise use deep red #8e0c18, paper red #d7262f, gold #f2c14e, cream #fff1d0 and blossom pink #ffd3de.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

@@ -1,0 +1,792 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kampung sunset demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/baloo-2@5.3.0/latin-800.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=7d6aa8&ink=fff3d9&accent=f7a23b&accent2=4a2f6b */
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #f3a86e;
+    }
+
+    svg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .title {
+      position: fixed;
+      left: 0;
+      right: 0;
+      margin: 0;
+      text-align: center;
+      font-family: "Baloo 2", "Trebuchet MS", system-ui, sans-serif;
+      font-weight: 800;
+      line-height: 1;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    .title .line { display: block; }
+    .title span span { display: inline-block; }
+  </style>
+</head>
+<body>
+  <svg id="scene" role="img" xmlns="http://www.w3.org/2000/svg"></svg>
+  <p class="title" id="title" aria-hidden="true"></p>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => "#" + (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const C = {
+      skyTop: hex("bg", "7d6aa8"),
+      ink: hex("ink", "fff3d9"),
+      gold: hex("accent", "f7a23b"),
+      dusk: hex("accent2", "4a2f6b"),
+    };
+    const text = (params.get("text") || "Balik kampung").trim().slice(0, 50);
+
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.getElementById("scene");
+    const titleEl = document.getElementById("title");
+    svg.setAttribute("aria-label", `A Malay village at sunset: a wooden house on stilts, coconut palms, golden paddy fields and a child cycling home, with the words: ${text}`);
+
+    function el(name, attrs, parent) {
+      const node = document.createElementNS(NS, name);
+      for (const k in attrs) node.setAttribute(k, attrs[k]);
+      if (parent) parent.append(node);
+      return node;
+    }
+
+    // Mix two hex colours, t from 0 to 1.
+    function mix(a, b, t) {
+      const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
+      const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
+      return "#" + pa.map((v, i) => Math.round(v + (pb[i] - v) * t).toString(16).padStart(2, "0")).join("");
+    }
+
+    // Seeded random, so the scene is the same after a resize.
+    let seed = 1;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+    const f = (p) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`;
+    // A smooth curve through points.
+    function smooth(pts) {
+      const n = pts.length, at = (i) => pts[Math.max(0, Math.min(n - 1, i))];
+      let d = `M${f(pts[0])}`;
+      for (let i = 0; i < n - 1; i++) {
+        const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
+        d += ` C${f([p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6])} ${f([p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6])} ${f(p2)}`;
+      }
+      return d;
+    }
+    const poly = (pts) => "M" + pts.map(f).join(" L") + "Z";
+
+    // A soft paint grain, made once and tiled over the whole picture.
+    const grain = (() => {
+      const size = 140, c = document.createElement("canvas");
+      c.width = c.height = size;
+      const g = c.getContext("2d"), img = g.createImageData(size, size);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const v = Math.random();
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = v > 0.5 ? 255 : 60;
+        img.data[i + 3] = Math.abs(v - 0.5) * 46;
+      }
+      g.putImageData(img, 0, 0);
+      return c.toDataURL();
+    })();
+
+    const LOOP = 12, TAU = Math.PI * 2;
+    // Timeline state, tweened by GSAP. Continuous motion (sway, ripples, flaps) uses the loop time.
+    const S = { sun: 0, sunA: 1, dusk: 0, light: 0, fire: 0, kid: 0, birds: 0 };
+    let W, H, u, hz, R = {};
+
+    // ---- Small drawings ----
+
+    // A coconut palm: tapered curved trunk and a crown of drooping fronds.
+    function palm(parent, x, y, h, lean, tone) {
+      const g = el("g", {}, parent);
+      const top = [lean * h, -h];
+      const ctrl = [lean * h * 0.15, -h * 0.55];
+      const at = (s) => [
+        (1 - s) ** 2 * 0 + 2 * (1 - s) * s * ctrl[0] + s * s * top[0],
+        2 * (1 - s) * s * ctrl[1] + s * s * top[1],
+      ];
+      const left = [], right = [];
+      for (let i = 0; i <= 10; i++) {
+        const s = i / 10, p = at(s), q = at(Math.min(1, s + 0.01)), r = at(Math.max(0, s - 0.01));
+        const dx = q[0] - r[0], dy = q[1] - r[1], len = Math.hypot(dx, dy);
+        const w = h * (0.03 - 0.012 * s);
+        left.push([p[0] - (dy / len) * w, p[1] + (dx / len) * w]);
+        right.push([p[0] + (dy / len) * w, p[1] - (dx / len) * w]);
+      }
+      el("path", { d: poly([...left, ...right.reverse()]), fill: tone.trunk }, g);
+      // Trunk rings
+      let rings = "";
+      for (let i = 1; i < 12; i++) {
+        const p = at(i / 12), w = h * (0.028 - 0.011 * (i / 12));
+        rings += `M${f([p[0] - w, p[1]])} Q${f([p[0], p[1] + w * 0.5])} ${f([p[0] + w, p[1]])}`;
+      }
+      el("path", { d: rings, stroke: tone.ring, "stroke-width": h * 0.006, fill: "none", opacity: 0.55 }, g);
+      const crown = el("g", { transform: `translate(${top[0].toFixed(1)} ${top[1].toFixed(1)})` }, g);
+      const inner = el("g", {}, crown);
+      const fronds = [];
+      const angles = [-172, -140, -112, -84, -58, -30, -6, 162, 16];
+      angles.forEach((deg, i) => {
+        const fg = el("g", {}, inner);
+        const a = (deg * Math.PI) / 180, L = h * (0.36 + rand() * 0.08), droop = 0.55 + rand() * 0.3;
+        const upper = [], lower = [];
+        for (let k = 0; k <= 12; k++) {
+          const s = k / 12;
+          const sp = [Math.cos(a) * L * s, Math.sin(a) * L * s + droop * L * s * s];
+          const sn = [Math.cos(a) * L * (s + 0.01), Math.sin(a) * L * (s + 0.01) + droop * L * (s + 0.01) ** 2];
+          const dx = sn[0] - sp[0], dy = sn[1] - sp[1], len = Math.hypot(dx, dy) || 1;
+          const nx = -dy / len, ny = dx / len;
+          const w = L * 0.13 * Math.sin(Math.min(1, s * 1.15) * Math.PI) + L * 0.01;
+          const tip = k % 2 ? 1 : 0.3;
+          upper.push([sp[0] + nx * w * tip + (dx / len) * w * 0.4, sp[1] + ny * w * tip + w * 0.5 * tip]);
+          lower.push([sp[0] - nx * w * tip + (dx / len) * w * 0.4, sp[1] - ny * w * tip + w * 0.5 * tip]);
+        }
+        el("path", { d: poly([...upper, ...lower.reverse()]), fill: i % 2 ? tone.frond : tone.frond2 }, fg);
+        fronds.push(fg);
+      });
+      // Coconuts
+      [[-0.02, 0.02], [0.02, 0.03], [0, 0.045]].forEach(([cx, cy]) => el("circle", { cx: cx * h, cy: cy * h, r: h * 0.022, fill: tone.nut }, inner));
+      g.setAttribute("transform", `translate(${x.toFixed(1)} ${y.toFixed(1)})`);
+      return { g, x, y, inner, fronds, phase: rand() * TAU };
+    }
+
+    // A kampung chicken, about 10 units tall, facing left.
+    function chicken(parent, x, y, k, body) {
+      const g = el("g", { transform: `translate(${x} ${y}) scale(${k})` }, parent);
+      el("path", { d: "M-1 -9 C3 -14 7 -13 8 -9 C9 -12 7 -15 5 -16 C9 -15 11 -11 9 -6", fill: "#3b2a2e" }, g);
+      el("path", { d: "M-5 -6 C-5 -10 2 -11 7 -8 C8 -4 5 -1 0 -1 C-3 -1 -5 -3 -5 -6Z", fill: body }, g);
+      el("path", { d: "M-1 -6 C1 -8 4 -8 6 -6", stroke: "#7d3522", "stroke-width": 0.8, fill: "none" }, g);
+      el("path", { d: "M-1 -1 L-1 2 M2 -1 L2 2", stroke: "#e0a13a", "stroke-width": 0.7 }, g);
+      const head = el("g", { transform: "translate(-4 -7)" }, g);
+      el("path", { d: "M0 0 L-1 -5 L2 -4Z", fill: body }, head);
+      el("circle", { cx: -1, cy: -5.5, r: 2, fill: body }, head);
+      el("path", { d: "M-2.5 -7 Q-2 -9 -1 -7.6 Q0 -9 0.8 -7.2", fill: "#d8372b" }, head);
+      el("path", { d: "M-3 -5.8 L-4.8 -5.2 L-3 -4.6Z", fill: "#e8b84a" }, head);
+      el("circle", { cx: -2.4, cy: -4, r: 0.6, fill: "#d8372b" }, head);
+      return head;
+    }
+
+    // ---- Build the scene for this window size ----
+    function build() {
+      W = innerWidth;
+      H = innerHeight;
+      u = Math.min(W, H);
+      const a = W / H;
+      seed = 7;
+      svg.replaceChildren();
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      R = {};
+
+      hz = H * (a < 0.8 ? 0.52 : a < 1.25 ? 0.55 : 0.6);
+      const ground = H - hz;
+      R.title = fitTitle();
+
+      const defs = el("defs", {}, svg);
+      const sky = el("linearGradient", { id: "ks-sky", x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
+      R.skyStops = [0, 0.55, 0.85, 1].map((o) => el("stop", { offset: o }, sky));
+      const glow = el("radialGradient", { id: "ks-glow" }, defs);
+      el("stop", { offset: 0, "stop-color": "#fff2c0", "stop-opacity": 0.85 }, glow);
+      el("stop", { offset: 0.35, "stop-color": "#ffc46a", "stop-opacity": 0.35 }, glow);
+      el("stop", { offset: 1, "stop-color": "#ff9a5a", "stop-opacity": 0 }, glow);
+      const lamp = el("radialGradient", { id: "ks-lamp" }, defs);
+      el("stop", { offset: 0, "stop-color": "#ffd27a", "stop-opacity": 0.75 }, lamp);
+      el("stop", { offset: 1, "stop-color": "#ffb04a", "stop-opacity": 0 }, lamp);
+      const fly = el("radialGradient", { id: "ks-fly" }, defs);
+      el("stop", { offset: 0, "stop-color": "#faffb0", "stop-opacity": 1 }, fly);
+      el("stop", { offset: 0.25, "stop-color": "#e8ff7a", "stop-opacity": 0.55 }, fly);
+      el("stop", { offset: 1, "stop-color": "#c8f060", "stop-opacity": 0 }, fly);
+      const haze = el("linearGradient", { id: "ks-haze", x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
+      el("stop", { offset: 0, "stop-color": "#ffd9a0", "stop-opacity": 0.75 }, haze);
+      el("stop", { offset: 1, "stop-color": "#ffd9a0", "stop-opacity": 0 }, haze);
+      const dusk = el("filter", { id: "ks-dusk", x: 0, y: 0, width: 1, height: 1, filterUnits: "userSpaceOnUse", "color-interpolation-filters": "sRGB" }, defs);
+      dusk.setAttribute("width", W);
+      dusk.setAttribute("height", H);
+      R.dm = el("feColorMatrix", { type: "matrix", values: ID.join(" ") }, dusk);
+      const pat = el("pattern", { id: "ks-grain", width: 140, height: 140, patternUnits: "userSpaceOnUse" }, defs);
+      el("image", { href: grain, width: 140, height: 140 }, pat);
+
+      // Sky, sun and clouds
+      el("rect", { width: W, height: hz + 2, fill: "url(#ks-sky)" }, svg);
+      R.sunX = W * (a < 0.8 ? 0.8 : a < 1.25 ? 0.76 : 0.7);
+      R.sunY0 = hz * (a < 0.8 ? 0.7 : a < 1 ? 0.58 : 0.5);
+      R.sunR = u * 0.075;
+      R.sunG = el("g", {}, svg);
+      el("circle", { r: R.sunR * 5, fill: "url(#ks-glow)" }, R.sunG);
+      R.sun = el("circle", { r: R.sunR }, R.sunG);
+
+      R.clouds = [
+        [W * 0.18, hz * 0.62, u * 0.2],
+        [W * 0.84, hz * 0.34, u * 0.16],
+        [W * 0.55, hz * 0.8, u * 0.24],
+      ].map(([cx, cy, s], i) => {
+        const g = el("g", {}, svg);
+        const top = `M${-s} 0 C${-s * 0.8} ${-s * 0.16} ${-s * 0.45} ${-s * 0.14} ${-s * 0.3} ${-s * 0.2} C${-s * 0.15} ${-s * 0.34} ${s * 0.2} ${-s * 0.32} ${s * 0.3} ${-s * 0.16} C${s * 0.55} ${-s * 0.22} ${s * 0.85} ${-s * 0.12} ${s} 0Z`;
+        const body = el("path", { d: top, opacity: 0.9 }, g);
+        const lit = el("path", { d: `M${-s * 0.9} 0 C${-s * 0.4} ${s * 0.05} ${s * 0.4} ${s * 0.05} ${s * 0.95} 0 C${s * 0.4} ${-s * 0.04} ${-s * 0.4} ${-s * 0.04} ${-s * 0.9} 0Z`, opacity: 0.9 }, g);
+        return { g, body, lit, cx, cy, s, i };
+      });
+
+      // Birds flying home
+      R.birds = [[0, 0], [1, -0.7], [2, -1.3], [1.1, 0.8], [2.2, 1.4]].map(([dx, dy]) => ({
+        p: el("path", { fill: "none", stroke: "#4a2f45", "stroke-linecap": "round", "stroke-linejoin": "round" }, svg),
+        dx: dx * u * 0.06, dy: dy * u * 0.03, ph: rand() * TAU,
+      }));
+
+      // Everything on the ground goes in one group, so dusk can darken it all at once.
+      const land = el("g", {}, svg);
+      R.land = land;
+
+      // Far hills and the tree line on the horizon
+      const hillPts = (base, amp, fr, ph) => {
+        const pts = [];
+        for (let i = 0; i <= 12; i++) {
+          const x = -W * 0.05 + (i / 12) * W * 1.1;
+          pts.push([x, base - amp * (0.6 + 0.4 * Math.sin((x / W) * fr + ph))]);
+        }
+        return smooth(pts) + ` L${W * 1.1} ${hz + 2} L${-W * 0.1} ${hz + 2}Z`;
+      };
+      el("path", { d: hillPts(hz, u * 0.1, 5, 1), fill: "#b77d9a", opacity: 0.8 }, land);
+      el("path", { d: hillPts(hz, u * 0.055, 8, 3), fill: "#8f6a8e" }, land);
+      let trees = `M${-10} ${hz + 1}`;
+      for (let x = -10; x < W + 20;) {
+        const r = u * (0.012 + rand() * 0.018);
+        trees += ` a${r} ${r * (0.8 + rand() * 0.4)} 0 0 1 ${r * 1.6} 0`;
+        x += r * 1.6;
+      }
+      el("path", { d: trees + ` L${W + 30} ${hz + 2} L-10 ${hz + 2}Z`, fill: "#5f5a6e" }, land);
+      // Tiny far palms on the horizon
+      for (let i = 0; i < 5; i++) {
+        const x = W * (0.08 + i * 0.21 + rand() * 0.08), hh = u * (0.06 + rand() * 0.04);
+        let d = `M${x} ${hz} Q${x + hh * 0.1} ${hz - hh * 0.5} ${x + hh * 0.15} ${hz - hh}`;
+        for (let j = 0; j < 6; j++) {
+          const a2 = (-160 + j * 30 + rand() * 10) * Math.PI / 180, L = hh * 0.35;
+          d += ` M${x + hh * 0.15} ${hz - hh} q${Math.cos(a2) * L * 0.6} ${Math.sin(a2) * L * 0.6 - L * 0.1} ${Math.cos(a2) * L} ${Math.sin(a2) * L + L * 0.35}`;
+        }
+        el("path", { d, stroke: "#5f5a6e", "stroke-width": Math.max(1, u * 0.005), fill: "none", "stroke-linecap": "round" }, land);
+      }
+
+      // Paddy field: green-gold rows of rice that ripple in the wind, with thin strips
+      // of flooded field between some rows catching the sunset.
+      const N = 13;
+      R.rows = [];
+      for (let k = 0; k < N; k++) {
+        const t0 = k / N;
+        const y = hz + ground * Math.pow(t0, 1.6);
+        const gap = ground * (Math.pow((k + 1) / N, 1.6) - Math.pow(t0, 1.6));
+        const amp = ground * 0.014 * (0.25 + t0 * 1.5);
+        if (k > 0 && k % 3 === 1) {
+          const water = el("path", { fill: "#ffd9a6", stroke: "#fff1d0", "stroke-width": Math.max(0.6, u * 0.003) }, land);
+          R.rows.push({ p: water, y: y - gap * 0.5 - amp * 0.6, k, amp });
+        }
+        const col = mix(mix("#b7c15a", "#7fa33a", t0), "#5f8a2e", k % 2 ? 0.35 : 0);
+        const edge = mix("#e6d77e", "#d9d36a", t0);
+        const p = el("path", { fill: col, stroke: edge, "stroke-width": Math.max(0.6, u * 0.005 * (0.3 + t0)), "stroke-opacity": 0.85 }, land);
+        R.rows.push({ p, y, k, amp });
+      }
+      // Clumps of rice plants in rows, finer further away
+      [[0.1, 0.35, 0.014], [0.35, 0.65, 0.026], [0.65, 1, 0.042]].forEach(([y0, y1, s0], i) => {
+        const sz = u * s0 * 1.6, id = `ks-rice${i}`, p = el("pattern", { id, width: sz, height: sz * 0.7, patternUnits: "userSpaceOnUse" }, defs);
+        const clump = (x, y, h) => `M${x} ${y} q${-h * 0.1} ${-h * 0.5} ${-h * 0.35} ${-h * 0.8} M${x} ${y} q0 ${-h * 0.6} ${h * 0.05} ${-h} M${x} ${y} q${h * 0.1} ${-h * 0.5} ${h * 0.38} ${-h * 0.75}`;
+        el("path", { d: clump(sz * 0.25, sz * 0.65, sz * 0.55) + clump(sz * 0.75, sz * 0.3, sz * 0.4), stroke: "#35601f", "stroke-width": Math.max(0.7, sz * 0.07), fill: "none", "stroke-linecap": "round" }, p);
+        // A few ripe golden heads in the nearest rows
+        if (i === 2) el("path", { d: `M${sz * 0.27} ${sz * 0.12} q${sz * 0.08} ${-sz * 0.02} ${sz * 0.1} ${sz * 0.12}`, stroke: "#f2cf5a", "stroke-width": Math.max(0.8, sz * 0.08), fill: "none", "stroke-linecap": "round" }, p);
+        el("rect", { x: 0, y: hz + ground * y0, width: W, height: ground * (y1 - y0) + 2, fill: `url(#${id})`, opacity: 0.6 }, land);
+      });
+      // Light golden haze over the far field
+      el("rect", { x: 0, y: hz, width: W, height: ground * 0.3, fill: "url(#ks-haze)", opacity: 0.7 }, land);
+
+      // House size and place
+      const hh = Math.min(H * 0.4, W * 0.42);
+      const hw = hh * 1.1;
+      const k = hw / 96;
+      const baseY = hz + ground * (a < 0.8 ? 0.3 : 0.36);
+      const hx = W * (a < 0.8 ? 0.36 : a < 1.25 ? 0.33 : 0.27);
+      R.house = { k, x: hx - 20 * k, y: baseY };
+
+      // Raised land for the house, running off the left edge
+      const mx1 = hx + hw * 0.75;
+      el("path", {
+        d: `M${-W * 0.1} ${baseY - k * 6} C${hx - hw * 0.3} ${baseY - k * 12} ${hx + hw * 0.4} ${baseY - k * 10} ${mx1} ${baseY + k * 4} C${mx1 - hw * 0.3} ${baseY + k * 12} ${hx - hw * 0.8} ${baseY + k * 14} ${-W * 0.1} ${baseY + k * 12}Z`,
+        fill: "#7f8f3c",
+      }, land);
+      el("path", {
+        d: `M${-W * 0.1} ${baseY + k * 6} C${hx - hw * 0.5} ${baseY + k * 12} ${hx + hw * 0.3} ${baseY + k * 12} ${mx1 - hw * 0.05} ${baseY + k * 5}`,
+        stroke: "#5f7030", "stroke-width": k * 3, fill: "none", opacity: 0.5,
+      }, land);
+
+      const palmTone = { trunk: "#8b6a4f", ring: "#5b4033", frond: "#3f6a3c", frond2: "#335a35", nut: "#6f7a2c" };
+      const backTone = { trunk: "#7a5d4c", ring: "#4d3a33", frond: "#46624a", frond2: "#3b5842", nut: "#5f6a2c" };
+      R.palms = [];
+      // Palm behind the house
+      // Palms keep their crowns clear of the title and inside the frame.
+      const palmH = (x, y, want, lean) => {
+        const cx = x + lean * want, r = want * 0.5, tt = R.title;
+        const hitsTitle = cx + r > tt.x0 && cx - r < tt.x1;
+        return Math.min(want, (y - (hitsTitle ? tt.bottom + u * 0.02 : u * 0.02)) / 1.3);
+      };
+      const addPalm = (x, y, want, lean, tone) => R.palms.push(palm(land, x, y, palmH(x, y, want, lean), lean, tone));
+      addPalm(hx + hw * 0.45, baseY - k * 8, hh * 1.75, a < 0.8 ? 0.05 : 0.14, backTone);
+
+      // The house, drawn in its own units (about 96 wide, ground at y = 0)
+      const house = el("g", { transform: `translate(${R.house.x} ${baseY}) scale(${k})` }, land);
+      drawHouse(house);
+
+      // Palms beside the house
+      addPalm(hx - hw * 0.62, baseY + k * 4, hh * 1.5, -0.2, palmTone);
+      addPalm(W - u * (a > 0.7 ? 0.07 : 0.03), hz + ground * (a > 0.7 ? 0.22 : 0.16), hh * 1.5, -0.22, palmTone);
+
+      // Chickens near the stairs
+      R.hens = [
+        chicken(land, hx - hw * 0.34, baseY + k * 7, k * 0.75, "#b5562e"),
+        chicken(land, hx - hw * 0.55, baseY + k * 10, k * 0.68, "#d9a15a"),
+      ];
+
+      // The raised path across the field
+      const pathY = baseY + (H - baseY) * (a < 0.8 ? 0.5 : 0.52);
+      const pt = Math.max(3, u * 0.03);
+      R.pathY = (x) => pathY + Math.sin((x / W) * 3 + 0.5) * u * 0.008;
+      const top = [], bot = [];
+      for (let i = 0; i <= 12; i++) {
+        const x = -W * 0.05 + (i / 12) * W * 1.1;
+        top.push([x, R.pathY(x) - pt * 0.4]);
+        bot.push([x, R.pathY(x) + pt * 0.6]);
+      }
+      el("path", { d: smooth(top) + " L" + smooth(bot.reverse()).slice(1) + "Z", fill: "#c99a5c" }, land);
+      el("path", { d: smooth(bot.reverse()), stroke: "#8c6a3a", "stroke-width": pt * 0.35, fill: "none" }, land);
+      el("path", { d: smooth(top), stroke: "#e6bf7a", "stroke-width": pt * 0.18, fill: "none" }, land);
+
+      // Kid on a bicycle, drawn in units about 60 tall
+      R.kid = drawKid(land);
+      R.kidK = Math.min(u * 0.2, (H - hz) * 0.36) / 60;
+
+      // Paddy tufts in front, near the bottom
+      R.tufts = [];
+      const count = Math.max(5, Math.round(W / (u * 0.12)));
+      for (let i = 0; i < count; i++) {
+        const x = (i + 0.2 + rand() * 0.6) * (W / count);
+        const edge = Math.abs(x / W - 0.5) * 2;
+        const th = Math.min(u * 0.18, (H - pathY) * (0.55 + edge * 0.5)) * (0.8 + rand() * 0.3);
+        const g = el("g", {}, land);
+        let d = "", heads = "";
+        for (let j = 0; j < 9; j++) {
+          const lean = (j - 4) * 0.1 + (rand() - 0.5) * 0.1, hj = th * (0.7 + rand() * 0.3);
+          const tx = lean * th * 0.9, ty = -hj;
+          d += `M${(j - 4) * th * 0.02} 0 Q${(tx * 0.3).toFixed(1)} ${(-hj * 0.6).toFixed(1)} ${tx.toFixed(1)} ${ty.toFixed(1)}`;
+          if (j % 3 === 1) {
+            const dir = lean >= 0 ? 1 : -1;
+            heads += `M${tx.toFixed(1)} ${ty.toFixed(1)} q${(dir * th * 0.12).toFixed(1)} ${(-th * 0.02).toFixed(1)} ${(dir * th * 0.16).toFixed(1)} ${(th * 0.16).toFixed(1)}`;
+          }
+        }
+        el("path", { d, stroke: i % 2 ? "#4f7f2a" : "#5f9030", "stroke-width": Math.max(1.2, u * 0.008), fill: "none", "stroke-linecap": "round" }, g);
+        el("path", { d: heads, stroke: "#f0c050", "stroke-width": Math.max(1.4, u * 0.012), fill: "none", "stroke-linecap": "round", "stroke-dasharray": `${u * 0.012} ${u * 0.006}` }, g);
+        R.tufts.push({ g, x, y: H + u * 0.02, ph: (x / W) * 4 });
+      }
+
+      // Warm lights above the dusk shade, so they keep glowing.
+      R.lights = el("g", { transform: `translate(${R.house.x} ${baseY}) scale(${k})` }, svg);
+      R.glows = el("g", { transform: `translate(${R.house.x} ${baseY}) scale(${k})` }, svg);
+      drawLights(R.lights, R.glows);
+
+      // Fireflies over the field and around the house
+      R.flies = [];
+      for (let i = 0; i < 20; i++) {
+        const g = el("g", {}, svg);
+        el("circle", { r: u * 0.03, fill: "url(#ks-fly)" }, g);
+        el("circle", { r: Math.max(0.8, u * 0.005), fill: "#fdffd0" }, g);
+        R.flies.push({
+          g,
+          x: rand() * W, y: hz + ground * (0.1 + rand() * 0.8),
+          ax: u * (0.02 + rand() * 0.04), ay: u * (0.01 + rand() * 0.03),
+          fx: 1 + Math.floor(rand() * 2), fy: 1 + Math.floor(rand() * 3),
+          fb: 3 + Math.floor(rand() * 4), p: rand() * TAU, q: rand() * TAU,
+        });
+      }
+
+      el("rect", { width: W, height: H, fill: "url(#ks-grain)", opacity: 0.6, "pointer-events": "none" }, svg);
+    }
+
+    // The rumah kampung: a gable end facing us, the long side going back to the right.
+    function drawHouse(g) {
+      const side = [0.82, -0.3]; // one unit of depth goes up and to the right
+      const D = 40, off = (d) => [side[0] * d, side[1] * d];
+      const P = (x, y, d = 0) => [x + off(d)[0], y + off(d)[1]];
+      el("ellipse", { cx: 18, cy: -4, rx: 44, ry: 7, fill: "#4a3a2a", opacity: 0.35 }, g);
+      // Back row of stilts
+      [0, 0.5, 1].forEach((t) => {
+        const [x, y] = P(20, 0, D * t);
+        el("rect", { x: x - 1.4, y: y - 24, width: 2.8, height: 24, fill: "#5a3a26" }, g);
+        el("rect", { x: x - 2.4, y: y - 1.5, width: 4.8, height: 2.5, fill: "#9a8a78" }, g);
+      });
+      // Long side wall with planks
+      el("path", { d: poly([P(20, -24), P(20, -24, D), P(20, -54, D), P(20, -54)]), fill: "#8a5334" }, g);
+      let planks = "";
+      for (let i = 1; i < 6; i++) {
+        const y = -24 - i * 5;
+        planks += `M${f(P(20, y))} L${f(P(20, y, D))}`;
+      }
+      el("path", { d: planks, stroke: "#6e3f27", "stroke-width": 0.5, fill: "none" }, g);
+      el("path", { d: `M${f(P(20, -24))} L${f(P(20, -24, D))}`, stroke: "#4a2a1a", "stroke-width": 2 }, g);
+      // Side windows: dark inside (lights sit on top), open shutters, lower bars
+      R.sideWin = [];
+      [0.2, 0.58].forEach((t) => {
+        const d0 = D * t, d1 = D * (t + 0.2);
+        const win = [P(20, -30, d0), P(20, -30, d1), P(20, -49, d1), P(20, -49, d0)];
+        el("path", { d: poly(win), fill: "#3a2218" }, g);
+        R.sideWin.push(win);
+        el("path", { d: poly([P(20, -30, d0 - 5), P(20, -30, d0 - 0.6), P(20, -49, d0 - 0.6), P(20, -49, d0 - 5)]), fill: "#b8743f" }, g);
+        el("path", { d: poly([P(20, -30, d1 + 0.6), P(20, -30, d1 + 5), P(20, -49, d1 + 5), P(20, -49, d1 + 0.6)]), fill: "#a4663a" }, g);
+        el("path", { d: `M${f(P(20, -31, d0 - 0.5))} L${f(P(20, -31, d1 + 0.5))}`, stroke: "#5a3322", "stroke-width": 1.2 }, g);
+      });
+      // Roof plane on the long side: rusty zinc with ridges
+      const peak = [0, -82], eave = [27, -50.6], over = 1.08;
+      el("path", { d: poly([peak, P(peak[0], peak[1], D * over), P(eave[0], eave[1], D * over), eave]), fill: "#a2432c" }, g);
+      let ribs = "";
+      for (let i = 1; i < 14; i++) {
+        const d = (D * over * i) / 14;
+        ribs += `M${f(P(peak[0], peak[1], d))} L${f(P(eave[0], eave[1], d))}`;
+      }
+      el("path", { d: ribs, stroke: "#7e2f20", "stroke-width": 0.7, fill: "none" }, g);
+      el("path", { d: `M${f(P(eave[0], eave[1]))} L${f(P(eave[0], eave[1], D * over))}`, stroke: "#6d2a1c", "stroke-width": 1.4 }, g);
+      // A few rust patches
+      el("path", { d: poly([P(14, -64, 8), P(20, -57, 8), P(20, -57, 15), P(14, -64, 14)]), fill: "#b8582f", opacity: 0.7 }, g);
+      el("path", { d: `M${f(peak)} L${f(P(peak[0], peak[1], D * over))}`, stroke: "#5e2519", "stroke-width": 2.4, "stroke-linecap": "round" }, g);
+
+      // Front stilts and footing stones
+      [-18, 18].forEach((x) => {
+        el("rect", { x: x - 1.6, y: -24, width: 3.2, height: 24, fill: "#6a4430" }, g);
+        el("rect", { x: x - 2.8, y: -1.6, width: 5.6, height: 2.8, fill: "#b0a08c" }, g);
+      });
+      // Front wall with vertical planks
+      el("rect", { x: -20, y: -54, width: 40, height: 30, fill: "#b26e40" }, g);
+      let vp = "";
+      for (let x = -16; x < 20; x += 4) vp += `M${x} -54 V-24`;
+      el("path", { d: vp, stroke: "#92552f", "stroke-width": 0.5 }, g);
+      el("rect", { x: -21, y: -26, width: 42, height: 2.6, fill: "#5a3322" }, g);
+      // Door and small windows
+      R.frontWin = [[-6, -48, 12, 22], [-16.5, -47, 6.5, 12], [10, -47, 6.5, 12]];
+      R.frontWin.forEach(([x, y, w, h]) => el("rect", { x, y, width: w, height: h, fill: "#3a2218" }, g));
+      el("rect", { x: -6, y: -48, width: 3.2, height: 22, fill: "#7a4428" }, g);
+      [[-16.5, 6.5], [10, 6.5]].forEach(([x, w]) => {
+        el("rect", { x: x - 3, y: -47, width: 2.6, height: 12, fill: "#c8844a" }, g);
+        el("rect", { x: x + w + 0.4, y: -47, width: 2.6, height: 12, fill: "#c8844a" }, g);
+      });
+      // Gable with a sunburst of slats (tebar layar)
+      el("path", { d: poly([[-21, -54], [0, -79], [21, -54]]), fill: "#c98a52" }, g);
+      let rays = "";
+      for (let i = 0; i <= 10; i++) {
+        const t = i / 10, x = -19 + 38 * t, y = -55 - (1 - Math.abs(t - 0.5) * 2) * 22;
+        rays += `M0 -55 L${x.toFixed(1)} ${y.toFixed(1)}`;
+      }
+      el("path", { d: rays, stroke: "#8a5230", "stroke-width": 0.9 }, g);
+      el("path", { d: "M-8 -55 A8 8 0 0 1 8 -55Z", fill: "#8a5230" }, g);
+      el("rect", { x: -22, y: -56, width: 44, height: 2.4, fill: "#6e3f27" }, g);
+      // Carved bargeboards with a little finial on top
+      el("path", { d: `M-28 -48.2 L0 -83 L28 -48.2`, stroke: "#5a2f1d", "stroke-width": 3, fill: "none", "stroke-linejoin": "round" }, g);
+      el("path", { d: `M-28 -48.2 q-1 4 -4 4 M28 -48.2 q1 4 4 4`, stroke: "#5a2f1d", "stroke-width": 2, fill: "none", "stroke-linecap": "round" }, g);
+      el("path", { d: "M0 -83 L0 -89 M-2.5 -87 Q0 -93 2.5 -87", stroke: "#5a2f1d", "stroke-width": 1.6, fill: "none", "stroke-linecap": "round" }, g);
+
+      // Wooden stairs coming down towards us
+      const fwd = [-0.82, 0.3], Ls = 13;
+      const S0 = (x, y, d) => [x + fwd[0] * d, y + fwd[1] * d];
+      el("path", { d: poly([S0(-6, -24, 0), S0(-6, 0, Ls), S0(-4, 0, Ls), S0(-4, -24, 0)]), fill: "#5a3322" }, g);
+      for (let i = 1; i <= 5; i++) {
+        const t = i / 6, y = -24 * (1 - t), d = Ls * t;
+        el("path", { d: poly([S0(-6, y, d), S0(6, y, d), S0(6, y + 1.8, d), S0(-6, y + 1.8, d)]), fill: "#9c6038" }, g);
+        el("path", { d: `M${f(S0(-6, y, d))} L${f(S0(6, y, d))}`, stroke: "#d49a62", "stroke-width": 0.6 }, g);
+      }
+      el("path", { d: poly([S0(4, -24, 0), S0(4, 0, Ls), S0(6.5, 0, Ls), S0(6.5, -24, 0)]), fill: "#6a3e26" }, g);
+      // Handrail
+      el("path", { d: `M${f(S0(6.5, -36, 0))} L${f(S0(6.5, -10, Ls))} M${f(S0(6.5, -10, Ls))} L${f(S0(6.5, 0, Ls))}`, stroke: "#5a3322", "stroke-width": 1.3, fill: "none" }, g);
+
+      // Water jar (tempayan) with a dipper at the foot of the stairs
+      const jar = el("g", { transform: "translate(-23 3)" }, g);
+      el("path", { d: "M-4 0 C-7 -3 -6 -9 -3 -10 L3 -10 C6 -9 7 -3 4 0Z", fill: "#6b3b24" }, jar);
+      el("path", { d: "M-3.5 -10 h7 v-1.4 h-7Z", fill: "#4d2a1a" }, jar);
+      el("path", { d: "M-3.5 -6 C-3 -8 -1 -9 0 -9", stroke: "#b07a4a", "stroke-width": 0.8, fill: "none" }, jar);
+      el("path", { d: "M0 -11.5 a2.4 1.4 0 0 0 4.8 0Z M4 -11.5 l4 -3", stroke: "#3a2418", "stroke-width": 0.8, fill: "#8a6a4a" }, jar);
+
+      // A ginger cat on the stairs, tail swishing
+      const [cx, cy] = S0(0, -24 * (1 - 3 / 6), Ls * (3 / 6));
+      const cat = el("g", { transform: `translate(${cx + 1} ${cy})` }, g);
+      R.catTail = el("path", { d: "M3 -1 C8 -1 9 -5 7 -8", stroke: "#d9843a", "stroke-width": 1.6, fill: "none", "stroke-linecap": "round" }, cat);
+      el("path", { d: "M-3 0 C-4 -4 -2 -7 1 -7 C4 -7 5 -3 4 0Z", fill: "#e0913f" }, cat);
+      el("path", { d: "M-1 -4 h3 M-0.5 -2 h3", stroke: "#b8672a", "stroke-width": 0.6 }, cat);
+      el("circle", { cx: 0, cy: -8.5, r: 2.6, fill: "#e0913f" }, cat);
+      el("path", { d: "M-2.4 -9.4 L-2.2 -12.2 L-0.4 -10.8Z M2.4 -9.4 L2.2 -12.2 L0.4 -10.8Z", fill: "#e0913f" }, cat);
+      el("path", { d: "M-1.2 -8.8 h0.6 M0.6 -8.8 h0.6", stroke: "#3a2418", "stroke-width": 0.5 }, cat);
+    }
+
+    // Lit openings and soft glows, sharing the house units.
+    function drawLights(g, glows) {
+      const lit = "#ffcf6e";
+      R.sideWin.forEach((win) => {
+        el("path", { d: poly(win), fill: lit }, g);
+        // Lower bars (jerejak) in front of the light
+        let bars = "";
+        for (let i = 1; i < 6; i++) {
+          const t = i / 6;
+          const a = [win[0][0] + (win[1][0] - win[0][0]) * t, win[0][1] + (win[1][1] - win[0][1]) * t];
+          bars += `M${f(a)} l0 -7`;
+        }
+        el("path", { d: bars, stroke: "#4a2a1a", "stroke-width": 0.9 }, g);
+        const cx = (win[0][0] + win[2][0]) / 2, cy = (win[0][1] + win[2][1]) / 2;
+        el("circle", { cx, cy, r: 22, fill: "url(#ks-lamp)" }, glows);
+      });
+      R.frontWin.forEach(([x, y, w, h], i) => {
+        el("rect", { x, y, width: w, height: h, fill: lit }, g);
+        if (i > 0) el("path", { d: `M${x} ${y + h * 0.5} h${w} M${x + w / 2} ${y} v${h}`, stroke: "#4a2a1a", "stroke-width": 0.8 }, g);
+      });
+      el("rect", { x: -6, y: -48, width: 3.2, height: 22, fill: "#8a4c2c" }, g);
+      el("circle", { cx: 0, cy: -34, r: 30, fill: "url(#ks-lamp)" }, glows);
+      el("ellipse", { cx: -6, cy: 6, rx: 16, ry: 6, fill: "url(#ks-lamp)" }, glows);
+    }
+
+    // The kid: bicycle with a basket, legs pedalling. Units about 60 tall, facing right.
+    function drawKid(parent) {
+      const g = el("g", {}, parent);
+      const wheel = (x) => {
+        const w = el("g", { transform: `translate(${x} -9)` }, g);
+        el("circle", { r: 9, fill: "none", stroke: "#2b2230", "stroke-width": 2 }, w);
+        const spokes = el("path", { d: "M-8 0 H8 M0 -8 V8 M-5.6 -5.6 L5.6 5.6 M-5.6 5.6 L5.6 -5.6", stroke: "#8a8090", "stroke-width": 0.6 }, w);
+        el("circle", { r: 1.2, fill: "#2b2230" }, w);
+        return spokes;
+      };
+      const r = { g };
+      r.farLeg = el("path", { fill: "none", stroke: "#8a5a3c", "stroke-width": 3.2, "stroke-linecap": "round", "stroke-linejoin": "round" }, g);
+      r.spokes = [wheel(-14), wheel(14)];
+      el("path", { d: "M-14 -9 L-1 -10 L-7 -27 Z M-7 -27 L10 -24 L-1 -10 M10 -24 L14 -9 M10 -24 L9 -31", stroke: "#2f8f8a", "stroke-width": 2.2, fill: "none", "stroke-linejoin": "round" }, g);
+      el("path", { d: "M5 -32 L12 -31", stroke: "#2b2230", "stroke-width": 2, "stroke-linecap": "round" }, g);
+      // Basket
+      el("path", { d: "M11 -27 L21 -27 L20 -20 L12 -20Z", fill: "#c99a5c", stroke: "#8c6a3a", "stroke-width": 0.8 }, g);
+      el("path", { d: "M12.5 -24 H20 M14 -27 V-20 M17 -27 V-20", stroke: "#8c6a3a", "stroke-width": 0.5 }, g);
+      el("path", { d: "M-10 -27 L-4 -27", stroke: "#2b2230", "stroke-width": 2.2, "stroke-linecap": "round" }, g);
+      // Body, shirt and head
+      el("path", { d: "M-6 -29 C-7 -36 -5 -43 0 -45 C3 -44 4 -40 2 -35 L0 -29Z", fill: "#f06a4a" }, g);
+      el("path", { d: "M1 -41 L9 -32", stroke: "#b9774d", "stroke-width": 2.4, "stroke-linecap": "round" }, g);
+      el("path", { d: "M-1 -43 L4 -38", stroke: "#f06a4a", "stroke-width": 3.4, "stroke-linecap": "round" }, g);
+      el("circle", { cx: 1, cy: -50, r: 5.5, fill: "#b9774d" }, g);
+      el("path", { d: "M-4.6 -50 C-5 -56 2 -58 6 -54 C5 -53 3 -53 1.6 -54 C1 -52 -2 -52 -2.5 -49Z", fill: "#241a20" }, g);
+      el("circle", { cx: 4.2, cy: -50.5, r: 0.6, fill: "#241a20" }, g);
+      el("path", { d: "M-6.5 -30 L0 -30 L0 -27 L-6.5 -27Z", fill: "#2f4f8a" }, g);
+      r.nearLeg = el("path", { fill: "none", stroke: "#b9774d", "stroke-width": 3.2, "stroke-linecap": "round", "stroke-linejoin": "round" }, g);
+      return r;
+    }
+
+    // Two-bone leg from hip to pedal, knee bending forward.
+    function leg(hip, foot, L) {
+      const dx = foot[0] - hip[0], dy = foot[1] - hip[1], d = Math.min(Math.hypot(dx, dy), L * 1.98);
+      const a = Math.atan2(dy, dx), b = Math.acos(d / (2 * L));
+      const knee = [hip[0] + Math.cos(a - b) * L, hip[1] + Math.sin(a - b) * L];
+      return `M${f(hip)} L${f(knee)} L${f(foot)}`;
+    }
+
+    // Dusk colour shift for the land: golds turn mauve, greens turn dusky purple.
+    const ID = [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0];
+    const DUSK = [0.5, 0.07, 0.04, 0, 0, 0.16, 0.28, 0.04, 0, 0, 0.15, 0.1, 0.36, 0, 0.05, 0, 0, 0, 1, 0];
+
+    // ---- Draw one moment ----
+    function render(t) {
+      const d = S.dusk, w = (n) => (TAU * n * t) / LOOP;
+
+      // Sky colours drift from golden hour to dusk
+      const sky = [
+        mix(C.skyTop, "#231c48", d),
+        mix("#f08a6a", "#6e3d74", d),
+        mix("#ffbd6b", "#c86a5c", d),
+        mix("#ffe0a0", "#f09a5c", d),
+      ];
+      R.skyStops.forEach((s, i) => s.setAttribute("stop-color", sky[i]));
+
+      // The sun sinks behind the hills, then fades back in for the next loop
+      const sy = R.sunY0 + (hz + R.sunR * 1.3 - R.sunY0) * S.sun;
+      R.sunG.setAttribute("transform", `translate(${R.sunX.toFixed(1)} ${sy.toFixed(1)})`);
+      R.sunG.setAttribute("opacity", S.sunA.toFixed(3));
+      R.sun.setAttribute("fill", mix(mix("#fff0b8", C.gold, 0.25), "#ff7a3c", S.sun));
+
+      R.clouds.forEach((c) => {
+        const x = c.cx + Math.sin(w(1) + c.i * 2) * u * 0.03;
+        c.g.setAttribute("transform", `translate(${x.toFixed(1)} ${c.cy.toFixed(1)})`);
+        c.body.setAttribute("fill", mix("#f4a0a0", "#7a5290", d));
+        c.lit.setAttribute("fill", mix("#ffe1a8", "#e8907a", d));
+      });
+
+      // Birds cross from right to left, heading home
+      const bp = S.birds, show = bp > 0 && bp < 1;
+      const bx = W + u * 0.25 - bp * (W + u * 0.8), by = hz * 0.62 - Math.sin(bp * Math.PI) * hz * 0.12;
+      const s = u * 0.024;
+      R.birds.forEach((b) => {
+        if (!show) { b.p.setAttribute("d", ""); return; }
+        const fl = Math.sin(w(22) + b.ph);
+        const tip = -fl * s * 0.8, ctrl = -s * 0.3 - fl * s * 0.2;
+        const x = bx + b.dx, y = by + b.dy;
+        b.p.setAttribute("d", `M${f([x - s, y + tip])} Q${f([x - s * 0.45, y + ctrl])} ${f([x, y])} Q${f([x + s * 0.45, y + ctrl])} ${f([x + s, y + tip])}`);
+        b.p.setAttribute("stroke-width", (s * 0.22).toFixed(2));
+      });
+
+      // Paddy rows ripple as the wind rolls across
+      R.rows.forEach((r) => {
+        const pts = [];
+        for (let i = 0; i <= 16; i++) {
+          const x = -W * 0.06 + (i / 16) * W * 1.12;
+          const y = r.k === 0 ? r.y : r.y + r.amp * (Math.sin((x / W) * 7 - w(2) + r.k * 1.3) + 0.4 * Math.sin((x / W) * 15 + w(3) + r.k));
+          pts.push([x, y]);
+        }
+        r.p.setAttribute("d", smooth(pts) + ` L${f([W * 1.1, H + 10])} L${f([-W * 0.1, H + 10])}Z`);
+      });
+
+      R.palms.forEach((p, i) => {
+        p.g.setAttribute("transform", `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) rotate(${(Math.sin(w(2) + p.phase) * 0.8).toFixed(2)})`);
+        p.inner.setAttribute("transform", `rotate(${(Math.sin(w(3) + p.phase) * 3).toFixed(2)})`);
+        p.fronds.forEach((fr, j) => fr.setAttribute("transform", `rotate(${(Math.sin(w(4) + j * 0.9 + i) * 3).toFixed(2)})`));
+      });
+
+      // Chickens peck now and then
+      R.hens.forEach((h, i) => {
+        const c = ((t / LOOP) * 5 + i * 0.37) % 1;
+        const peck = c < 0.12 ? Math.sin((c / 0.12) * Math.PI) : 0;
+        h.setAttribute("transform", `translate(-4 -7) rotate(${(-peck * 60).toFixed(1)} 0 0)`);
+      });
+      const tail = Math.sin(w(4)) * 25;
+      R.catTail.setAttribute("transform", `rotate(${tail.toFixed(1)} 3 -1)`);
+
+      // Kid rides along the path, wheels turning, legs pedalling
+      const kp = S.kid;
+      const kx = -u * 0.25 + kp * (W + u * 0.5);
+      const ky = R.pathY(kx) + u * 0.004 + Math.abs(Math.sin(w(30))) * u * 0.0015;
+      R.kid.g.setAttribute("transform", `translate(${kx.toFixed(1)} ${ky.toFixed(1)}) scale(${R.kidK.toFixed(4)})`);
+      R.kid.g.style.display = kp > 0 && kp < 1 ? "" : "none";
+      const crank = kp * (W + u * 0.5) / (R.kidK * 9) / 2.2;
+      R.kid.spokes.forEach((sp) => sp.setAttribute("transform", `rotate(${((kp * (W + u * 0.5)) / (R.kidK * 9) * 57.3).toFixed(1)})`));
+      const pedal = (ang) => [-1 + Math.cos(ang) * 5, -10 + Math.sin(ang) * 5];
+      R.kid.nearLeg.setAttribute("d", leg([-4, -29], pedal(crank), 12.5));
+      R.kid.farLeg.setAttribute("d", leg([-4, -29], pedal(crank + Math.PI), 12.5));
+
+      R.tufts.forEach((tf) => {
+        tf.g.setAttribute("transform", `translate(${tf.x.toFixed(1)} ${tf.y.toFixed(1)}) rotate(${(Math.sin(w(3) - tf.ph) * 4).toFixed(2)})`);
+      });
+
+      // Dusk darkens the land; the windows glow brighter
+      if (d > 0.001) {
+        R.dm.setAttribute("values", DUSK.map((v, i) => (ID[i] + (v - ID[i]) * d).toFixed(3)).join(" "));
+        R.land.setAttribute("filter", "url(#ks-dusk)");
+      } else R.land.removeAttribute("filter");
+      R.lights.setAttribute("opacity", (0.55 + 0.45 * S.light).toFixed(3));
+      R.glows.setAttribute("opacity", (0.25 + 0.75 * S.light).toFixed(3));
+
+      // Fireflies drift and blink
+      R.flies.forEach((fl) => {
+        const blink = Math.max(0, Math.sin(w(fl.fb) + fl.q)) ** 2;
+        const o = S.fire * (0.25 + 0.75 * blink);
+        fl.g.style.display = o > 0.01 ? "" : "none";
+        if (o <= 0.01) return;
+        const x = fl.x + Math.sin(w(fl.fx) + fl.p) * fl.ax, y = fl.y + Math.sin(w(fl.fy) + fl.q) * fl.ay;
+        fl.g.setAttribute("transform", `translate(${x.toFixed(1)} ${y.toFixed(1)})`);
+        fl.g.setAttribute("opacity", o.toFixed(3));
+      });
+    }
+
+    // ---- Title ----
+    const words = text.split(/\s+/).filter(Boolean);
+    let lines = [text];
+    if (text.length > 16 && words.length > 1) {
+      for (let i = 1; i < words.length; i++) {
+        const pair = [words.slice(0, i).join(" "), words.slice(i).join(" ")];
+        if (lines.length === 1 || Math.max(...pair.map((x) => x.length)) < Math.max(...lines.map((x) => x.length))) lines = pair;
+      }
+    }
+    const letters = [];
+    lines.forEach((line) => {
+      const row = document.createElement("span");
+      row.className = "line";
+      const inner = document.createElement("span");
+      for (const ch of line) {
+        const s = document.createElement("span");
+        s.textContent = ch === " " ? " " : ch;
+        inner.append(s);
+        letters.push(s);
+      }
+      row.append(inner);
+      titleEl.append(row);
+    });
+    titleEl.style.color = C.ink;
+
+    function fitTitle() {
+      const probe = document.createElement("canvas").getContext("2d");
+      probe.font = '800 100px "Baloo 2", "Trebuchet MS", sans-serif';
+      const widest = Math.max(...lines.map((l) => probe.measureText(l).width)) / 100;
+      const fs = Math.min(u * (lines.length > 1 ? 0.13 : 0.15), (W * 0.86) / widest);
+      const blockH = fs * 1.02 * lines.length;
+      const top = Math.max(H * 0.05, hz * 0.3 - blockH / 2);
+      Object.assign(titleEl.style, {
+        fontSize: `${fs}px`,
+        lineHeight: "1.02",
+        top: `${top}px`,
+        textShadow: `0 ${fs * 0.06}px 0 #7a3a45, 0 0 ${fs * 0.4}px rgba(255, 190, 110, 0.55)`,
+      });
+      return { bottom: top + blockH + fs * 0.1, x0: (W - widest * fs) / 2, x1: (W + widest * fs) / 2 };
+    }
+    // ---- Timeline ----
+    let tl;
+    function makeTimeline() {
+      tl = gsap.timeline({ repeat: -1, onUpdate: () => render(tl.time()) });
+      tl.set(S, { sun: 0, sunA: 1, dusk: 0, light: 0, fire: 0, kid: 0, birds: 0 }, 0)
+        .to(S, { sun: 1, duration: 9.4, ease: "sine.in" }, 0)
+        .to(S, { dusk: 1, duration: 5.4, ease: "sine.inOut" }, 3.8)
+        .to(S, { light: 1, duration: 3, ease: "sine.inOut" }, 5.4)
+        .to(S, { fire: 1, duration: 1.8, ease: "sine.out" }, 7.2)
+        .to(S, { kid: 1, duration: 8.6, ease: "none" }, 2)
+        .to(S, { birds: 1, duration: 6.5, ease: "none" }, 2.2)
+        .fromTo(letters, { opacity: 0, yPercent: 45, rotation: -8 },
+          { opacity: 1, yPercent: 0, rotation: 0, duration: 0.8, stagger: 0.05, ease: "back.out(2)" }, 0.35)
+        .to(titleEl, { opacity: 0, duration: 0.7, ease: "sine.in" }, 10.5)
+        .set(titleEl, { opacity: 1 }, LOOP - 0.01)
+        // Back to golden hour: the night fades and the sun returns
+        .to(S, { dusk: 0, light: 0, fire: 0, duration: 1.3, ease: "sine.inOut" }, 10.7)
+        .set(S, { sun: 0, sunA: 0 }, 10.7)
+        .to(S, { sunA: 1, duration: 1.3, ease: "sine.inOut" }, 10.7)
+        .set({}, {}, LOOP);
+    }
+
+    // Reduced motion: one warm still frame at sunset with the lights on.
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    const STILL = 8;
+    function apply() {
+      if (reduce.matches) {
+        tl.pause(STILL);
+        render(STILL);
+      } else tl.play();
+    }
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => { build(); render(tl.time()); }, 120);
+    });
+
+    // Wait briefly for the font so the title is measured in the right face.
+    Promise.race([
+      document.fonts.load('800 1em "Baloo 2"'),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(() => {
+      build();
+      makeTimeline();
+      render(0);
+      apply();
+      reduce.addEventListener("change", apply);
+    });
+  </script>
+</body>
+</html>

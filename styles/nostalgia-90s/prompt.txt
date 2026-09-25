@@ -1,0 +1,20 @@
+Make my video in this style: Nostalgia 90s.
+
+Look and motion
+- A Malaysian 80s and 90s throwback, like a home video found on an old tape. Faded, grainy colours with soft scanlines and dark corners.
+- The hero is a chunky wooden CRT TV with knobs, rabbit ear antenna and a crochet doily on top, in a living room with a painted wall and a wooden cabinet.
+- The TV switches on: a thin white line opens into colour bars with a simple test card. Keep it generic, with no real channel logos. Then a moment of soft static and my message appears on the screen.
+- Show my message as a bright 90s title card, letters popping in one by one, with a few playful shapes like squiggles, triangles and dots. Write my text in the language I use, Malay or English.
+- If I attach old photos, show them on the TV screen one after another, like a slideshow on tape.
+- Put a camcorder overlay on top: "PLAY" in a corner and a date stamp. A soft tracking band rolls down the picture once or twice.
+- Add retro props that fit my topic, for example a cassette tape with turning reels and a handwritten label, an old bus ticket or a few coins.
+- End with the TV switching off: the picture squeezes into a line, then a dot that fades. Keep every effect gentle, never strobing.
+
+Type and colour
+- A rounded 90s display font (like Righteous) for the title, a pixel VCR font (like VT323) for the overlay and a marker hand for labels.
+- Use my brand colours if I give them. Otherwise use sunny yellow #ffd23f, hot pink #ff4fa3, teal #1fb5b0, deep purple #2b1d5c, mint wall #9cbfae and warm wood brown #7a4a2c.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

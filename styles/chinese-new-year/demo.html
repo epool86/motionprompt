@@ -1,0 +1,692 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chinese New Year demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/dm-serif-display@5.3.0/400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jost@5.3.0/500.css">
+  <style>
+    /* Colours can be set from the URL: ?text=Title|Small line&bg=8e0c18&ink=fff1d0&accent=f2c14e&accent2=d7262f */
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #8e0c18;
+    }
+
+    svg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .title {
+      font-family: "DM Serif Display", Georgia, serif;
+      font-weight: 400;
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+
+    .sub {
+      font-family: "Jost", "Trebuchet MS", system-ui, sans-serif;
+      font-weight: 500;
+      text-anchor: middle;
+      dominant-baseline: central;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <svg id="scene" role="img" xmlns="http://www.w3.org/2000/svg"></svg>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => "#" + (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const C = {
+      bg: hex("bg", "8e0c18"),
+      ink: hex("ink", "fff1d0"),
+      gold: hex("accent", "f2c14e"),
+      paper: hex("accent2", "d7262f"),
+      goldDeep: "#b9812a",
+      goldLight: "#fff4c7",
+      shade: "#3b0207",
+      orange: "#f39019",
+      leaf: "#2f7a45",
+      branch: "#4a2218",
+      petal: "#ffd3de",
+      petalDeep: "#f07a9a",
+    };
+    document.body.style.background = C.bg;
+
+    // ?text=Title|Small line. The default is the Malaysian Cantonese greeting with an English line.
+    const raw = (params.get("text") || "").trim();
+    const [title, subtitle] = raw
+      ? [raw.split("|")[0].trim().slice(0, 40), (raw.split("|")[1] || "").trim().slice(0, 50)]
+      : ["Gong Xi Fa Cai", "Happy Chinese New Year"];
+
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.getElementById("scene");
+    svg.setAttribute("aria-label", `Chinese New Year greeting: red lanterns swing in, gold paper-cut patterns unfold around a fu diamond, plum blossoms bloom and gold confetti falls around the title ${title}`);
+
+    function el(name, attrs, parent) {
+      const node = document.createElementNS(NS, name);
+      for (const k in attrs) node.setAttribute(k, attrs[k]);
+      if (parent) parent.append(node);
+      return node;
+    }
+
+    // Brush outlines for the characters, traced from the Ma Shan Zheng font (SIL Open Font License).
+    // Each one sits in a 1000 unit em box.
+    const GLYPHS = {
+      "新": "M218 639Q218 629 230 639Q232 643 236 646Q243 656 242 695Q242 734 245 751Q247 762 246 768Q245 774 238 785Q228 801 213 805Q204 808 200 806Q195 805 186 796Q168 779 167 732Q167 720 182 692Q196 664 209 652Q218 643 218 639ZM272 277Q274 274 286 274Q298 275 307 277Q314 280 328 290Q337 297 339 302Q341 308 341 327Q341 353 332 361Q324 369 312 364Q303 361 292 348Q281 334 280 328Q280 322 275 315Q271 310 270 295Q268 280 272 277ZM723 118Q733 105 736 105Q738 105 752 114Q766 123 780 131Q804 141 796 171Q794 179 790 184Q785 190 771 197L700 234L625 276Q597 291 577 304Q519 346 523 330Q525 325 521 325Q512 325 519 314Q520 312 523 309Q530 302 548 290Q567 277 576 268Q585 260 612 236Q639 213 656 195Q714 133 723 118ZM312 69Q312 60 318 58Q323 57 343 62Q360 66 369 72Q378 79 399 100Q422 122 424 137L427 153L446 151Q464 149 482 145Q494 144 499 146Q504 148 513 156Q542 180 529 198Q524 207 514 207Q505 207 505 210Q505 214 508 214Q512 214 520 229Q528 244 528 252Q528 265 514 284Q501 304 465 342Q440 366 449 367Q451 367 454 366Q464 364 520 360Q576 356 580 354Q583 352 583 336Q583 327 584 324Q586 320 592 320Q602 320 612 330Q621 339 626 354L634 388Q638 402 644 404Q651 407 667 402Q683 397 696 394Q709 390 712 384Q714 378 718 370Q721 361 718 356Q716 352 722 352Q727 352 734 344Q738 336 742 337Q745 338 768 350Q777 355 788 366Q795 372 800 373Q805 374 819 372Q838 368 858 370Q879 371 884 371Q895 372 904 392Q914 411 910 424Q907 432 896 445Q884 458 881 458Q878 458 860 450Q841 441 820 444Q804 448 800 450Q796 453 794 462Q791 476 789 568Q787 661 785 680Q780 723 778 810Q777 852 772 861Q768 870 768 881Q768 893 748 939Q725 992 723 992Q721 992 715 994Q713 996 712 990Q708 974 709 732Q711 467 708 464Q704 460 682 468Q659 476 650 484Q638 494 633 562Q631 585 622 618Q614 651 608 664Q597 685 564 726Q532 767 501 799Q479 821 447 840Q415 860 408 855Q404 850 411 846Q420 838 448 798Q477 759 477 753Q477 750 483 744Q490 739 488 734Q487 729 478 729Q468 729 456 715L431 686L419 672L418 688Q417 754 408 792Q397 847 387 847Q383 847 382 854Q382 861 369 878Q356 896 350 897Q344 899 338 884Q332 870 316 856Q300 842 300 837Q300 832 294 827Q289 822 290 803L291 784L311 776Q332 770 333 768Q338 762 344 695Q349 628 348 583Q348 579 345 578Q342 578 331 581Q314 585 306 590Q299 596 292 596Q285 596 274 606Q263 616 252 614Q230 611 215 597Q211 593 213 592Q218 590 217 582Q217 579 222 574Q227 569 242 562Q261 552 299 538Q337 525 346 525Q351 525 352 510Q352 495 358 472Q365 440 360 436Q356 433 327 446Q300 458 288 458Q277 458 261 466Q245 473 228 476Q203 480 176 508Q165 521 148 521Q131 521 124 512Q116 502 102 494Q88 485 88 474Q88 462 93 462Q98 462 104 457Q116 446 191 426Q317 395 336 386Q352 380 384 347Q416 314 425 294Q436 272 446 253Q457 234 460 220Q462 205 466 200Q470 196 464 193Q457 191 402 198Q346 204 337 208Q328 211 320 211Q311 211 305 216Q298 222 280 228Q261 234 256 232Q249 229 249 215Q249 205 252 201Q255 197 268 192Q287 185 315 175Q332 170 338 166Q343 163 341 160Q338 154 332 136Q327 119 320 100Q312 80 312 69ZM543 421Q470 414 413 423Q387 428 387 433Q387 435 395 437Q415 443 414 484Q413 505 416 508Q418 510 432 506Q450 499 474 498Q499 498 507 505Q520 512 525 524Q530 536 527 545Q521 564 488 559L459 554Q448 551 433 558Q422 562 420 566Q418 569 418 581Q418 598 416 612Q414 621 414 622Q415 623 421 618Q427 613 430 613Q434 613 447 619Q462 627 475 627Q488 627 500 631Q512 635 512 640Q512 645 520 661L527 676L537 656Q546 637 555 582Q574 461 570 451Q568 444 565 434Q564 426 560 424Q557 422 543 421Z",
+      "年": "M553 136Q562 136 567 131Q572 126 596 126Q621 127 645 133Q679 140 686 162Q692 185 665 198Q655 204 638 198Q622 196 594 196Q566 196 538 200Q511 203 511 207Q511 209 528 221Q545 233 556 254Q566 275 566 296Q566 319 570 323Q573 327 590 331Q639 344 648 349Q656 354 656 373Q656 392 647 398Q638 405 610 405Q579 406 575 408Q567 414 565 495L564 519H590Q794 513 802 509Q812 504 827 503Q842 502 849 507Q859 512 878 520Q897 526 910 536Q924 545 924 552Q924 559 918 571Q912 583 906 587Q901 592 874 590Q848 589 842 584Q837 578 766 576Q695 573 659 576Q615 580 590 581L564 582L562 668Q560 755 557 760Q554 764 552 823Q550 882 544 902Q539 923 539 936Q539 948 533 952Q527 957 527 962Q527 967 515 981L504 994L494 985Q483 973 480 930Q476 886 476 723L477 591L450 593Q400 598 323 612Q281 619 260 622Q239 625 218 634Q198 643 192 643Q185 643 165 656Q148 669 138 668Q129 668 115 655Q103 644 95 640Q79 635 76 624Q73 612 87 604Q119 590 142 586Q160 583 183 576Q206 568 246 562Q285 556 294 552L303 549L301 434Q299 319 303 314Q316 299 349 321Q363 331 366 336Q368 340 369 357Q370 380 374 380Q377 380 404 370Q432 361 454 356Q477 351 478 347Q479 343 484 288Q488 233 493 227Q498 221 501 213Q503 208 498 208Q494 209 457 218Q436 222 430 222Q424 222 412 214Q403 210 396 203Q388 196 385 190Q382 184 385 183Q400 173 468 154Q535 136 553 136ZM381 404Q380 395 374 392Q371 391 370 424Q369 458 371 494Q373 529 377 533Q382 538 427 534Q472 529 476 527Q479 525 479 474V423H469Q458 423 446 431Q435 439 426 439Q417 439 400 425Q382 411 381 404ZM328 73Q329 68 332 62Q336 57 354 59Q369 60 379 68Q389 75 402 96L414 112L405 128Q397 146 384 162L335 226Q299 274 295 274Q291 274 278 286Q271 295 248 310Q226 325 223 325Q221 325 202 337Q166 363 150 360Q147 358 147 356Q147 352 178 317Q202 293 228 260Q254 228 258 219Q270 193 297 150Q314 124 320 111Q325 98 328 73Z",
+      "快": "M89 344Q103 335 108 335Q113 335 121 346Q129 356 132 360Q136 365 139 382Q142 398 145 398Q147 398 148 406Q149 414 148 424Q146 433 144 436Q140 443 143 451Q148 464 144 486Q140 507 130 512Q125 515 125 521Q125 528 110 542Q94 555 82 557Q68 559 62 561Q54 563 48 550Q42 538 37 511Q25 451 39 421Q56 382 66 368Q75 354 89 344ZM211 143Q216 139 222 139Q227 139 248 144Q263 149 268 152Q272 156 276 166Q282 176 282 192Q283 207 278 211Q274 215 270 266Q266 317 262 321Q258 325 258 349Q258 373 254 404Q250 435 248 570Q247 705 247 716Q246 747 252 880Q254 926 235 939Q223 948 223 952Q223 956 216 962Q209 967 202 967Q194 967 186 958Q178 950 172 938Q168 927 168 886Q169 844 175 810Q180 772 180 732Q180 693 186 625Q191 557 190 484Q189 411 191 408Q193 404 194 291Q195 205 198 178Q201 151 211 143ZM529 91Q535 88 541 87Q560 87 578 128Q596 169 593 205Q592 227 600 234Q605 240 613 240Q621 241 649 238Q690 234 703 239Q716 244 734 244Q747 244 752 246Q757 249 763 260Q772 275 773 294Q774 313 765 320Q757 327 757 333Q757 339 750 355Q742 371 742 382Q742 392 728 413Q714 434 714 439Q714 443 759 446Q804 450 817 446Q828 443 866 449Q890 453 898 456Q906 458 912 466Q923 477 923 492Q923 508 913 516Q902 528 872 530Q842 532 810 525Q786 520 770 520Q755 520 732 516Q708 512 653 512L598 513L599 530Q600 547 610 560Q620 574 620 577Q620 582 646 618Q672 655 706 696Q754 755 830 791Q865 807 886 822Q908 837 939 851L969 865V884Q969 900 964 903Q960 906 929 912Q878 920 878 931Q878 935 866 940Q853 944 842 941Q830 938 798 920Q766 903 746 887Q725 870 682 828Q639 785 639 780Q639 777 628 762Q616 747 616 745Q616 743 599 715Q580 683 562 640Q550 613 544 613Q537 613 537 617Q537 621 527 644Q517 666 514 674Q498 714 488 718Q481 721 479 727Q463 761 447 784Q431 806 403 837Q379 860 347 886Q315 912 307 912Q301 912 299 905Q297 898 301 893Q306 886 313 872Q320 859 356 812Q391 764 394 758Q396 753 399 746Q411 727 423 690L436 646Q443 626 443 618Q443 609 448 598Q453 587 456 568Q459 550 461 541Q463 534 461 532Q459 531 450 531Q427 531 390 545Q354 559 346 570Q344 574 331 574Q318 574 304 558L290 542L298 529Q305 517 331 508Q378 492 460 474Q470 472 474 462Q478 453 480 426Q483 400 489 370Q495 339 492 333Q490 327 478 328Q466 328 454 334Q441 342 420 338Q399 335 396 332Q392 330 392 334Q392 338 396 341Q400 344 398 360Q394 390 358 404Q346 408 342 408Q337 407 324 402Q308 393 287 373Q266 353 268 347Q270 342 270 335Q270 325 325 315Q342 312 350 312Q357 313 370 318Q388 322 388 319Q388 311 392 311Q396 311 396 301Q396 293 402 289Q407 285 424 280Q441 275 450 268Q460 262 478 258L496 254L499 226Q503 181 513 138Q523 95 529 91ZM626 440Q631 428 630 423Q628 418 634 387Q639 356 641 337Q643 318 646 314Q648 311 642 307Q637 303 620 303Q607 303 604 306Q600 308 595 316Q586 335 584 375Q584 384 578 392Q573 400 570 426Q568 452 572 454Q576 457 599 454Q612 453 617 450Q622 448 626 440Z",
+      "乐": "M600 633V623L640 626Q721 631 772 659Q822 687 822 726Q822 751 806 776Q790 801 772 806Q766 807 760 804Q754 800 742 785Q720 762 706 744Q690 723 662 695Q634 667 619 656Q600 642 600 633ZM247 645Q295 597 300 598Q306 600 309 600Q312 600 318 619Q324 638 324 648Q324 659 320 661Q316 663 308 691Q301 719 295 730Q289 741 289 760Q289 773 287 776Q285 780 274 783Q260 788 255 794Q246 800 232 805Q217 810 210 808Q195 804 186 788Q177 771 177 750Q177 728 188 710Q200 693 247 645ZM285 329Q284 276 284 267Q285 258 294 258Q306 258 314 270Q321 281 328 310Q334 336 334 350Q335 364 332 405Q329 463 330 464Q332 466 358 458Q385 449 423 442L460 436V369Q460 303 468 284Q473 271 476 268Q479 264 488 263Q497 262 504 266Q511 271 528 287L555 312L552 333Q550 354 551 372Q552 389 552 404Q552 415 554 417Q555 419 565 417Q579 415 610 412Q641 409 647 407Q654 405 689 404Q724 403 734 404Q745 406 753 418Q761 430 760 443Q757 455 739 466Q709 485 678 471Q666 466 626 464Q585 463 566 467Q552 470 548 499Q545 528 545 665Q546 785 544 814Q543 844 534 875Q531 887 531 894Q531 902 523 914Q515 926 515 930Q515 935 498 957Q486 974 478 979Q470 984 442 993Q409 1004 400 1002Q391 999 389 980Q386 961 368 944Q350 927 347 927Q344 927 342 920Q340 912 316 894Q270 859 267 831Q266 821 268 821Q269 820 273 824Q280 830 285 830Q290 830 299 838Q316 854 383 849Q414 848 422 846Q429 844 435 836Q445 824 445 820Q445 816 450 805Q456 794 458 638L461 484L445 486Q386 495 338 518Q291 540 282 563Q270 592 253 574Q244 564 239 539Q234 515 238 505Q243 495 243 488Q243 481 250 479Q265 476 276 431Q286 386 285 329ZM487 75Q511 52 517 52Q524 52 540 68Q557 83 565 98Q585 134 582 151Q581 157 578 160Q575 162 564 162Q550 162 523 169Q441 194 396 213Q373 224 336 235L301 247L290 237L280 228L293 216Q307 205 335 190Q370 173 400 150Q430 127 487 75Z",
+      "福": "M331 290Q342 286 346 280Q351 273 363 273Q372 273 387 282Q402 292 402 298Q402 303 408 307Q416 313 415 329Q414 345 404 353Q395 363 384 383Q374 403 358 428Q343 450 346 454Q348 459 376 467Q401 474 410 485Q420 496 423 517Q424 540 414 552Q404 564 390 562Q377 559 361 549Q340 534 335 539Q330 544 327 581Q325 625 327 675Q330 731 324 785Q319 839 310 859Q294 895 272 887Q250 878 243 827Q240 796 240 784Q241 771 248 725Q257 668 257 644Q257 620 261 604Q265 585 261 584Q257 582 245 600Q231 618 219 630Q207 642 190 666Q178 685 141 717Q104 749 89 755Q79 758 76 754Q74 750 78 734Q82 710 115 674Q140 646 164 614Q189 582 189 579Q189 576 200 560Q211 544 215 536Q219 527 223 520Q242 491 271 436Q300 382 305 365Q308 358 306 358Q304 357 293 359Q277 363 266 371Q255 379 234 390Q212 401 187 420Q166 436 158 438Q149 441 139 433Q125 424 117 403Q115 397 117 397Q120 397 120 390Q120 384 136 376L201 344Q248 321 284 307ZM731 228Q745 222 748 222Q752 223 764 233Q778 244 788 244Q808 244 820 256Q832 268 833 289Q833 312 826 324Q818 336 798 348Q775 359 761 378L746 396L755 411Q776 444 762 463Q756 470 744 471Q731 472 683 467Q647 465 607 471L567 475L565 499V524L587 519Q608 516 664 515Q721 514 747 518Q787 522 853 539Q899 549 920 581Q924 589 924 594Q924 600 920 616Q914 637 909 695Q901 787 897 796Q892 804 880 832Q867 859 850 876Q832 892 830 898Q828 905 817 912Q772 940 763 954Q744 978 732 949Q725 934 704 918Q684 902 683 890Q683 876 672 872Q660 867 619 869Q550 869 528 871Q507 873 503 879Q500 887 492 887Q485 887 474 876Q462 866 462 859Q462 852 456 840Q449 828 445 798Q433 713 422 657Q412 608 418 602Q423 597 423 591Q423 585 449 567Q477 548 546 526Q552 525 531 504Q510 484 502 458Q494 433 486 420Q479 407 466 370Q450 324 452 310Q454 295 475 284Q498 273 542 258Q587 244 600 244Q613 244 628 240Q642 235 680 234Q718 234 731 228ZM700 298Q700 294 694 292Q688 290 667 291Q634 291 617 295Q600 299 585 300Q538 307 524 318Q511 329 523 353Q529 365 537 384Q545 403 546 404Q546 406 561 399Q576 392 622 388Q659 384 669 380Q679 376 684 364Q688 352 694 328Q700 305 700 298ZM787 578Q771 568 734 566Q698 563 676 560Q655 558 652 561Q650 564 658 580Q665 595 665 602Q665 614 671 618Q677 622 694 622Q717 622 725 634Q734 646 734 662Q734 678 724 684Q715 690 699 690Q684 690 680 698Q676 706 673 736Q671 767 664 778Q659 787 662 790Q664 793 682 793Q705 793 712 800Q718 808 728 843Q732 858 756 827Q783 794 792 758Q802 723 803 652L805 587ZM585 605Q585 603 585 597Q585 571 578 568Q571 566 527 579Q518 581 514 582Q491 589 475 604L458 618L461 655Q462 692 468 710Q473 727 480 760Q488 792 502 808L517 824L533 818Q549 811 563 805L577 801V756Q577 720 573 714Q569 709 550 719Q538 726 520 725Q502 724 493 714Q484 704 488 692Q492 681 511 670Q530 659 561 650L585 643ZM279 106Q293 99 297 99Q302 99 336 118Q370 136 381 146Q393 156 395 161Q397 166 397 184Q397 238 357 252Q347 256 342 254Q337 252 324 244Q304 230 300 213Q295 196 291 189Q287 182 280 167Q274 152 265 141Q256 129 259 122Q262 114 279 106ZM679 91Q683 88 714 89Q752 91 767 104Q782 118 779 148Q778 172 763 180Q748 189 724 180Q711 175 670 180Q629 186 602 195L571 206L552 196Q504 172 504 150Q504 140 514 134Q523 129 550 122Q675 96 679 91Z",
+    };
+    // Small geometry helpers. Shapes are drawn in local units and scaled into place.
+    const TAU = Math.PI * 2;
+    const rad = (d) => (d * Math.PI) / 180;
+    const n3 = (v) => +v.toFixed(3);
+    const P = (p) => `${n3(p[0])} ${n3(p[1])}`;
+    const polar = (r, deg, c = [0, 0]) => [c[0] + r * Math.cos(rad(deg)), c[1] + r * Math.sin(rad(deg))];
+    const circle = (x, y, r) => `M${P([x - r, y])}a${n3(r)} ${n3(r)} 0 1 0 ${n3(r * 2)} 0a${n3(r)} ${n3(r)} 0 1 0 ${n3(-r * 2)} 0Z`;
+    // A teardrop from (x, y), pointing along deg.
+    const drop = (x, y, len, deg, w = 0.35) =>
+      `M${P([x, y])}` + [[0.3, -w], [0.8, -w * 0.6], [1, 0], [0.8, w * 0.6], [0.3, w], [0, 0]]
+        .map((q, i) => (i % 3 === 0 ? "C" : "") + P(polar(Math.hypot(q[0], q[1]) * len, deg + (Math.atan2(q[1], q[0]) * 180) / Math.PI, [x, y])) + " ")
+        .join("") + "Z";
+    // A scalloped edge between two angles: the radius swings from r0 up to r1 on every bump.
+    function scallop(r0, r1, a0, a1, bumps, steps = 10) {
+      const pts = [];
+      for (let i = 0; i <= bumps * steps; i++) {
+        const k = i / (bumps * steps);
+        pts.push(polar(r0 + (r1 - r0) * Math.sin(Math.PI * ((k * bumps) % 1 || (i ? 1 : 0))), a0 + (a1 - a0) * k));
+      }
+      return pts;
+    }
+    const poly = (pts) => pts.map((p, i) => (i ? "L" : "M") + P(p)).join("");
+    // A spiral cut, like the curl of a cloud scroll.
+    function spiral(c, r0, turns, a0, dir = 1) {
+      const pts = [];
+      for (let i = 0; i <= 28; i++) {
+        const k = i / 28;
+        pts.push(polar(r0 * (1 - 0.8 * k), a0 + dir * k * turns * 360, c));
+      }
+      return poly(pts);
+    }
+
+    // A loop is 12 seconds; every sway repeats a whole number of times per loop.
+    const LOOP = 12, STILL = 7.7;
+    const wave = (t, cycles, phase = 0) => Math.sin(TAU * (t * cycles) / LOOP + phase);
+    const clamp = (v) => Math.max(0, Math.min(1, v));
+
+    let W, H, u, tl, S, R, defs;
+
+    // Where everything goes for tall, square-ish and wide windows.
+    function layout() {
+      const r = W / H, L = {};
+      if (r < 0.75) {
+        L.R = Math.min(W * 0.3, H * 0.165);
+        L.titleW = W * 0.88;
+        L.fsMax = W * 0.15;
+        L.cy = H * 0.45;
+        L.corner = W * 0.32;
+        L.lanterns = [{ x: W * 0.13, len: H * 0.045, w: W * 0.19 }, { x: W * 0.87, len: H * 0.045, w: W * 0.19 }];
+        L.pile = { x: W * 0.76, y: H * 0.97, s: W * 0.07 };
+        L.branch = { x: 0, y: H * 0.955, s: W * 0.52 };
+      } else if (r < 1.3) {
+        L.R = u * 0.16;
+        L.titleW = W * 0.8;
+        L.fsMax = u * 0.115;
+        L.cy = H * 0.455;
+        L.corner = u * 0.27;
+        L.lanterns = [{ x: W * 0.1, len: H * 0.03, w: u * 0.14 }, { x: W * 0.9, len: H * 0.03, w: u * 0.14 }];
+        L.pile = { x: W - u * 0.13, y: H - u * 0.025, s: u * 0.046 };
+        L.branch = { x: 0, y: H - u * 0.025, s: u * 0.34 };
+      } else {
+        L.R = H * 0.19;
+        L.titleW = W * 0.6;
+        L.fsMax = H * 0.14;
+        L.cy = H * 0.5;
+        L.corner = H * 0.34;
+        L.lanterns = [
+          { x: W * 0.11, len: H * 0.06, w: H * 0.2 }, { x: W * 0.89, len: H * 0.06, w: H * 0.2 },
+          { x: W * 0.22, len: H * 0.0, w: H * 0.13 }, { x: W * 0.78, len: H * 0.0, w: H * 0.13 },
+        ];
+        L.pile = { x: W - H * 0.28, y: H * 0.965, s: H * 0.07 };
+        L.branch = { x: 0, y: H * 0.96, s: H * 0.52 };
+      }
+      return L;
+    }
+
+    // ---------- Paper-cut pieces are painted once into bitmaps, so they stay light ----------
+    // paper is the sheet, holes are cut out as shapes, lines are cut out as thin strokes.
+    // box is [x, y, w, h] in local units and px is the size of one local unit on screen.
+    function paperBitmap({ paper, holes, lines, lw, box, px, copies = 1, shadow = 0 }) {
+      const k = px * Math.min(2, devicePixelRatio || 1);
+      const c = document.createElement("canvas");
+      c.width = Math.max(2, Math.ceil(box[2] * k));
+      c.height = Math.max(2, Math.ceil(box[3] * k));
+      const g = c.getContext("2d");
+      const sheet = document.createElement("canvas");
+      sheet.width = c.width;
+      sheet.height = c.height;
+      const sg = sheet.getContext("2d");
+      for (let i = 0; i < copies; i++) {
+        const part = document.createElement("canvas");
+        part.width = c.width;
+        part.height = c.height;
+        const pg = part.getContext("2d");
+        pg.setTransform(k, 0, 0, k, -box[0] * k, -box[1] * k);
+        pg.rotate((i * TAU) / copies);
+        pg.fillStyle = C.paper;
+        pg.fill(new Path2D(paper));
+        pg.globalCompositeOperation = "destination-out";
+        pg.fill(new Path2D(holes));
+        pg.lineWidth = lw;
+        pg.lineCap = "round";
+        pg.stroke(new Path2D(lines));
+        sg.drawImage(part, 0, 0);
+      }
+      // A soft shadow under the sheet, so it looks lifted off the background.
+      if (shadow) {
+        g.shadowColor = "rgba(40, 0, 6, 0.55)";
+        g.shadowBlur = shadow * k;
+        g.shadowOffsetY = shadow * k * 0.4;
+      }
+      g.drawImage(sheet, 0, 0);
+      return c.toDataURL();
+    }
+
+    // ---------- Paper-cut corner: a fan of red paper with a lacy cut pattern ----------
+    function cornerArt(px) {
+      let holes = "";
+      for (let i = 0; i < 7; i++) holes += circle(...polar(0.86, (i + 0.5) * (90 / 7)), 0.035);
+      [13, 34, 56, 77].forEach((a) => (holes += drop(...polar(0.5, a), 0.21, a, 0.32)));
+      [22, 68].forEach((a) => (holes += circle(...polar(0.3, a), 0.025)));
+      const lines = `M${P(polar(0.77, 5))}A0.77 0.77 0 0 1 ${P(polar(0.77, 85))}` +
+        `M${P(polar(0.44, 6))}A0.44 0.44 0 0 1 ${P(polar(0.44, 84))}` + spiral(polar(0.26, 45), 0.1, 1.4, 225, 1);
+      const paper = `M0 0${poly(scallop(0.9, 1, 0, 90, 7)).replace("M", "L")}Z`;
+      return paperBitmap({ paper, holes, lines, lw: 0.026, box: [-0.06, -0.06, 1.16, 1.16], px, shadow: 0.02 });
+    }
+
+    function buildCorner(parent, x, y, sx, sy, size, href, id) {
+      const g = el("g", {}, parent);
+      const clip = el("clipPath", { id, clipPathUnits: "userSpaceOnUse" }, defs);
+      const reveal = el("circle", { r: 0 }, clip);
+      const inner = el("g", { "clip-path": `url(#${id})` }, g);
+      el("image", { href, x: -0.06, y: -0.06, width: 1.16, height: 1.16 }, inner);
+      el("path", { d: `M${P(polar(0.955, 3))}A0.955 0.955 0 0 1 ${P(polar(0.955, 87))}`, fill: "none", stroke: C.gold, "stroke-width": 0.008, opacity: 0.7 }, inner);
+      return { g, reveal, x, y, sx, sy, size };
+    }
+
+    // ---------- The paper-cut medallion: eight folded wedges that fan open ----------
+    function buildMedallion(parent, R0) {
+      const half = 22.5;
+      const paper = `M0 0${poly(scallop(0.9, 1, -90 - half - 0.4, -90 + half + 0.4, 2)).replace("M", "L")}Z`;
+      const holes = drop(0, -0.46, 0.36, -90, 0.3) + drop(...polar(0.5, -103), 0.2, -114, 0.32) + drop(...polar(0.5, -77), 0.2, -66, 0.32) +
+        circle(...polar(0.83, -101.25), 0.032) + circle(...polar(0.83, -78.75), 0.032) + circle(...polar(0.24, -90), 0.024);
+      const lines = `M${P(polar(0.34, -104))}A0.34 0.34 0 0 1 ${P(polar(0.34, -76))}`;
+      const box = [-1.1, -1.1, 2.2, 2.2];
+      // One loose wedge for the unfolding, and the whole open sheet with its shadow.
+      const wedgeHref = paperBitmap({ paper, holes, lines, lw: 0.03, box, px: R0 });
+      const fullHref = paperBitmap({ paper, holes, lines, lw: 0.03, box, px: R0, copies: 8, shadow: 0.014 });
+
+      const g = el("g", {}, parent);
+      const ring = el("g", { fill: "none", stroke: C.gold }, g);
+      el("circle", { r: 1.07, "stroke-width": 0.012 }, ring);
+      let dots = "";
+      for (let i = 0; i < 48; i++) dots += circle(...polar(1.13, i * 7.5), 0.012);
+      el("path", { d: dots, fill: C.gold, stroke: "none" }, ring);
+      // Once open, the sheet sits on a gold backing, so the cut-outs shine through.
+      const backing = el("circle", { r: 0.895, fill: "url(#cny-coin)" }, g);
+      const img = (href) => el("image", { href, x: box[0], y: box[1], width: box[2], height: box[3] }, g);
+      const wedges = Array.from({ length: 8 }, () => img(wedgeHref));
+      const full = img(fullHref);
+      // A gold rosette in the middle, seen before the fu diamond lands.
+      let ros = "";
+      for (let i = 0; i < 8; i++) ros += drop(0, 0, 0.16, i * 45, 0.4);
+      el("path", { d: ros + circle(0, 0, 0.05), fill: C.gold }, g);
+      return { g, ring, wedges, full, backing };
+    }
+
+    // ---------- Fu on a red diamond ----------
+    function buildFu(parent, D) {
+      const g = el("g", {}, parent);
+      const a = D / Math.SQRT2;
+      const sq = (s) => `M0 ${n3(-s / Math.SQRT2)}L${n3(s / Math.SQRT2)} 0L0 ${n3(s / Math.SQRT2)}L${n3(-s / Math.SQRT2)} 0Z`;
+      el("path", { d: sq(a * 1.02), fill: C.shade, opacity: 0.35, transform: `translate(${n3(D * 0.02)} ${n3(D * 0.03)})` }, g);
+      el("path", { d: sq(a), fill: "url(#cny-fu)", stroke: C.gold, "stroke-width": D * 0.025 }, g);
+      el("path", { d: sq(a * 0.86), fill: "none", stroke: C.gold, "stroke-width": D * 0.008, opacity: 0.8 }, g);
+      const glyph = el("path", { d: GLYPHS["福"], fill: C.gold }, g);
+      const bb = glyph.getBBox(), s = (D * 0.5) / Math.max(bb.width, bb.height);
+      glyph.setAttribute("transform", `scale(${n3(s)}) translate(${n3(-bb.x - bb.width / 2)} ${n3(-bb.y - bb.height / 2)})`);
+      return g;
+    }
+
+    // ---------- Round red lantern with a gold tassel ----------
+    function buildLantern(parent, lan) {
+      const outer = el("g", {}, parent);
+      const g = el("g", {}, outer);
+      const ls = lan.len / lan.w + 0.12;
+      el("circle", { cx: 0, cy: ls + 0.5, r: 0.95, fill: "url(#cny-glow)", opacity: 0.55 }, g);
+      el("path", { d: `M0 ${n3(-ls - 2)}V${n3(ls + 0.02)}`, stroke: C.goldDeep, "stroke-width": 0.02 }, g);
+      el("rect", { x: -0.19, y: ls, width: 0.38, height: 0.09, rx: 0.03, fill: C.gold }, g);
+      el("ellipse", { cx: 0, cy: ls + 0.5, rx: 0.5, ry: 0.42, fill: "url(#cny-lan)" }, g);
+      const ribs = el("g", { fill: "none", stroke: "#7a0812", "stroke-width": 0.014, opacity: 0.55 }, g);
+      for (const rx of [0.13, 0.3]) el("ellipse", { cx: 0, cy: ls + 0.5, rx, ry: 0.42 }, ribs);
+      el("path", { d: `M0 ${n3(ls + 0.08)}V${n3(ls + 0.92)}` }, ribs);
+      el("ellipse", { cx: 0, cy: ls + 0.5, rx: 0.5, ry: 0.07, fill: "none", stroke: C.gold, "stroke-width": 0.02, opacity: 0.8 }, g);
+      el("ellipse", { cx: -0.18, cy: ls + 0.32, rx: 0.14, ry: 0.07, fill: "#ffd0b0", opacity: 0.35, transform: `rotate(-25 -0.18 ${n3(ls + 0.32)})` }, g);
+      el("rect", { x: -0.15, y: ls + 0.86, width: 0.3, height: 0.08, rx: 0.03, fill: C.gold }, g);
+      const tassel = el("g", {}, g);
+      const ty = ls + 0.94;
+      el("path", { d: `M0 0V0.12`, stroke: C.gold, "stroke-width": 0.022 }, tassel);
+      el("path", { d: "M0 0.08L0.05 0.13L0 0.18L-0.05 0.13Z", fill: C.gold }, tassel);
+      el("path", { d: "M-0.035 0.18H0.035L0.075 0.56Q0 0.6 -0.075 0.56Z", fill: C.gold }, tassel);
+      el("path", { d: "M-0.02 0.22L-0.04 0.55M0 0.22V0.57M0.02 0.22L0.04 0.55", stroke: C.goldDeep, "stroke-width": 0.01 }, tassel);
+      el("rect", { x: -0.045, y: 0.19, width: 0.09, height: 0.035, fill: C.paper }, tassel);
+      return { outer, g, tassel, ty, lan };
+    }
+
+    // ---------- Coins and mandarin oranges ----------
+    function buildCoin(parent) {
+      const g = el("g", {}, parent);
+      el("path", { d: circle(0, 0, 1) + "M-0.2 -0.2H0.2V0.2H-0.2Z", fill: "url(#cny-coin)", "fill-rule": "evenodd", stroke: C.goldDeep, "stroke-width": 0.05 }, g);
+      el("circle", { r: 0.74, fill: "none", stroke: C.goldDeep, "stroke-width": 0.05 }, g);
+      el("path", { d: "M-0.08 -0.52h0.16v0.16h-0.16ZM-0.08 0.36h0.16v0.16h-0.16ZM-0.52 -0.08h0.16v0.16h-0.16ZM0.36 -0.08h0.16v0.16h-0.16Z", fill: C.goldDeep }, g);
+      return g;
+    }
+    function buildOrange(parent) {
+      const g = el("g", {}, parent);
+      el("ellipse", { cx: 0, cy: 0, rx: 1, ry: 0.93, fill: "url(#cny-orange)" }, g);
+      el("ellipse", { cx: -0.35, cy: -0.4, rx: 0.22, ry: 0.12, fill: "#fff3d6", opacity: 0.45, transform: "rotate(-30 -0.35 -0.4)" }, g);
+      el("path", { d: "M0 -0.9Q0.03 -1.05 0.1 -1.12", stroke: C.branch, "stroke-width": 0.07, fill: "none", "stroke-linecap": "round" }, g);
+      el("path", { d: drop(0.05, -0.95, 0.62, -20, 0.36) + drop(0.02, -0.95, 0.45, -150, 0.36), fill: C.leaf }, g);
+      el("path", { d: `M0.1 -0.98L${P(polar(0.5, -20, [0.05, -0.95]))}`, stroke: "#1f5a32", "stroke-width": 0.025 }, g);
+      return g;
+    }
+
+    // ---------- Plum blossom branch ----------
+    function buildBranch(parent, B) {
+      const g = el("g", { transform: `translate(${n3(B.x)} ${n3(B.y)}) scale(${n3(B.s)})` }, parent);
+      const strokes = [
+        { d: "M-0.05 0.02C0.2 0 0.35 -0.08 0.5 -0.2S0.78 -0.36 0.98 -0.44", w: 0.034 },
+        { d: "M0.42 -0.14C0.44 -0.26 0.52 -0.36 0.6 -0.52", w: 0.018 },
+        { d: "M0.72 -0.34C0.8 -0.3 0.9 -0.26 1.02 -0.28", w: 0.016 },
+        { d: "M0.18 -0.03C0.24 -0.1 0.26 -0.18 0.24 -0.26", w: 0.014 },
+      ];
+      const lines = strokes.map((s) => el("path", { d: s.d, fill: "none", stroke: C.branch, "stroke-width": s.w, "stroke-linecap": "round", pathLength: 1, "stroke-dasharray": "1 1", "stroke-dashoffset": 1 }, g));
+      const spots = [
+        [0.98, -0.44, 0.07, 0], [0.6, -0.52, 0.065, 30], [1.02, -0.28, 0.06, 60], [0.5, -0.2, 0.075, 15],
+        [0.24, -0.26, 0.055, 45], [0.78, -0.37, 0.05, 20], [0.35, -0.1, 0.05, 70], [0.88, -0.29, 0.04, 10],
+      ];
+      const blossoms = spots.map(([x, y, s, a], i) => {
+        const o = el("g", { transform: `translate(${x} ${y})` }, g);
+        const inner = el("g", {}, o);
+        if (i === 7 || i === 6) {
+          el("circle", { r: s * 0.55, fill: C.petalDeep }, inner);
+          return { g: inner, s };
+        }
+        let petals = "";
+        for (let k = 0; k < 5; k++) petals += circle(...polar(s * 0.5, a + k * 72), s * 0.5);
+        el("path", { d: petals, fill: "url(#cny-petal)" }, inner);
+        el("circle", { r: s * 0.3, fill: C.petalDeep }, inner);
+        let st = "", dt = "";
+        for (let k = 0; k < 7; k++) {
+          const p = polar(s * 0.52, a + k * 51 + 20);
+          st += `M0 0L${P(p)}`;
+          dt += circle(...p, s * 0.07);
+        }
+        el("path", { d: st, stroke: "#b8325a", "stroke-width": s * 0.04 }, inner);
+        el("path", { d: dt, fill: C.gold }, inner);
+        return { g: inner, s };
+      });
+      return { g, lines, blossoms };
+    }
+
+    // ---------- Build the whole scene and its timeline ----------
+    function build() {
+      W = innerWidth;
+      H = innerHeight;
+      u = Math.min(W, H);
+      svg.replaceChildren();
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      defs = el("defs", {}, svg);
+      const L = layout();
+
+      const grad = (tag, id, attrs, stops) => {
+        const g = el(tag, { id, ...attrs }, defs);
+        stops.forEach(([o, c, a = 1]) => el("stop", { offset: o, "stop-color": c, "stop-opacity": a }, g));
+        return g;
+      };
+      grad("radialGradient", "cny-bg", { cx: 0.5, cy: 0.45, r: 0.75 }, [[0, "#c4212b"], [0.55, C.bg], [1, "#4c030b"]]);
+      grad("radialGradient", "cny-lan", { fx: 0.38, fy: 0.32 }, [[0, "#ff7a55"], [0.45, "#e2262c"], [1, "#8f0a16"]]);
+      grad("radialGradient", "cny-glow", {}, [[0, "#ffb347", 0.8], [0.45, "#ff8a3d", 0.3], [1, "#ff8a3d", 0]]);
+      grad("radialGradient", "cny-coin", { fx: 0.35, fy: 0.3 }, [[0, C.goldLight], [0.5, C.gold], [1, C.goldDeep]]);
+      grad("radialGradient", "cny-orange", { fx: 0.35, fy: 0.3 }, [[0, "#ffc766"], [0.55, C.orange], [1, "#c9570a"]]);
+      grad("radialGradient", "cny-petal", { gradientUnits: "userSpaceOnUse", r: 0.07 }, [[0, "#fff4f7"], [0.6, C.petal], [1, "#f6a7bb"]]);
+      grad("linearGradient", "cny-fu", { x1: 0, y1: 0, x2: 0, y2: 1 }, [[0, "#e8343a"], [1, "#a90f1c"]]);
+
+      // Background: deep red with a faint gold coin lattice.
+      el("rect", { width: W, height: H, fill: "url(#cny-bg)" }, svg);
+      const cell = u * 0.09;
+      const pat = el("pattern", { id: "cny-lattice", width: cell, height: cell, patternUnits: "userSpaceOnUse" }, defs);
+      el("path", { d: circle(0, 0, cell / 2) + circle(cell, 0, cell / 2) + circle(0, cell, cell / 2) + circle(cell, cell, cell / 2) + circle(cell / 2, cell / 2, cell / 2), fill: "none", stroke: C.gold, "stroke-width": Math.max(0.6, u * 0.0016) }, pat);
+      el("rect", { width: W, height: H, fill: "url(#cny-lattice)", opacity: 0.07 }, svg);
+
+      // Stack in the middle: medallion with the fu diamond, title, characters and small line.
+      const title0 = el("text", { class: "title", "font-size": 100 }, svg);
+      const widthOf = (s) => { title0.textContent = s; return title0.getComputedTextLength() / 100; };
+      const words = title.split(/\s+/).filter(Boolean);
+      let lines = [words];
+      let fs = Math.min(L.fsMax, L.titleW / widthOf(title));
+      if (fs < L.fsMax * 0.62 && words.length > 1) {
+        let best = null;
+        for (let i = 1; i < words.length; i++) {
+          const pair = [words.slice(0, i), words.slice(i)];
+          const w = Math.max(...pair.map((p) => widthOf(p.join(" "))));
+          if (!best || w < best.w) best = { pair, w };
+        }
+        lines = best.pair;
+        fs = Math.min(L.fsMax * 0.85, L.titleW / best.w);
+      }
+      title0.remove();
+      const stackOf = (f) => L.R * 2.26 + f * (0.28 + lines.length * 1.05 + 0.17 + 0.42 + 0.17 + (subtitle ? 0.24 : 0));
+      // A long title on two lines makes the stack tall: shrink it all to fit.
+      const fit = Math.min(1, (H * (W / H < 1.3 ? 0.8 : 0.74)) / stackOf(fs));
+      L.R *= fit;
+      fs *= fit;
+      const cjkH = fs * 0.42, subFs = Math.max(7, fs * 0.2);
+      const gap = fs * 0.28;
+      const stackH = stackOf(fs);
+      const top = L.cy - stackH / 2;
+      const medY = top + L.R * 1.13;
+      let y = top + L.R * 2.26 + gap;
+      const lineY = lines.map(() => { const v = y + fs * 0.5; y += fs * 1.05; return v; });
+      y += gap * 0.6;
+      const cjkY = y + cjkH / 2;
+      y += cjkH + gap * 0.6;
+      const subY = y + subFs * 0.6;
+
+      // Corners, lanterns, branch and the pile sit around the stack.
+      const cornerHref = cornerArt(L.corner);
+      const corners = [[0, 0, 1, 1], [W, 0, -1, 1], [0, H, 1, -1], [W, H, -1, -1]].map(([x, y2, sx, sy], i) => buildCorner(svg, x, y2, sx, sy, L.corner, cornerHref, `cny-clip${i}`));
+
+      const glow = el("circle", { cx: W / 2, cy: medY, r: L.R * 2.2, fill: "url(#cny-glow)" }, svg);
+      const med = buildMedallion(svg, L.R);
+      const fuWrap = el("g", {}, svg);
+      const fu = buildFu(fuWrap, L.R * 1.12);
+
+      const branch = buildBranch(svg, L.branch);
+
+      // Title words, each with a dark copy under it for depth.
+      const gold = el("linearGradient", { id: "cny-gold", gradientUnits: "userSpaceOnUse", x1: W / 2 - L.titleW / 2, y1: 0, x2: W / 2 + L.titleW / 2, y2: fs }, defs);
+      [[0, C.gold], [0.42, C.gold], [0.5, C.goldLight], [0.58, C.gold], [1, C.gold]].forEach(([o, c]) => el("stop", { offset: o, "stop-color": c }, gold));
+      const measure = el("text", { class: "title", "font-size": fs }, svg);
+      const wordEls = [];
+      lines.forEach((ws, li) => {
+        measure.textContent = ws.join(" ");
+        const total = measure.getComputedTextLength();
+        measure.textContent = " ";
+        const space = measure.getComputedTextLength() || fs * 0.25;
+        let x = W / 2 - total / 2;
+        ws.forEach((w) => {
+          measure.textContent = w;
+          const ww = measure.getComputedTextLength();
+          const g = el("g", {}, svg);
+          const tx = { class: "title", "font-size": fs, x: n3(x + ww / 2), y: n3(lineY[li]) };
+          el("text", { ...tx, fill: C.shade, opacity: 0.55, transform: `translate(${n3(fs * 0.025)} ${n3(fs * 0.04)})` }, g).textContent = w;
+          el("text", { ...tx, fill: "url(#cny-gold)" }, g).textContent = w;
+          wordEls.push({ g, x: x + ww / 2, y: lineY[li] });
+          x += ww + space;
+        });
+      });
+      measure.remove();
+
+      // Characters 新年快乐 in brush strokes, with gold rules either side.
+      const cjk = el("g", {}, svg);
+      const glyphs = [..."新年快乐"].map((ch, i) => {
+        const o = el("g", { transform: `translate(${n3(W / 2 + (i - 1.5) * cjkH * 1.12)} ${n3(cjkY)})` }, cjk);
+        const inner = el("g", {}, o);
+        el("path", { d: GLYPHS[ch], fill: C.gold, transform: `scale(${n3(cjkH / 1000)}) translate(-500 -470)` }, inner);
+        return inner;
+      });
+      const ruleW = Math.min(cjkH * 2.2, (W - cjkH * 4.6) / 2 - u * 0.05);
+      const rules = [-1, 1].map((side) => {
+        const x0 = W / 2 + side * cjkH * 2.45;
+        const g = el("g", { transform: `translate(${n3(x0)} ${n3(cjkY)}) scale(${side} 1)` }, cjk);
+        const inner = el("g", {}, g);
+        el("path", { d: `M0 0H${n3(ruleW)}`, stroke: C.gold, "stroke-width": Math.max(1, cjkH * 0.05) }, inner);
+        el("path", { d: `M${n3(ruleW)} ${n3(-cjkH * 0.1)}l${n3(cjkH * 0.1)} ${n3(cjkH * 0.1)}l${n3(-cjkH * 0.1)} ${n3(cjkH * 0.1)}l${n3(-cjkH * 0.1)} ${n3(-cjkH * 0.1)}Z`, fill: C.gold }, inner);
+        return inner;
+      });
+      let sub = null;
+      if (subtitle) {
+        sub = el("text", { class: "sub", "font-size": subFs, x: W / 2, y: n3(subY), fill: C.ink, "letter-spacing": `${n3(subFs * 0.22)}px` }, svg);
+        sub.textContent = subtitle;
+        const sw = sub.getComputedTextLength();
+        if (sw > W * 0.9) sub.setAttribute("font-size", n3((subFs * W * 0.9) / sw));
+      }
+
+      // Oranges and coins, back to front.
+      const pileG = el("g", { transform: `translate(${n3(L.pile.x)} ${n3(L.pile.y)}) scale(${n3(L.pile.s)})` }, svg);
+      const pile = [
+        { k: "o", x: -1.05, y: -1.95, s: 0.95 }, { k: "c", x: 1.6, y: -0.85, s: 0.8 }, { k: "o", x: 0.55, y: -0.95, s: 1 },
+        { k: "o", x: -1.55, y: -0.9, s: 0.98 }, { k: "c", x: -0.35, y: -0.62, s: 0.66 }, { k: "c", x: 2.25, y: -0.5, s: 0.52 },
+      ].map((p) => {
+        const o = el("g", { transform: `translate(${p.x} ${p.y}) scale(${p.s})` }, pileG);
+        const inner = el("g", {}, o);
+        (p.k === "o" ? buildOrange : buildCoin)(inner);
+        return { ...p, inner };
+      });
+
+      // Lanterns hang in front of everything but the sparks.
+      const lanterns = L.lanterns.map((lan) => buildLantern(svg, lan));
+
+      // Gold confetti, drifting down.
+      const confG = el("g", {}, svg);
+      const conf = [];
+      for (let i = 0; i < 34; i++) {
+        const c = el("rect", { x: -0.5, y: -0.5, width: 1, height: i % 3 ? 1.7 : 1, rx: i % 3 ? 0.15 : 0.5, fill: [C.gold, C.goldLight, "#ff8a6a", C.gold][i % 4] }, confG);
+        const f = (a, b) => { const v = Math.sin(i * a + b) * 43758.5453; return v - Math.floor(v); };
+        conf.push({ c, x: f(12.9, 1.3), p: f(78.2, 4.1), sp: 1 + (i % 2), sway: 1 + (i % 3), s: u * (0.009 + f(3.1, 2) * 0.008), spin: 2 + (i % 4) });
+      }
+
+      // Firecracker sparks: soft gold bursts that bloom and fade.
+      const sparkG = el("g", {}, svg);
+      const burstPos = W / H < 0.75
+        ? [[0.5, 0.11], [0.19, 0.27], [0.8, 0.25], [0.24, 0.8]]
+        : W / H < 1.3 ? [[0.2, 0.38], [0.8, 0.3], [0.22, 0.26], [0.79, 0.4]] : [[0.31, 0.32], [0.69, 0.27], [0.1, 0.52], [0.9, 0.5]];
+      const bursts = [4.5, 6.0, 8.2, 9.3].map((t0, b) => {
+        const g = el("g", {}, sparkG);
+        const parts = [];
+        for (let i = 0; i < 16; i++) {
+          const a = (i / 16) * TAU + b, sp = 0.7 + ((i * 7) % 5) / 10;
+          parts.push({ c: el("circle", { r: u * (0.006 + (i % 3) * 0.002), fill: [C.goldLight, C.gold, "#ffb35c"][i % 3] }, g), a, sp });
+        }
+        return { g, t0, x: burstPos[b][0] * W, y: burstPos[b][1] * H, parts };
+      });
+
+      S = {
+        corner: corners.map(() => ({ s: 0, r: -30, c: 0 })),
+        lan: lanterns.map(() => ({ y: 1, kick: 0 })),
+        med: { s: 0, k: 0, o: 1 },
+        fu: { s: 0, r: -120 },
+        blos: branch.blossoms.map(() => ({ s: 0 })),
+        words: wordEls.map(() => ({ o: 0, y: 1 })),
+        glyphs: glyphs.map(() => ({ s: 0 })),
+        rules: { s: 0 },
+        sub: { o: 0 },
+        pile: pile.map(() => ({ y: -1, r: 0 })),
+        conf: { o: 0 },
+        glow: { o: 0 },
+      };
+      R = { L, corners, lanterns, med, medY, fu, fuWrap, branch, wordEls, glyphs, rules, sub, pile, conf, bursts, glow, gold, cjk, confG, dashed: branch.lines };
+
+      tl = gsap.timeline({ repeat: -1, onUpdate: update });
+      tl.set({}, {}, LOOP);
+      // 1. Lanterns drop in and swing; paper corners fan open and get cut.
+      S.lan.forEach((l, i) => {
+        tl.fromTo(l, { y: 1 }, { y: 0, duration: 1.1, ease: "back.out(1.3)" }, 0.1 + i * 0.18)
+          .fromTo(l, { kick: 14 * (i % 2 ? -1 : 1) }, { kick: 0, duration: 3, ease: "sine.out" }, 0.4 + i * 0.18)
+          .to(l, { y: 1, duration: 0.7, ease: "power2.in" }, 10.9 + i * 0.1);
+      });
+      S.corner.forEach((c, i) => {
+        tl.fromTo(c, { s: 0, r: -40 }, { s: 1, r: 0, duration: 0.8, ease: "back.out(1.5)" }, 0.3 + i * 0.12)
+          .to(c, { s: 0, r: -40, duration: 0.5, ease: "power2.in" }, 10.8 + i * 0.08);
+      });
+      // The pattern is cut out along a sweeping arc from the corner.
+      S.corner.forEach((c, i) => tl.fromTo(c, { c: 0 }, { c: 1.12, duration: 1.1, ease: "power1.inOut" }, 0.35 + i * 0.12));
+      // 2. The medallion unfolds, the fu diamond spins in, the plum branch grows and blooms.
+      tl.fromTo(S.med, { s: 0.3 }, { s: 1, duration: 0.9, ease: "back.out(1.4)" }, 1.0)
+        .fromTo(S.med, { k: 0 }, { k: 1, duration: 1.2, ease: "power2.inOut" }, 1.2)
+        .fromTo(S.glow, { o: 0 }, { o: 1, duration: 1.2, ease: "sine.out" }, 1.4)
+        .fromTo(S.fu, { s: 0, r: -120 }, { s: 1, r: 0, duration: 0.9, ease: "back.out(1.6)" }, 2.2);
+      branch.lines.forEach((p, i) => tl.fromTo(p, { attr: { "stroke-dashoffset": 1 } }, { attr: { "stroke-dashoffset": 0 }, duration: i ? 0.6 : 1.1, ease: "sine.inOut" }, i ? 2.2 + i * 0.12 : 1.6));
+      S.blos.forEach((b, i) => tl.fromTo(b, { s: 0 }, { s: 1, duration: 0.5, ease: "back.out(2.2)" }, 2.6 + i * 0.12).to(b, { s: 0, duration: 0.3, ease: "power2.in" }, 10.1 + i * 0.04));
+      // 3. Title words rise, then the characters and the small line.
+      tl.fromTo(S.words, { o: 0, y: 1 }, { o: 1, y: 0, duration: 0.8, ease: "power3.out", stagger: 0.14 }, 3.0)
+        .fromTo(S.glyphs, { s: 0 }, { s: 1, duration: 0.5, ease: "back.out(2)", stagger: 0.1 }, 3.6)
+        .fromTo(S.rules, { s: 0 }, { s: 1, duration: 0.7, ease: "power2.out" }, 3.9)
+        .fromTo(S.sub, { o: 0 }, { o: 1, duration: 0.7, ease: "sine.out" }, 4.1);
+      // 4. Coins and oranges bounce in; confetti starts.
+      S.pile.forEach((p, i) => {
+        tl.fromTo(p, { y: -1, r: (i % 2 ? 1 : -1) * 90 }, { y: 0, r: 0, duration: 1, ease: "bounce.out" }, 3.4 + [0.3, 0.45, 0.15, 0, 0.6, 0.72][i])
+          .to(p, { y: 1, duration: 0.5, ease: "power2.in" }, 10.1 + i * 0.06);
+      });
+      tl.fromTo(S.conf, { o: 0 }, { o: 1, duration: 0.8, ease: "sine.out" }, 3.4).to(S.conf, { o: 0, duration: 0.8, ease: "sine.in" }, 10.0);
+      // 5. Everything folds away, ready to loop.
+      tl.to(S.sub, { o: 0, duration: 0.4 }, 9.9)
+        .to(S.rules, { s: 0, duration: 0.4 }, 9.9)
+        .to(S.glyphs, { s: 0, duration: 0.3, ease: "power2.in", stagger: 0.05 }, 9.95)
+        .to(S.words, { o: 0, y: -0.6, duration: 0.5, ease: "power2.in", stagger: 0.06 }, 10.0)
+        .to(S.fu, { s: 0, r: 120, duration: 0.5, ease: "back.in(1.6)" }, 10.3)
+        .to(S.med, { k: 0, duration: 0.6, ease: "power2.inOut" }, 10.5)
+        .to(S.med, { s: 0, duration: 0.4, ease: "back.in(1.5)" }, 10.95)
+        .to(S.glow, { o: 0, duration: 0.8 }, 10.5);
+      branch.lines.forEach((p, i) => tl.to(p, { attr: { "stroke-dashoffset": 1 }, duration: 0.5, ease: "sine.in" }, 10.4 - i * 0.05));
+    }
+
+    // Per-frame work: sways, confetti, sparks and the gold glint.
+    // Only touch the DOM when a value really changes, so still parts are not redrawn.
+    const set = (node, name, v) => {
+      const key = "_" + name;
+      if (node[key] !== v) { node[key] = v; node.setAttribute(name, v); }
+    };
+
+    function update() {
+      const t = tl.time();
+      const { L, corners, lanterns, med, medY, fu, fuWrap, branch, wordEls, glyphs, rules, sub, pile, conf, bursts, glow, gold } = R;
+      const show = (g, on) => set(g, "display", on ? "inline" : "none");
+
+      corners.forEach((c, i) => {
+        const s = S.corner[i].s;
+        show(c.g, s > 0.001);
+        set(c.reveal, "r", n3(S.corner[i].c));
+        set(c.g, "transform", `translate(${n3(c.x)} ${n3(c.y)}) scale(${n3(c.sx * c.size * Math.max(0.001, s))} ${n3(c.sy * c.size * Math.max(0.001, s))}) rotate(${n3(S.corner[i].r * (1 - s))})`);
+      });
+
+      lanterns.forEach((l, i) => {
+        const st = S.lan[i], lan = l.lan;
+        const a = st.kick * Math.cos(TAU * t * 0.9 + i) + 3 * wave(t, 5, i * 1.7);
+        const drop = st.y * (lan.len + lan.w * 1.8);
+        show(l.outer, st.y < 0.999);
+        set(l.outer, "transform", `translate(${n3(lan.x)} ${n3(-drop)}) rotate(${n3(a)}) scale(${n3(lan.w)})`);
+        set(l.tassel, "transform", `translate(0 ${n3(l.ty)}) rotate(${n3(-a * 0.6 + 5 * wave(t, 7, i))})`);
+      });
+
+      show(med.g, S.med.s > 0.01);
+      set(med.g, "transform", `translate(${n3(W / 2)} ${n3(medY)}) scale(${n3(L.R * S.med.s)}) rotate(${n3(22.5 + 8 * wave(t, 1))})`);
+      // The open sheet (with its shadow) fades in over the loose wedges as they finish fanning out.
+      const full = clamp((S.med.k - 0.9) / 0.1);
+      set(med.full, "opacity", n3(full));
+      set(med.backing, "opacity", n3(full));
+      med.wedges.forEach((w, i) => {
+        show(w, full < 1);
+        set(w, "transform", `rotate(${n3(i * 45 * S.med.k)})`);
+      });
+      set(med.ring, "opacity", n3(S.med.k));
+      set(glow, "opacity", n3(S.glow.o * (0.55 + 0.1 * wave(t, 4))));
+
+      show(fuWrap, S.fu.s > 0.01);
+      set(fuWrap, "transform", `translate(${n3(W / 2)} ${n3(medY)}) rotate(${n3(S.fu.r + 2 * wave(t, 3))}) scale(${n3(S.fu.s)})`);
+
+      // Round caps would leave a dot on a line that has not started drawing yet.
+      for (const p of R.dashed) set(p, "visibility", +p.getAttribute("stroke-dashoffset") > 0.995 ? "hidden" : "visible");
+      branch.blossoms.forEach((b, i) => set(b.g, "transform", `scale(${n3(Math.max(0.001, S.blos[i].s))}) rotate(${n3(6 * wave(t, 3, i))})`));
+
+      wordEls.forEach((w, i) => {
+        const st = S.words[i];
+        set(w.g, "opacity", n3(st.o));
+        set(w.g, "transform", `translate(0 ${n3(st.y * L.fsMax * 0.5)})`);
+      });
+      glyphs.forEach((g, i) => set(g, "transform", `scale(${n3(Math.max(0.001, S.glyphs[i].s))})`));
+      rules.forEach((g) => set(g, "transform", `scale(${n3(Math.max(0.001, S.rules.s))} 1)`));
+      if (sub) set(sub, "opacity", n3(S.sub.o));
+      const glint = ((t % 4) / 4) * 3 - 1.5;
+      set(gold, "gradientTransform", `translate(${n3(glint * L.titleW)} 0)`);
+
+      pile.forEach((p, i) => {
+        const st = S.pile[i];
+        show(p.inner, st.y > -0.999);
+        set(p.inner, "transform", `translate(0 ${n3(st.y * (st.y < 0 ? L.pile.y / L.pile.s + 4 : (H * 0.4) / L.pile.s))}) rotate(${n3(st.r)})`);
+      });
+
+      // Confetti: each piece falls a whole number of screens per loop, so the loop is seamless.
+      conf.forEach((c) => {
+        const k = ((t / LOOP) * c.sp + c.p) % 1;
+        const x = (c.x + 0.03 * wave(t, c.sway, c.p * 6)) * W, y = -u * 0.05 + k * (H + u * 0.1);
+        set(c.c, "transform", `translate(${n3(x)} ${n3(y)}) rotate(${n3(k * 360 * c.spin)}) scale(${n3(c.s * Math.cos(TAU * k * c.spin * 2))} ${n3(c.s)})`);
+      });
+      set(R.confG, "opacity", n3(S.conf.o * 0.9));
+
+      // Sparks: move out, slow down, drift down a little and fade.
+      for (const b of bursts) {
+        const tau = t - b.t0;
+        const on = tau > 0 && tau < 1.4;
+        show(b.g, on);
+        if (!on) continue;
+        const reach = u * 0.1 * (1 - Math.exp(-3.2 * tau)), fall = u * 0.03 * tau * tau;
+        set(b.g, "opacity", n3(Math.min(1, tau * 8) * (1 - tau / 1.4) ** 1.5));
+        for (const p of b.parts) {
+          set(p.c, "cx", n3(b.x + Math.cos(p.a) * reach * p.sp));
+          set(p.c, "cy", n3(b.y + Math.sin(p.a) * reach * p.sp + fall));
+        }
+      }
+    }
+
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    // Reduced motion: one still frame with everything in place.
+    function apply() {
+      if (reduce.matches) tl.pause(STILL);
+      else tl.play();
+      update();
+    }
+    reduce.addEventListener("change", apply);
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        const at = tl.time();
+        tl.kill();
+        build();
+        tl.time(at);
+        apply();
+      }, 150);
+    });
+
+    // Wait briefly for the fonts so the title is measured in the right face.
+    Promise.race([
+      Promise.all([document.fonts.load("400 1em 'DM Serif Display'"), document.fonts.load("500 1em Jost")]),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(() => { build(); apply(); });
+  </script>
+</body>
+</html>

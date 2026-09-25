@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Merdeka demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/bebas-neue@5.3.0/400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/montserrat@5.3.0/700.css">
+  <style>
+    /* Colours can be set from the URL: ?text=Title|Small line&bg=0a0f45&ink=ffffff&accent=ffcc00&accent2=cc0001 */
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #0a0f45;
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="scene" role="img"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => "#" + (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+
+    // The Jalur Gemilang always keeps its official colours.
+    const FLAG = { red: "#cc0001", white: "#ffffff", blue: "#010066", yellow: "#ffcc00" };
+    const C = {
+      sky: hex("bg", "0a0f45"),
+      ink: hex("ink", "ffffff"),
+      gold: hex("accent", "ffcc00"),
+      red: hex("accent2", "cc0001"),
+      city: "#04061c",
+      window: "#ffd978",
+    };
+    document.body.style.background = C.sky;
+
+    // ?text=Title|Small line. The default is the National Day greeting.
+    const raw = (params.get("text") || "").trim();
+    const [title, subtitle] = raw
+      ? [raw.split("|")[0].trim().slice(0, 40), (raw.split("|")[1] || "").trim().slice(0, 30)]
+      : ["Selamat Hari Merdeka", "Malaysia"];
+    // The last word gets the big line when it is long enough, otherwise split in two even lines.
+    const words = title.split(/\s+/);
+    let lineA = "", lineB = title, bigLast = true;
+    if (words.length > 1) {
+      if (words.at(-1).length >= 5) {
+        lineA = words.slice(0, -1).join(" ");
+        lineB = words.at(-1);
+      } else {
+        bigLast = false;
+        let best = 0, cut = 1;
+        for (let i = 1; i < words.length; i++) {
+          const a = words.slice(0, i).join(" "), b = words.slice(i).join(" ");
+          const score = Math.max(a.length, b.length);
+          if (!best || score < best) { best = score; cut = i; }
+        }
+        lineA = words.slice(0, cut).join(" ");
+        lineB = words.slice(cut).join(" ");
+      }
+    }
+    lineA = lineA.toUpperCase();
+    lineB = lineB.toUpperCase();
+
+    const canvas = document.getElementById("scene");
+    canvas.setAttribute("aria-label", `A waving Malaysian flag, the Jalur Gemilang, over the Kuala Lumpur skyline at night with fireworks and confetti, and the title ${title}${subtitle ? ", " + subtitle : ""}`);
+    const ctx = canvas.getContext("2d");
+
+    const TAU = Math.PI * 2;
+    const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+        const easeOut = gsap.parseEase("power2.out");
+
+    // Seeded random, so the city and fireworks are the same after a resize and every loop.
+    function rng(seed) {
+      return () => {
+        seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    // One loop is 12 seconds. Anything that repeats does a whole number of cycles per loop.
+    const LOOP = 12, STILL = 6.25;
+    let W, H, u, dpr, L, sky, city, flagTex, T;
+
+    function makeCanvas(w, h) {
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(w * dpr));
+      c.height = Math.max(1, Math.round(h * dpr));
+      const g = c.getContext("2d");
+      g.scale(dpr, dpr);
+      return [c, g];
+    }
+
+    // Where everything goes, for tall, square and wide windows.
+    function layout() {
+      const r = W / H, o = {};
+      if (r < 0.72) {
+        o.fw = Math.min(W * 0.72, H * 0.5);
+        o.fx = (W - o.fw) / 2 + u * 0.03;
+        o.fy = H * 0.1;
+        o.title = { cx: W / 2, top: o.fy + o.fw / 2 + H * 0.06, bottom: H * 0.64, maxW: W * 0.86 };
+        o.towerH = H * 0.3;
+        o.pet = W * 0.3;
+        o.klt = W * 0.8;
+        o.skyBox = [W * 0.08, H * 0.06, W * 0.92, H * 0.56];
+      } else if (r < 1.3) {
+        o.fw = Math.min(W * 0.46, H * 0.42);
+        o.fx = (W - o.fw) / 2 + u * 0.03;
+        o.fy = H * 0.07;
+        o.title = { cx: W / 2, top: o.fy + o.fw / 2 + H * 0.075, bottom: H * 0.66, maxW: W * 0.78 };
+        o.towerH = H * 0.32;
+        o.pet = W * 0.2;
+        o.klt = W * 0.84;
+        o.skyBox = [W * 0.06, H * 0.06, W * 0.94, H * 0.5];
+      } else {
+        o.fw = Math.min(W * 0.38, H * 0.84);
+        o.fx = W * 0.09;
+        o.fy = H * 0.4 - o.fw / 4 - H * 0.05;
+        o.title = { cx: W * 0.72, top: H * 0.1, bottom: H * 0.62, maxW: W * 0.44 };
+        o.towerH = H * 0.36;
+        o.pet = W * 0.53;
+        o.klt = W * 0.94;
+        o.skyBox = [W * 0.06, H * 0.06, W * 0.94, H * 0.5];
+      }
+      o.fh = o.fw / 2;
+      return o;
+    }
+
+    // The Jalur Gemilang, drawn flat once. Ratio 1:2, 14 stripes, canton over 8 stripes and half the width.
+    function drawFlagFlat(g, w, h) {
+      const s = h / 14;
+      for (let i = 0; i < 14; i++) {
+        g.fillStyle = i % 2 ? FLAG.white : FLAG.red;
+        g.fillRect(0, i * s, w, s + 0.5);
+      }
+      g.fillStyle = FLAG.blue;
+      g.fillRect(0, 0, w / 2, s * 8);
+      // Canton in stripe units: 14 wide, 8 high. Crescent opens to the fly, star beside it.
+      const cx = (x) => x * (w / 2) / 14, cy = (y) => y * s;
+      const ox = 5.1, oy = 4, R = 3.05, ix = 6.1, r = 2.6;
+      const d = ix - ox, a = (d * d + R * R - r * r) / (2 * d), hh = Math.sqrt(R * R - a * a);
+      const to = Math.atan2(hh, a), ti = Math.atan2(hh, a - d);
+      g.fillStyle = FLAG.yellow;
+      g.beginPath();
+      g.arc(cx(ox), cy(oy), cx(R), -to, to, true);
+      g.arc(cx(ix), cy(oy), cx(r), ti, TAU - ti, false);
+      g.closePath();
+      g.fill();
+      // Fourteen-pointed star, one point straight up.
+      const sx = cx(9.5), sy = cy(4), ro = cx(2.4), ri = ro * 0.5;
+      g.beginPath();
+      for (let i = 0; i < 28; i++) {
+        const ang = -Math.PI / 2 + (i * Math.PI) / 14, rr = i % 2 ? ri : ro;
+        g.lineTo(sx + Math.cos(ang) * rr, sy + Math.sin(ang) * rr);
+      }
+      g.closePath();
+      g.fill();
+    }
+
+    // Petronas Twin Towers style: stepped towers with spires and a skybridge.
+    function petronas(g, cx, base, h) {
+      const w = h * 0.12;
+      const tiers = [[0, 1], [0.6, 0.88], [0.68, 0.75], [0.75, 0.62], [0.81, 0.48], [0.86, 0.34], [0.9, 0.2]];
+      for (const side of [-1, 1]) {
+        const tx = cx + side * w * 0.98;
+        g.beginPath();
+        tiers.forEach(([y0, k], i) => {
+          const y1 = (tiers[i + 1] || [0.925])[0];
+          g.rect(tx - (w * k) / 2, base - h * y1, w * k, h * (y1 - y0) + 1);
+        });
+        g.moveTo(tx - w * 0.1, base - h * 0.924);
+        g.lineTo(tx - w * 0.02, base - h);
+        g.lineTo(tx + w * 0.02, base - h);
+        g.lineTo(tx + w * 0.1, base - h * 0.924);
+        g.fill();
+      }
+      // Skybridge with its two legs.
+      g.fillRect(cx - w * 0.5, base - h * 0.435, w, h * 0.022);
+      g.lineWidth = w * 0.07;
+      g.strokeStyle = g.fillStyle;
+      g.beginPath();
+      g.moveTo(cx - w * 0.49, base - h * 0.3);
+      g.lineTo(cx - w * 0.08, base - h * 0.415);
+      g.moveTo(cx + w * 0.49, base - h * 0.3);
+      g.lineTo(cx + w * 0.08, base - h * 0.415);
+      g.stroke();
+      return [[cx - w * 0.98, base - h], [cx + w * 0.98, base - h]];
+    }
+
+    // KL Tower style: a hill, a slim shaft, the round pod and a long mast.
+    function klTower(g, x, base, h) {
+      g.beginPath();
+      g.ellipse(x, base + h * 0.04, h * 0.3, h * 0.12, 0, Math.PI, TAU);
+      g.fill();
+      const b = base - h * 0.05;
+      g.beginPath();
+      g.moveTo(x - h * 0.03, b);
+      g.lineTo(x - h * 0.018, b - h * 0.66);
+      g.bezierCurveTo(x - h * 0.08, b - h * 0.67, x - h * 0.085, b - h * 0.73, x - h * 0.045, b - h * 0.76);
+      g.lineTo(x - h * 0.03, b - h * 0.8);
+      g.lineTo(x - h * 0.012, b - h * 0.81);
+      g.lineTo(x - h * 0.004, b - h);
+      g.lineTo(x + h * 0.004, b - h);
+      g.lineTo(x + h * 0.012, b - h * 0.81);
+      g.lineTo(x + h * 0.03, b - h * 0.8);
+      g.lineTo(x + h * 0.045, b - h * 0.76);
+      g.bezierCurveTo(x + h * 0.085, b - h * 0.73, x + h * 0.08, b - h * 0.67, x + h * 0.018, b - h * 0.66);
+      g.lineTo(x + h * 0.03, b);
+      g.closePath();
+      g.fill();
+      return [[x, b - h]];
+    }
+
+    function build() {
+      W = innerWidth;
+      H = innerHeight;
+      u = Math.min(W, H);
+      dpr = Math.min(devicePixelRatio || 1, 2);
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
+      L = layout();
+
+      // Night sky with a warm glow over the city and a few stars.
+      let g;
+      [sky, g] = makeCanvas(W, H);
+      const grad = g.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0, "#03051c");
+      grad.addColorStop(0.45, C.sky);
+      grad.addColorStop(0.8, "#2a2170");
+      grad.addColorStop(1, "#5a2a66");
+      g.fillStyle = grad;
+      g.fillRect(0, 0, W, H);
+      const glow = g.createRadialGradient(W / 2, H * 1.05, 0, W / 2, H * 1.05, Math.max(W, H) * 0.6);
+      glow.addColorStop(0, "rgba(255,120,80,0.35)");
+      glow.addColorStop(1, "rgba(255,120,80,0)");
+      g.fillStyle = glow;
+      g.fillRect(0, 0, W, H);
+      const rs = rng(7);
+      for (let i = 0; i < 60; i++) {
+        g.fillStyle = `rgba(255,255,255,${0.2 + rs() * 0.5})`;
+        g.beginPath();
+        g.arc(rs() * W, rs() * H * 0.6, u * (0.0015 + rs() * 0.002), 0, TAU);
+        g.fill();
+      }
+
+      // City skyline: a hazy back row, then the front row with the two landmarks.
+      [city, g] = makeCanvas(W, H);
+      const rc = rng(21), th = L.towerH;
+      g.fillStyle = "#1a1a55";
+      for (let x = -u * 0.02; x < W;) {
+        const bw = u * (0.04 + rc() * 0.05), bh = th * (0.2 + rc() * 0.3);
+        g.fillRect(x, H - bh, bw, bh);
+        x += bw * (0.7 + rc() * 0.4);
+      }
+      g.fillStyle = C.city;
+      const lights = [];
+      const wins = [];
+      for (let x = -u * 0.02; x < W;) {
+        const bw = u * (0.035 + rc() * 0.05), bh = th * (0.1 + rc() * 0.28);
+        g.fillRect(x, H - bh, bw, bh);
+        if (rc() < 0.3) g.fillRect(x + bw * 0.45, H - bh - th * 0.05, bw * 0.08, th * 0.05);
+        const ws = Math.max(1.2, u * 0.006);
+        for (let wy = H - bh + ws * 2; wy < H - ws; wy += ws * 2.4)
+          for (let wx = x + ws; wx < x + bw - ws * 1.5; wx += ws * 2.2)
+            if (rc() < 0.16) wins.push([wx, wy, ws]);
+        x += bw * (0.85 + rc() * 0.3);
+      }
+      lights.push(...petronas(g, L.pet, H, th));
+      lights.push(...klTower(g, L.klt, H, th * 0.95));
+      g.fillStyle = C.window;
+      for (const [wx, wy, ws] of wins) {
+        g.globalAlpha = 0.35 + rc() * 0.5;
+        g.fillRect(wx, wy, ws, ws);
+      }
+      g.globalAlpha = 1;
+      // Soft light on the twin towers.
+      const tw = th * 0.12;
+      const lit = g.createLinearGradient(0, H - th, 0, H);
+      lit.addColorStop(0, "rgba(200,210,255,0.28)");
+      lit.addColorStop(1, "rgba(200,210,255,0.05)");
+      g.globalCompositeOperation = "source-atop";
+      g.fillStyle = lit;
+      for (const side of [-1, 1]) g.fillRect(L.pet + side * tw * 0.98 - tw * 0.06, H - th, tw * 0.12, th);
+      g.globalCompositeOperation = "source-over";
+      city.lights = lights;
+
+      // Flag texture at full resolution.
+      [flagTex, g] = makeCanvas(L.fw, L.fh);
+      drawFlagFlat(g, L.fw, L.fh);
+
+      // Title sizes, fitted to the space.
+      T = { lines: [] };
+      const fitSize = (text, font, maxW) => {
+        ctx.font = `100px ${font}`;
+        return (100 * maxW) / Math.max(1, ctx.measureText(text).width);
+      };
+      const bebas = '"Bebas Neue", Impact, "Arial Narrow", sans-serif';
+      const mont = 'Montserrat, "Trebuchet MS", system-ui, sans-serif';
+      const tb = L.title;
+      let sB = Math.min(u * 0.34, fitSize(lineB, bebas, tb.maxW));
+      let sA = lineA ? Math.min(bigLast ? sB * 0.46 : sB, fitSize(lineA, bebas, tb.maxW)) : 0;
+      if (!bigLast && lineA) sB = sA = Math.min(sA, sB);
+      let sS = subtitle ? Math.max(9, sB * 0.13) : 0;
+      const gap = sB * 0.06;
+      const blockH = () => sA * 0.78 + (sA ? gap : 0) + sB * 0.78 + (sS ? sS * 2.4 : 0);
+      const room = tb.bottom - tb.top;
+      if (blockH() > room) {
+        const k = room / blockH();
+        sA *= k; sB *= k; sS = subtitle ? Math.max(8, sS * k) : 0;
+      }
+      let y = tb.top + (room - blockH()) / 2;
+      if (lineA) { T.a = { size: sA, y: y + sA * 0.72 }; y += sA * 0.78 + gap; }
+      T.b = { size: sB, y: y + sB * 0.72 };
+      y += sB * 0.78;
+      if (sS) T.s = { size: sS, y: y + sS * 1.5 };
+      T.bebas = bebas;
+      T.mont = mont;
+      // Letter positions for the big line, so each letter can pop on its own.
+      ctx.font = `${sB}px ${bebas}`;
+      const full = ctx.measureText(lineB).width;
+      T.letters = [...lineB].map((ch, i) => {
+        const before = ctx.measureText(lineB.slice(0, i)).width, wch = ctx.measureText(ch).width;
+        return { ch, x: tb.cx - full / 2 + before + wch / 2 };
+      });
+      T.fullB = full;
+
+      // Fireworks: fixed times and places inside the open sky.
+      const rf = rng(3);
+      const [x0, y0, x1, y1] = L.skyBox;
+      const spots = [[0.2, 0.4], [0.8, 0.25], [0.5, 0.12], [0.12, 0.62], [0.88, 0.6], [0.34, 0.2], [0.68, 0.45], [0.2, 0.3], [0.62, 0.16], [0.9, 0.36], [0.42, 0.5]];
+      const cols = [["#ff4a4a", "#ffd0c0"], ["#ffcc00", "#fff3c0"], ["#ffffff", "#ffe27a"], ["#5c8bff", "#ffffff"]];
+      const order = [0, 1, 2, 3, 0, 1, 2, 1, 0, 3, 1];
+      FW = spots.map(([fx, fy], i) => ({
+        t0: 1.9 + i * 0.8,
+        x: x0 + fx * (x1 - x0),
+        y: y0 + fy * (y1 - y0),
+        r: u * (0.11 + rf() * 0.05),
+        col: cols[order[i]],
+        n: 40 + Math.floor(rf() * 16),
+        spin: rf() * TAU,
+        from: W * (0.2 + rf() * 0.6),
+      }));
+
+      // Confetti: two cannons at the title, then a gentle shower from the top.
+      const rk = rng(11), confCols = [FLAG.red, "#ffffff", "#2f55ff", FLAG.yellow];
+      CF = [];
+      for (let i = 0; i < 64; i++) {
+        const side = i % 2 ? 1 : -1, ang = (0.15 + rk() * 0.35) * side;
+        const sp = u * (1.3 + rk() * 1.1);
+        CF.push({
+          t0: 2.25 + rk() * 0.2, x0: side < 0 ? -u * 0.02 : W + u * 0.02, y0: H * 0.78,
+          vx: -Math.sin(ang) * sp, vy: -Math.cos(ang) * sp, vt: u * (0.12 + rk() * 0.08),
+          col: confCols[i % 4], s: u * (0.009 + rk() * 0.006), spin: 2 + rk() * 4, ph: rk() * TAU, sw: rk() * 3 + 1.5,
+        });
+      }
+      for (let i = 0; i < 36; i++) {
+        CF.push({
+          t0: 5.4 + rk() * 2.6, x0: rk() * W, y0: -u * 0.05,
+          vx: 0, vy: 0, vt: u * (0.26 + rk() * 0.12),
+          col: confCols[i % 4], s: u * (0.008 + rk() * 0.006), spin: 2 + rk() * 4, ph: rk() * TAU, sw: rk() * 3 + 1.5,
+        });
+      }
+    }
+    let FW = [], CF = [];
+
+    // Animated values. GSAP moves these; draw() paints them.
+    const S = { b0: 1, b1: 1, b2: 1, b3: 1, flag: 0, wave: 0, a: 0, b: 0, s: 0, rib: 0 };
+    const BANDS = [FLAG.yellow, FLAG.red, FLAG.white, FLAG.blue];
+
+    function drawFireworks(t) {
+      ctx.globalCompositeOperation = "lighter";
+      for (const f of FW) {
+        const dt = t - f.t0;
+        // The rocket climbing up from the city.
+        if (dt > -0.8 && dt < 0) {
+          const k = easeOut((dt + 0.8) / 0.8);
+          const rx = f.from + (f.x - f.from) * k, ry = H * 0.95 + (f.y - H * 0.95) * k;
+          const k2 = easeOut(clamp((dt + 0.72) / 0.8));
+          const px = f.from + (f.x - f.from) * k2, py = H * 0.95 + (f.y - H * 0.95) * k2;
+          ctx.strokeStyle = "rgba(255,220,160,0.5)";
+          ctx.lineWidth = Math.max(1, u * 0.004);
+          ctx.beginPath();
+          ctx.moveTo(px, py);
+          ctx.lineTo(rx, ry);
+          ctx.stroke();
+          ctx.fillStyle = "rgba(255,240,200,0.9)";
+          ctx.beginPath();
+          ctx.arc(rx, ry, Math.max(1, u * 0.004), 0, TAU);
+          ctx.fill();
+        }
+        if (dt < 0 || dt > 2.2) continue;
+        // A soft glow on the sky, fading slowly (never a hard flash).
+        const gl = 0.16 * Math.exp(-dt * 2.2);
+        const rg = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r * 2);
+        rg.addColorStop(0, f.col[0] + Math.round(gl * 255).toString(16).padStart(2, "0"));
+        rg.addColorStop(1, f.col[0] + "00");
+        ctx.fillStyle = rg;
+        ctx.fillRect(f.x - f.r * 2, f.y - f.r * 2, f.r * 4, f.r * 4);
+        const alpha = Math.pow(1 - dt / 2.2, 1.5);
+        const spread = (d) => 1 - Math.exp(-3.4 * d);
+        const sag = (d) => f.r * 0.22 * d * d;
+        ctx.lineCap = "round";
+        for (let ring = 0; ring < 2; ring++) {
+          const n = ring ? Math.round(f.n * 0.5) : f.n, rr = ring ? 0.55 : 1;
+          const pos = (a, v, d) => [f.x + Math.cos(a) * v * spread(d), f.y + Math.sin(a) * v * spread(d) + sag(d)];
+          // A faint long tail, then a bright short head on each spark.
+          for (const [lag, wk, ak] of [[0.4, 0.6, 0.35], [0.1, 1, 1]]) {
+            ctx.strokeStyle = f.col[ring];
+            ctx.globalAlpha = alpha * ak * (ring ? 0.85 : 1);
+            ctx.lineWidth = Math.max(1, u * (ring ? 0.004 : 0.0055) * wk);
+            ctx.beginPath();
+            for (let i = 0; i < n; i++) {
+              const a = f.spin + (i / n) * TAU + ring * 0.2, v = f.r * rr * (0.88 + 0.12 * Math.sin(i * 7.3));
+              ctx.moveTo(...pos(a, v, Math.max(0, dt - lag)));
+              ctx.lineTo(...pos(a, v, dt));
+            }
+            ctx.stroke();
+          }
+        }
+        // Late glitter: a few soft dots that fade out gently.
+        if (dt > 0.7) {
+          ctx.fillStyle = f.col[1];
+          ctx.globalAlpha = alpha * 0.8;
+          for (let i = 0; i < f.n; i += 3) {
+            const a = f.spin + (i / f.n) * TAU + 0.1, v = f.r * 1.02;
+            const tw = 0.5 + 0.5 * Math.sin(i * 2.1 + dt * 5);
+            ctx.beginPath();
+            ctx.arc(f.x + Math.cos(a) * v * spread(dt), f.y + Math.sin(a) * v * spread(dt) + sag(dt) + u * 0.01, Math.max(0.6, u * 0.003 * tw), 0, TAU);
+            ctx.fill();
+          }
+        }
+        ctx.globalAlpha = 1;
+      }
+      ctx.globalCompositeOperation = "source-over";
+    }
+
+    // The flag is drawn in thin vertical slices, each shifted and shaded to make a cloth ripple.
+    function drawFlag(t) {
+      const { fx, fy, fw, fh } = L;
+      const poleW = Math.max(2, fw * 0.022), poleX = fx - poleW;
+      const poleTop = fy - fh * 0.12, poleBot = Math.min(H, fy + fh * (W / H >= 1.3 ? 2.2 : 1.35));
+      const pg = ctx.createLinearGradient(poleX, 0, poleX + poleW, 0);
+      pg.addColorStop(0, "#8a8fa8");
+      pg.addColorStop(0.45, "#f4f6ff");
+      pg.addColorStop(1, "#6b7090");
+      const fade = ctx.createLinearGradient(0, poleTop, 0, poleBot);
+      ctx.fillStyle = pg;
+      ctx.save();
+      ctx.globalAlpha = 0.95;
+      ctx.fillRect(poleX, poleTop, poleW, poleBot - poleTop);
+      ctx.restore();
+      fade.addColorStop(0.6, "rgba(4,6,28,0)");
+      fade.addColorStop(1, "rgba(4,6,28,0.9)");
+      ctx.fillStyle = fade;
+      ctx.fillRect(poleX, poleTop, poleW, poleBot - poleTop);
+      ctx.fillStyle = C.gold;
+      ctx.beginPath();
+      ctx.arc(poleX + poleW / 2, poleTop - poleW * 0.8, poleW * 1.1, 0, TAU);
+      ctx.fill();
+
+      const open = S.flag;
+      if (open <= 0.001) return;
+      // The flag climbs the pole while it opens out.
+      const rise = (1 - open) * fh * 1.1;
+      const n = Math.max(24, Math.min(220, Math.round(fw / 2)));
+      const tw = flagTex.width, th = flagTex.height;
+      const lambda = 0.62, cycles = 10, amp = fh * 0.075 * S.wave;
+      const shownW = fw * (0.12 + 0.88 * open);
+      ctx.globalAlpha = clamp(open * 3);
+      for (let i = 0; i < n; i++) {
+        const p = i / n, pm = (i + 0.5) / n;
+        const ph = TAU * (pm / lambda - (t * cycles) / LOOP);
+        const reach = Math.pow(pm, 0.85);
+        const dy = Math.sin(ph) * amp * reach;
+        const dx = fx + p * shownW - Math.cos(ph) * amp * 0.25 * reach;
+        const sq = 1 - 0.035 * reach * S.wave * (1 + Math.cos(ph)) / 2;
+        const sh = fh * sq, y = fy + rise + dy + (fh - sh) / 2;
+        const sw = shownW / n + 0.7;
+        ctx.drawImage(flagTex, (p * tw), 0, tw / n + 1, th, dx, y, sw, sh);
+        // Light on the crests, shadow in the folds.
+        const shade = Math.cos(ph) * reach * S.wave;
+        ctx.fillStyle = shade > 0 ? `rgba(255,255,255,${(shade * 0.2).toFixed(3)})` : `rgba(0,0,30,${(-shade * 0.32).toFixed(3)})`;
+        ctx.fillRect(dx, y, sw, sh);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    function drawTitle(t) {
+      const tb = L.title;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "alphabetic";
+      // Small first line slides up out of a mask.
+      if (T.a && S.a > 0) {
+        const { size, y } = T.a;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, y - size * 0.85, W, size * 0.95);
+        ctx.clip();
+        ctx.font = `${size}px ${T.bebas}`;
+        const oy = (1 - S.a) * size;
+        ctx.fillStyle = "rgba(0,0,20,0.55)";
+        ctx.fillText(lineA, tb.cx + size * 0.04, y + oy + size * 0.05);
+        ctx.fillStyle = C.ink;
+        ctx.letterSpacing = `${(size * 0.02).toFixed(1)}px`;
+        ctx.fillText(lineA, tb.cx, y + oy);
+        ctx.letterSpacing = "0px";
+        ctx.restore();
+      }
+      // Big line: each letter pops in with a bounce, then sits on a red block shadow.
+      if (S.b > 0) {
+        const { size, y } = T.b, nL = T.letters.length;
+        ctx.font = `${size}px ${T.bebas}`;
+        const depth = Math.max(2, size * 0.06);
+        T.letters.forEach((l, i) => {
+          const k = clamp((S.b * (nL + 2) - i) / 3);
+          if (k <= 0) return;
+          // Each letter slams down from a bigger size.
+          const s = 1 + 0.9 * Math.pow(1 - easeOut(k), 2);
+          ctx.save();
+          ctx.translate(l.x, y - size * 0.36);
+          ctx.scale(s, s);
+          ctx.globalAlpha = clamp(k * 2.5);
+          ctx.fillStyle = C.red;
+          for (let d = depth; d > 0; d -= Math.max(1, depth / 6)) ctx.fillText(l.ch, d * 0.7, size * 0.36 + d);
+          ctx.fillStyle = bigLast ? C.gold : C.ink;
+          ctx.fillText(l.ch, 0, size * 0.36);
+          ctx.restore();
+        });
+      }
+      // Small line with two short flag stripes either side.
+      if (T.s && S.s > 0) {
+        const { size, y } = T.s;
+        ctx.font = `700 ${size}px ${T.mont}`;
+        const sp = size * (0.35 + (1 - S.s) * 0.3);
+        ctx.letterSpacing = `${sp.toFixed(1)}px`;
+        const text = subtitle.toUpperCase();
+        const tw = ctx.measureText(text).width - sp;
+        ctx.globalAlpha = S.s;
+        ctx.fillStyle = C.ink;
+        ctx.fillText(text, tb.cx + sp / 2, y + (1 - S.s) * size * 0.6);
+        ctx.letterSpacing = "0px";
+        const barW = Math.min(size * 3.2, (tb.maxW - tw) / 2 - size), barH = size * 0.14;
+        if (barW > size * 0.5) {
+          const k = easeOut(S.rib);
+          [FLAG.red, "#ffffff", "#2f55ff", FLAG.yellow].forEach((c, i) => {
+            ctx.fillStyle = c;
+            const by = y - size * 0.62 + i * barH;
+            ctx.fillRect(tb.cx - tw / 2 - size * 0.7 - barW * k, by, barW * k, barH);
+            ctx.fillRect(tb.cx + tw / 2 + size * 0.7, by, barW * k, barH);
+          });
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    function drawConfetti(t) {
+      for (const c of CF) {
+        const dt = t - c.t0;
+        if (dt <= 0) continue;
+        const e = (1 - Math.exp(-1.7 * dt)) / 1.7;
+        const x = c.x0 + c.vx * e + Math.sin(dt * c.sw + c.ph) * u * 0.02 * Math.min(1, dt);
+        const y = c.y0 + c.vt * dt + (c.vy - c.vt) * e;
+        if (y > H + u * 0.05) continue;
+        const rot = c.ph + dt * c.spin;
+        ctx.setTransform(dpr, 0, 0, dpr, x * dpr, y * dpr);
+        ctx.rotate(rot);
+        ctx.scale(1, Math.cos(dt * c.spin * 1.7 + c.ph));
+        ctx.fillStyle = c.col;
+        ctx.fillRect(-c.s / 2, -c.s * 0.8, c.s, c.s * 1.6);
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    // Four slanted flag colour bands that wipe the screen at the start and end of the loop.
+    function drawBands() {
+      const slant = H * 0.35, span = W + slant * 2;
+      BANDS.forEach((col, i) => {
+        const p = S["b" + i];
+        if (p <= 0.001 || p >= 1.999) return;
+        const off = (p - 1) * span;
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.moveTo(off - slant, H);
+        ctx.lineTo(off, 0);
+        ctx.lineTo(off + W + slant, 0);
+        ctx.lineTo(off + W, H);
+        ctx.closePath();
+        ctx.fill();
+      });
+    }
+
+    function draw() {
+      const t = tl.time();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(sky, 0, 0);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      drawFireworks(t);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(city, 0, 0);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // Red lights on the tower tops, pulsing slowly.
+      const glowK = 0.55 + 0.45 * Math.sin(TAU * (t * 6) / LOOP);
+      ctx.fillStyle = `rgba(255,60,60,${(0.4 + 0.5 * glowK).toFixed(3)})`;
+      for (const [lx, ly] of city.lights) {
+        ctx.beginPath();
+        ctx.arc(lx, ly, Math.max(1, u * 0.004), 0, TAU);
+        ctx.fill();
+      }
+      drawFlag(t);
+      drawTitle(t);
+      drawConfetti(t);
+      drawBands();
+    }
+
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    const tl = gsap.timeline({ repeat: -1, paused: true, onUpdate: () => draw() });
+    tl.to({}, { duration: LOOP }, 0);
+    // Opening wipe: the top band (blue) leaves first, then white, red and yellow.
+    [3, 2, 1, 0].forEach((k, i) => tl.fromTo(S, { ["b" + k]: 1 }, { ["b" + k]: 2, duration: 0.7, ease: "power2.inOut", immediateRender: false }, 0.05 + i * 0.09));
+    tl.fromTo(S, { flag: 0 }, { flag: 1, duration: 1.6, ease: "power3.out", immediateRender: false }, 0.3);
+    tl.fromTo(S, { wave: 0.3 }, { wave: 1, duration: 1.8, ease: "sine.inOut", immediateRender: false }, 0.3);
+    tl.fromTo(S, { a: 0 }, { a: 1, duration: 0.7, ease: "power3.out", immediateRender: false }, 1.3);
+    tl.fromTo(S, { b: 0 }, { b: 1, duration: 0.9, ease: "none", immediateRender: false }, 1.6);
+    tl.fromTo(S, { s: 0 }, { s: 1, duration: 0.9, ease: "power2.out", immediateRender: false }, 2.3);
+    tl.fromTo(S, { rib: 0 }, { rib: 1, duration: 0.9, ease: "none", immediateRender: false }, 2.5);
+    // Closing wipe: yellow, red, white, then blue covers the screen, ready for the next loop.
+    [0, 1, 2, 3].forEach((k, i) => tl.fromTo(S, { ["b" + k]: 0 }, { ["b" + k]: 1, duration: 0.63, ease: "power2.inOut", immediateRender: false }, 11.1 + i * 0.09));
+
+    // Reduced motion: one still frame with the flag, title and a calm firework in place.
+    function apply() {
+      if (reduce.matches) tl.pause(STILL);
+      else tl.play();
+      draw();
+    }
+    reduce.addEventListener("change", apply);
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => { build(); draw(); }, 150);
+    });
+
+    // Wait briefly for the fonts so the title is measured in the right face.
+    Promise.race([
+      Promise.all([document.fonts.load('1em "Bebas Neue"'), document.fonts.load("700 1em Montserrat")]),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(() => { build(); apply(); });
+  </script>
+</body>
+</html>

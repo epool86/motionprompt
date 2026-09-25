@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Product turntable demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource-variable/inter-tight@5.3.0/index.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/cormorant-garamond@5.3.0/latin-600.css">
+  <style>
+    /* Colours can be set from the URL: ?text=Product+name|Price&bg=ece4da&ink=2b2420&accent=e0892f&accent2=c9a36b */
+    :root {
+      --bg: #ece4da;
+      --ink: #2b2420;
+      --u: 4px; /* size unit, set from the window size */
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    .stage {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      color: var(--ink);
+      font-family: "Inter Tight Variable", "Inter Tight", system-ui, -apple-system, "Segoe UI", sans-serif;
+      /* Studio backdrop: a soft pool of light behind the product */
+      background:
+        radial-gradient(70% 55% at 50% 42%, color-mix(in srgb, var(--bg) 35%, white) 0%, transparent 70%),
+        linear-gradient(180deg, color-mix(in srgb, var(--bg) 70%, white) 0%, var(--bg) 60%, color-mix(in srgb, var(--bg) 88%, black) 100%);
+    }
+
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    svg.lines {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    .lines polyline {
+      fill: none;
+      stroke: var(--ink);
+      stroke-opacity: 0.55;
+      stroke-width: 1;
+    }
+
+    .lines .dot {
+      fill: #fff;
+      stroke: var(--ink);
+      stroke-width: 1;
+    }
+
+    .lines .halo {
+      fill: #fff;
+      fill-opacity: 0.35;
+    }
+
+    .callout {
+      position: absolute;
+      left: 0;
+      top: 0;
+      margin: 0;
+      font-size: calc(var(--u) * 3.1);
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      line-height: 1;
+      opacity: 0;
+    }
+
+    .card {
+      position: absolute;
+      box-sizing: border-box;
+      padding: calc(var(--u) * 3.6) calc(var(--u) * 4.4);
+      border-radius: calc(var(--u) * 2.4);
+      background: rgba(255, 255, 255, 0.78);
+      box-shadow: 0 calc(var(--u) * 2) calc(var(--u) * 6) rgba(60, 40, 20, 0.12), 0 0 0 1px rgba(255, 255, 255, 0.6) inset;
+      opacity: 0;
+    }
+
+    .card .kicker {
+      margin: 0 0 0.9em;
+      font-size: calc(var(--u) * 2.5);
+      font-weight: 600;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      opacity: 0.6;
+    }
+
+    .card .name {
+      margin: 0;
+      font-family: "Cormorant Garamond", Georgia, serif;
+      font-weight: 600;
+      font-size: calc(var(--u) * 6.6);
+      line-height: 1.02;
+      letter-spacing: 0.005em;
+    }
+
+    .card .row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 1em;
+      margin-top: calc(var(--u) * 2.6);
+      padding-top: calc(var(--u) * 2.2);
+      border-top: 1px solid color-mix(in srgb, var(--ink) 18%, transparent);
+    }
+
+    .card .desc {
+      margin: 0;
+      font-size: calc(var(--u) * 2.7);
+      font-weight: 500;
+      opacity: 0.7;
+    }
+
+    .card .price {
+      margin: 0;
+      font-size: calc(var(--u) * 4.6);
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage" role="img">
+    <canvas id="scene"></canvas>
+    <svg class="lines" id="lines"></svg>
+    <div class="card" id="card">
+      <p class="kicker" id="kicker">New</p>
+      <p class="name" id="name"></p>
+      <div class="row">
+        <p class="desc" id="desc"></p>
+        <p class="price" id="price"></p>
+      </div>
+    </div>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from "three";
+    import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const colors = { bg: hex("bg", "ece4da"), ink: hex("ink", "2b2420"), accent: hex("accent", "e0892f"), accent2: hex("accent2", "c9a36b") };
+    const root = document.documentElement;
+    root.style.setProperty("--bg", `#${colors.bg}`);
+    root.style.setProperty("--ink", `#${colors.ink}`);
+
+    // Product name and price: split the text on "|", or use the defaults.
+    const text = (params.get("text") || "Lumen Glow Serum|$48").slice(0, 60);
+    const [productName, price = "$48"] = text.split("|").map((s) => s.trim());
+    const brand = (productName.split(/\s+/)[0] || "Lumen").toUpperCase();
+    const FEATURES = ["Vitamin C", "30 ml", "Vegan"];
+
+    const stage = document.getElementById("stage");
+    stage.setAttribute("aria-label", `A glass serum bottle turning slowly on a round pedestal, with feature callouts and a card: ${productName}, ${price}`);
+    document.getElementById("name").textContent = productName;
+    document.getElementById("desc").textContent = "Brightening serum";
+    document.getElementById("price").textContent = price;
+
+    const LOOP = 12; // seconds, one full turn of the turntable
+    const clamp01 = (x) => Math.min(1, Math.max(0, x));
+    const ease = (x) => x * x * (3 - 2 * x);
+    const easeOut = (x) => 1 - Math.pow(1 - x, 3);
+    const backOut = (x) => 1 + 2.2 * Math.pow(x - 1, 3) + 1.2 * Math.pow(x - 1, 2);
+
+    // ---------- Renderer, scene, studio light ----------
+    const canvas = document.getElementById("scene");
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+
+    const scene = new THREE.Scene();
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environmentIntensity = 0.9;
+
+    // Studio backdrop drawn in a small canvas: light from above and a soft pool behind the product.
+    const bgCanvas = document.createElement("canvas");
+    const bgTex = new THREE.CanvasTexture(bgCanvas);
+    bgTex.colorSpace = THREE.SRGBColorSpace;
+    scene.background = bgTex;
+    function drawBackdrop(cx, cy) {
+      const w = 256, h = Math.max(64, Math.round((256 * H) / W));
+      bgCanvas.width = w;
+      bgCanvas.height = h;
+      const g = bgCanvas.getContext("2d");
+      const base = new THREE.Color(`#${colors.bg}`);
+      const tone = (k) => `#${base.clone().lerp(new THREE.Color(k > 0 ? 0xffffff : 0x000000), Math.abs(k)).getHexString()}`;
+      const lin = g.createLinearGradient(0, 0, 0, h);
+      lin.addColorStop(0, tone(0.3));
+      lin.addColorStop(0.62, tone(0));
+      lin.addColorStop(1, tone(-0.1));
+      g.fillStyle = lin;
+      g.fillRect(0, 0, w, h);
+      const rad = g.createRadialGradient(cx * w, cy * h, 0, cx * w, cy * h, Math.max(w, h) * 0.6);
+      rad.addColorStop(0, tone(0.55));
+      rad.addColorStop(1, `${tone(0.55)}00`);
+      g.fillStyle = rad;
+      g.fillRect(0, 0, w, h);
+      bgTex.needsUpdate = true;
+    }
+
+    const camera = new THREE.PerspectiveCamera(26, 1, 0.1, 100);
+    const key = new THREE.DirectionalLight(0xfff4e8, 2.2);
+    key.position.set(-3, 5, 4);
+    scene.add(key);
+    const rim = new THREE.DirectionalLight(0xffe2c4, 2.5);
+    rim.position.set(3, 2.5, -4);
+    scene.add(rim);
+
+    // ---------- Pedestal and turntable ----------
+    const pedestal = new THREE.Group();
+    scene.add(pedestal);
+    const stone = new THREE.MeshPhysicalMaterial({ color: 0xf4efe8, roughness: 0.5, clearcoat: 0.25, clearcoatRoughness: 0.4 });
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(1.48, 1.52, 0.26, 96), stone);
+    base.position.y = -0.2;
+    pedestal.add(base);
+    const gold = new THREE.MeshStandardMaterial({ color: new THREE.Color(`#${colors.accent2}`), metalness: 1, roughness: 0.28 });
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.34, 0.012, 8, 128), gold);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = -0.07;
+    pedestal.add(ring);
+
+    const table = new THREE.Group(); // everything that turns
+    scene.add(table);
+    const disc = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.32, 1.32, 0.07, 96),
+      new THREE.MeshPhysicalMaterial({ color: 0xebe4da, roughness: 0.25, clearcoat: 0.8, clearcoatRoughness: 0.15 }),
+    );
+    disc.position.y = -0.035;
+    table.add(disc);
+
+    // Soft shadows from radial gradients: cheap and softer than shadow maps.
+    function blobTexture(stops) {
+      const c = document.createElement("canvas");
+      c.width = c.height = 256;
+      const g = c.getContext("2d");
+      const grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+      for (const [at, col] of stops) grad.addColorStop(at, col);
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 256, 256);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+    function blob(tex, size, y, opacity, blending = THREE.NormalBlending) {
+      const m = new THREE.Mesh(
+        new THREE.PlaneGeometry(size, size),
+        new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity, depthWrite: false, blending, toneMapped: false }),
+      );
+      m.rotation.x = -Math.PI / 2;
+      m.position.y = y;
+      return m;
+    }
+    const shade = blobTexture([[0, "rgba(40,28,18,0.55)"], [0.45, "rgba(40,28,18,0.25)"], [1, "rgba(40,28,18,0)"]]);
+    const floorShadow = blob(shade, 4.6, -0.332, 0.9);
+    floorShadow.scale.set(1, 0.7, 1);
+    scene.add(floorShadow);
+    const bottleShadow = blob(shade, 1.5, 0.002, 0.75);
+    bottleShadow.position.set(0.18, 0.002, -0.16);
+    scene.add(bottleShadow);
+    // Warm light that passes through the amber glass onto the turntable.
+    const caustic = blob(blobTexture([[0, `#${colors.accent}`], [0.5, `#${colors.accent}55`], [1, `#${colors.accent}00`]]), 1.3, 0.004, 0.32, THREE.AdditiveBlending);
+    caustic.position.set(0.42, 0.004, -0.36);
+    scene.add(caustic);
+
+    // ---------- The bottle ----------
+    const bottle = new THREE.Group();
+    table.add(bottle);
+
+    // Lathe profile helper: straight points plus a curved shoulder.
+    const V = (r, y) => new THREE.Vector2(r, y);
+    function shoulder(r0, y0, r1, y1, steps = 14) {
+      const out = [];
+      for (let i = 1; i <= steps; i++) {
+        const s = i / steps;
+        // Quadratic curve with the corner at (r0, y1).
+        const r = (1 - s) * (1 - s) * r0 + 2 * (1 - s) * s * r0 + s * s * r1;
+        const y = (1 - s) * (1 - s) * y0 + 2 * (1 - s) * s * y1 + s * s * y1;
+        out.push(V(r, y));
+      }
+      return out;
+    }
+    const R = 0.42;
+    const glassProfile = [V(0, 0), V(R - 0.05, 0), ...shoulder(R - 0.05, 0, R, 0.05, 5), V(R, 1.12), ...shoulder(R, 1.12, 0.165, 1.36), V(0.165, 1.44)];
+    const liquidProfile = [V(0, 0.03), V(R - 0.07, 0.03), ...shoulder(R - 0.07, 0.03, R - 0.028, 0.07, 4), V(R - 0.028, 0.98), V(0, 0.98)];
+    const collarProfile = [V(0.16, 1.36), V(0.2, 1.36), ...shoulder(0.2, 1.36, 0.212, 1.375, 3), V(0.212, 1.55), ...shoulder(0.212, 1.55, 0.2, 1.565, 3), V(0.15, 1.565)];
+    const bulbProfile = [V(0.15, 1.56), V(0.158, 1.6), V(0.14, 1.66), V(0.132, 1.76), V(0.142, 1.86), V(0.136, 1.94), ...shoulder(0.136, 1.94, 0, 2.03, 8)];
+    const lathe = (pts, seg = 64) => new THREE.LatheGeometry(pts, seg);
+
+    const amber = new THREE.Color(`#${colors.accent}`);
+    const liquid = new THREE.Mesh(lathe(liquidProfile), new THREE.MeshPhysicalMaterial({
+      color: amber.clone().multiplyScalar(0.9), emissive: amber, emissiveIntensity: 0.08, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.08,
+    }));
+    bottle.add(liquid);
+
+    // Glass: a faint tinted body with thicker looking edges, plus reflections added on top.
+    const glassGeo = lathe(glassProfile, 80);
+    const glassTint = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      uniforms: { tint: { value: amber.clone().lerp(new THREE.Color(0x3a3530), 0.55) } },
+      vertexShader: `
+        varying vec3 vN; varying vec3 vV;
+        void main() {
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz);
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: `
+        uniform vec3 tint; varying vec3 vN; varying vec3 vV;
+        void main() {
+          float f = 1.0 - abs(dot(normalize(vN), normalize(vV)));
+          gl_FragColor = vec4(tint, 0.05 + 0.4 * pow(f, 3.0));
+        }`,
+    });
+    const glassShine = new THREE.MeshPhysicalMaterial({
+      color: 0x000000, roughness: 0.04, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.02,
+      envMapIntensity: 1.5, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const glassBody = new THREE.Mesh(glassGeo, glassTint);
+    glassBody.renderOrder = 2;
+    const glassFx = new THREE.Mesh(glassGeo, glassShine);
+    glassFx.renderOrder = 3;
+    bottle.add(glassBody, glassFx);
+
+    // A thin glass pipette inside the neck.
+    const pipette = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.026, 1.3, 16, 1, true), glassShine);
+    pipette.position.y = 0.9;
+    pipette.renderOrder = 3;
+    bottle.add(pipette);
+
+    bottle.add(new THREE.Mesh(lathe(collarProfile), gold));
+    const bulb = new THREE.Mesh(lathe(bulbProfile), new THREE.MeshPhysicalMaterial({ color: 0xf6f1ea, roughness: 0.55, sheen: 0.6, sheenColor: 0xffffff }));
+    bottle.add(bulb);
+
+    // The label: a canvas texture wrapped around the front of the bottle.
+    const labelCanvas = document.createElement("canvas");
+    labelCanvas.width = 1024;
+    labelCanvas.height = 600;
+    const labelTex = new THREE.CanvasTexture(labelCanvas);
+    labelTex.colorSpace = THREE.SRGBColorSpace;
+    labelTex.anisotropy = 8;
+    function drawLabel() {
+      const g = labelCanvas.getContext("2d");
+      const w = labelCanvas.width, h = labelCanvas.height;
+      g.fillStyle = "#f8f3ec";
+      g.fillRect(0, 0, w, h);
+      g.fillStyle = `#${colors.ink}`;
+      g.textAlign = "center";
+      g.textBaseline = "alphabetic";
+      // The label is wider than it looks (it wraps round), so keep text in the middle.
+      g.font = '600 190px "Cormorant Garamond", Georgia, serif';
+      g.letterSpacing = "16px";
+      const bw = g.measureText(brand).width;
+      g.save();
+      g.translate(w / 2, 260);
+      g.scale(Math.min(1, 600 / bw), 1);
+      g.fillText(brand, 0, 0);
+      g.restore();
+      g.font = '600 44px "Inter Tight Variable", "Inter Tight", sans-serif';
+      g.letterSpacing = "14px";
+      g.fillText("GLOW SERUM", w / 2, 340);
+      g.fillStyle = `#${colors.accent2}`;
+      g.fillRect(w / 2 - 60, 372, 120, 4);
+      g.fillStyle = `#${colors.ink}`;
+      g.font = '600 36px "Inter Tight Variable", "Inter Tight", sans-serif';
+      g.letterSpacing = "6px";
+      g.fillText("VITAMIN C 15%", w / 2, 440);
+      g.globalAlpha = 0.6;
+      g.fillText("30 ML  /  1.0 FL OZ", w / 2, 540);
+      g.globalAlpha = 1;
+      labelTex.needsUpdate = true;
+    }
+    drawLabel();
+    const LABEL_ARC = 2.4; // radians of the bottle covered by the label
+    const label = new THREE.Mesh(
+      new THREE.CylinderGeometry(R + 0.004, R + 0.004, 0.64, 64, 1, true, -LABEL_ARC / 2, LABEL_ARC),
+      new THREE.MeshPhysicalMaterial({ map: labelTex, roughness: 0.55, clearcoat: 0.2 }),
+    );
+    label.position.y = 0.56;
+    label.renderOrder = 1;
+    bottle.add(label);
+
+    // Sweeping glint: a soft diagonal band of light that crosses the whole bottle.
+    const bottleCenterView = new THREE.Vector3();
+    const glint = new THREE.Mesh(lathe([...glassProfile, V(0.165, 1.57)], 64), new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: { sweep: { value: -9 }, center: { value: bottleCenterView } },
+      vertexShader: `
+        varying vec3 vView; varying vec3 vN;
+        void main() {
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          vView = mv.xyz; vN = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: `
+        uniform float sweep; uniform vec3 center; varying vec3 vView; varying vec3 vN;
+        void main() {
+          float s = (vView.x - center.x) + (vView.y - center.y) * 0.45;
+          float band = exp(-pow((s - sweep) / 0.045, 2.0)) + 0.45 * exp(-pow((s - sweep + 0.14) / 0.018, 2.0));
+          float facing = clamp(dot(normalize(vN), normalize(-vView)), 0.0, 1.0);
+          gl_FragColor = vec4(vec3(1.0, 0.97, 0.92) * band * (0.2 + 0.8 * facing) * 0.5, 1.0);
+        }`,
+    }));
+    glint.scale.set(1.012, 1.003, 1.012);
+    glint.renderOrder = 4;
+    bottle.add(glint);
+
+    // ---------- Callouts and card (HTML over the canvas) ----------
+    const svgNS = "http://www.w3.org/2000/svg";
+    const svg = document.getElementById("lines");
+    // Anchor points on the bottle edge (they stay put while the bottle turns). Side: -1 left, 1 right.
+    const CALLOUTS = [
+      { text: FEATURES[0], y: 0.7, side: -1, at: 1.5 },
+      { text: FEATURES[1], y: 1.2, side: 1, at: 2.2 },
+      { text: FEATURES[2], y: 0.28, side: 1, at: 2.9 },
+    ].map((c) => {
+      const line = document.createElementNS(svgNS, "polyline");
+      const halo = document.createElementNS(svgNS, "circle");
+      halo.setAttribute("class", "halo");
+      const dot = document.createElementNS(svgNS, "circle");
+      dot.setAttribute("class", "dot");
+      svg.append(line, halo, dot);
+      const el = document.createElement("p");
+      el.className = "callout";
+      el.textContent = c.text;
+      stage.insertBefore(el, document.getElementById("card"));
+      return { ...c, line, halo, dot, el, world: new THREE.Vector3() };
+    });
+    const OUT_AT = 9.0; // callouts fold away
+    const card = document.getElementById("card");
+    const CARD_IN = 3.8, CARD_OUT = 10.4;
+
+    // ---------- Layout ----------
+    let W = 0, H = 0, unit = 4;
+    const target = new THREE.Vector3(0, 0.56, 0); // middle of the product as seen by the camera
+    const ELEV = THREE.MathUtils.degToRad(13);
+    const OBJ_H = 3.0, OBJ_W = 3.15; // seen size of pedestal plus bottle, in world units
+    function resize() {
+      W = innerWidth; H = innerHeight;
+      unit = Math.min(W, H) / 100;
+      root.style.setProperty("--u", `${unit.toFixed(3)}px`);
+      renderer.setSize(W, H, false);
+      const wide = W / H > 1.3;
+
+      // Card first: its size decides how much room the product gets.
+      const cw = wide ? Math.min(W * 0.36, unit * 66) : Math.min(W * 0.84, unit * 80);
+      card.style.width = `${cw}px`;
+      const limit = wide ? H * 0.8 : H * 0.3;
+      let k = 1;
+      card.style.setProperty("--u", `${unit}px`);
+      while (card.offsetHeight > limit && k > 0.5) {
+        k *= 0.92;
+        card.style.setProperty("--u", `${(unit * k).toFixed(3)}px`);
+      }
+      const cardH = card.offsetHeight;
+
+      // Pixels per world unit, and where the middle of the product goes.
+      let scale, cx, cy;
+      if (wide) {
+        // Product on the left, card centred on the right.
+        const areaW = W - cw - W * 0.08;
+        scale = Math.min((areaW * 0.94) / OBJ_W, (H * 0.86) / OBJ_H);
+        cx = areaW / 2 + W * 0.02;
+        cy = H / 2;
+        card.style.left = `${cx + areaW / 2 + (W - cx - areaW / 2 - cw) / 2 - W * 0.01}px`;
+        card.style.top = `${(H - cardH) / 2}px`;
+      } else {
+        // Product above, card below, the pair centred in the frame.
+        const gap = unit * 4;
+        scale = Math.min((W * 0.94) / OBJ_W, (H * 0.93 - cardH - gap) / OBJ_H);
+        const top = (H - (OBJ_H * scale + gap + cardH)) / 2;
+        cx = W / 2;
+        cy = top + (OBJ_H * scale) / 2;
+        card.style.left = `${(W - cw) / 2}px`;
+        card.style.top = `${top + OBJ_H * scale + gap}px`;
+      }
+
+      camera.aspect = W / H;
+      camera.clearViewOffset();
+      const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+      const dist = H / (2 * tanHalf * scale);
+      camera.position.set(0, target.y + Math.sin(ELEV) * dist, Math.cos(ELEV) * dist);
+      camera.lookAt(target);
+      // Shift the picture so the product sits at (cx, cy).
+      camera.setViewOffset(W, H, W / 2 - cx, H / 2 - cy, W, H);
+      camera.updateProjectionMatrix();
+      drawBackdrop(cx / W, (cy - OBJ_H * scale * 0.08) / H);
+    }
+
+    // Screen position of a world point.
+    const tmp = new THREE.Vector3();
+    function toScreen(v) {
+      tmp.copy(v).project(camera);
+      return [(tmp.x * 0.5 + 0.5) * W, (-tmp.y * 0.5 + 0.5) * H];
+    }
+
+    function paintCallouts(t) {
+      const margin = unit * 4;
+      for (const c of CALLOUTS) {
+        const pIn = clamp01((t - c.at) / 0.9);
+        const pOut = clamp01((t - OUT_AT - (c.at - 1.5) * 0.4) / 0.6);
+        const show = pIn > 0 && pOut < 1;
+        c.line.style.display = c.dot.style.display = c.halo.style.display = show ? "" : "none";
+        if (!show) { c.el.style.opacity = "0"; continue; }
+        c.world.set(c.side * (R + 0.01), c.y, 0);
+        const [ax, ay] = toScreen(c.world);
+        // Elbow out and up, then a level run to the text.
+        const tw = c.el.offsetWidth;
+        const room = c.side < 0 ? ax - margin - tw : W - margin - tw - ax;
+        const run = Math.max(unit * 4, Math.min(unit * 16, room - unit * 2));
+        const ex = ax + c.side * run * 0.4, ey = ay - run * 0.35;
+        const endX = ax + c.side * run, endY = ey;
+        // Draw the line from the dot outwards.
+        const grow = easeOut(clamp01((pIn - 0.2) / 0.6)) * (1 - ease(pOut));
+        const seg1 = Math.hypot(ex - ax, ey - ay), seg2 = Math.abs(endX - ex);
+        const len = (seg1 + seg2) * grow;
+        c.line.setAttribute("points", `${ax},${ay} ${ex},${ey} ${endX},${endY}`);
+        c.line.style.strokeDasharray = `${len} ${seg1 + seg2 + 1}`;
+        const dotP = backOut(clamp01(pIn / 0.25)) * (1 - ease(clamp01((pOut - 0.5) * 2)));
+        const r = unit * 0.9 * dotP;
+        for (const [node, rr] of [[c.dot, r], [c.halo, r * 2.4]]) {
+          node.setAttribute("cx", ax);
+          node.setAttribute("cy", ay);
+          node.setAttribute("r", Math.max(0, rr));
+        }
+        const tp = easeOut(clamp01((pIn - 0.55) / 0.45)) * (1 - ease(clamp01(pOut * 1.6)));
+        const gap = unit * 1.6;
+        const lx = c.side < 0 ? endX - gap - tw : endX + gap;
+        c.el.style.opacity = tp.toFixed(3);
+        c.el.style.transform = `translate(${(lx + c.side * (1 - tp) * unit * -2).toFixed(1)}px, ${(endY - c.el.offsetHeight / 2).toFixed(1)}px)`;
+      }
+    }
+
+    function paintCard(t) {
+      const pIn = clamp01((t - CARD_IN) / 0.9), pOut = clamp01((t - CARD_OUT) / 0.7);
+      const o = easeOut(pIn) * (1 - ease(pOut));
+      card.style.opacity = o.toFixed(3);
+      card.style.transform = `translateY(${((1 - easeOut(pIn)) * unit * 5 + ease(pOut) * unit * 2).toFixed(1)}px)`;
+    }
+
+    // ---------- Motion ----------
+    // One full turn per loop. It slows down while the label faces the camera.
+    const FRONT_AT = 0.55; // fraction of the loop when the label faces front
+    function frameAt(t) {
+      const u = t / LOOP;
+      const turn = Math.PI * 2 * (u - FRONT_AT) - 0.55 * Math.sin(Math.PI * 2 * (u - FRONT_AT));
+      table.rotation.y = turn;
+      // Small camera drift for life.
+      camera.position.x = Math.sin(u * Math.PI * 2) * 0.12;
+      camera.lookAt(target);
+      camera.updateMatrixWorld();
+      // Two light sweeps across the glass.
+      const sweeps = [[0.5, 1.4], [5.6, 1.5]];
+      let sw = -9;
+      for (const [at, dur] of sweeps) if (t >= at && t <= at + dur) sw = -0.9 + 1.8 * ease((t - at) / dur);
+      glint.material.uniforms.sweep.value = sw;
+      bottleCenterView.set(0, 0.95, 0).applyMatrix4(camera.matrixWorldInverse);
+      renderer.render(scene, camera);
+      paintCallouts(t);
+      paintCard(t);
+    }
+
+    // ?t=seconds freezes one moment (handy for thumbnails).
+    const frozen = params.has("t") ? ((Number(params.get("t")) % LOOP) + LOOP) % LOOP : null;
+    let startAt = performance.now();
+    const loop = (now) => frameAt((((now - startAt) / 1000) % LOOP + LOOP) % LOOP);
+
+    // Reduced motion: one still frame with the label, callouts and card in view.
+    const STILL = 7.4;
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    function apply() {
+      if (reduce.matches || frozen !== null) {
+        renderer.setAnimationLoop(null);
+        frameAt(frozen ?? STILL);
+      } else {
+        renderer.setAnimationLoop(loop);
+      }
+    }
+    reduce.addEventListener("change", apply);
+    window.addEventListener("resize", () => {
+      resize();
+      if (reduce.matches || frozen !== null) frameAt(frozen ?? STILL);
+    });
+
+    // Wait briefly for the fonts, then draw the label and start.
+    resize();
+    Promise.race([
+      Promise.all([document.fonts.load("600 1em 'Cormorant Garamond'"), document.fonts.load("600 1em 'Inter Tight Variable'")]),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(() => {
+      drawLabel();
+      resize();
+      startAt = performance.now();
+      apply();
+    });
+  </script>
+</body>
+</html>

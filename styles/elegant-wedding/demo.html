@@ -1,0 +1,809 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Elegant wedding demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/great-vibes@5.3.0/400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/cormorant-garamond@5.3.0/500.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/cormorant-garamond@5.3.0/600.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/cormorant-garamond@5.3.0/500-italic.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=fbf6ef&ink=5b4a42&accent=c9a04e&accent2=e9b7b3 */
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #fbf6ef;
+    }
+
+    .layer {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .serif { font-family: "Cormorant Garamond", Georgia, "Times New Roman", serif; }
+    .script { font-family: "Great Vibes", "Snell Roundhand", "Apple Chancery", cursive; }
+    text { text-anchor: middle; }
+  </style>
+</head>
+<body>
+  <div id="stage" role="img">
+    <canvas class="layer" id="paper"></canvas>
+    <svg class="layer" id="frame" xmlns="http://www.w3.org/2000/svg"></svg>
+    <canvas class="layer" id="garden"></canvas>
+    <svg class="layer" id="words" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => "#" + (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const C = {
+      bg: hex("bg", "fbf6ef"),
+      ink: hex("ink", "5b4a42"),
+      gold: hex("accent", "c9a04e"),
+      blush: hex("accent2", "e9b7b3"),
+    };
+    document.body.style.background = C.bg;
+
+    // Names: "A & B" is set on three lines, anything else on one.
+    const raw = (params.get("text") || "Aisyah & Hakim").trim().slice(0, 40);
+    const pair = raw.split("&").map((s) => s.trim()).filter(Boolean);
+    const nameLines = pair.length === 2 ? [pair[0], "&", pair[1]] : [raw];
+    document.getElementById("stage").setAttribute("aria-label",
+      `An animated wedding invitation: watercolour roses and eucalyptus bloom from the corners around a gold arch, and the names ${raw} write on in gold script, followed by the date, time and venue`);
+
+    // Colour helpers
+    const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+    const mix = (a, b, t) => "#" + rgb(a).map((v, i) => Math.round(v + (rgb(b)[i] - v) * t).toString(16).padStart(2, "0")).join("");
+    const rgba = (h, a) => `rgba(${rgb(h).join(",")},${a})`;
+
+    const GOLD = {
+      deep: mix(C.gold, "#5a3b12", 0.4),
+      mid: C.gold,
+      light: mix(C.gold, "#fff4d2", 0.55),
+      pale: mix(C.gold, "#fffaf0", 0.8),
+    };
+    const FLOWER = {
+      blush: { pale: mix(C.blush, "#fffaf6", 0.55), mid: C.blush, deep: mix(C.blush, "#9c4052", 0.42), edge: mix(C.blush, "#7a2c3e", 0.55) },
+      rose: { pale: mix(C.blush, "#f6dcd6", 0.3), mid: mix(C.blush, "#c9707c", 0.55), deep: mix(C.blush, "#8f3446", 0.7), edge: mix(C.blush, "#6d2233", 0.75) },
+      cream: { pale: "#fdf6ea", mid: "#f3e2c8", deep: "#dcb98f", edge: "#b88f66" },
+    };
+    const LEAF = {
+      euc: { pale: "#c3d2c4", mid: "#9db3a3", deep: "#708e80", edge: "#56766a" },
+      sage: { pale: "#b8cbb0", mid: "#8eac8c", deep: "#5d8069", edge: "#46654f" },
+    };
+
+    const NS = "http://www.w3.org/2000/svg";
+    function el(name, attrs, parent) {
+      const node = document.createElementNS(NS, name);
+      for (const k in attrs) node.setAttribute(k, attrs[k]);
+      if (parent) parent.append(node);
+      return node;
+    }
+
+    // Seeded random, so the bouquet is the same after a resize.
+    let seed = 1;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+    const clamp = (v) => Math.max(0, Math.min(1, v));
+    const easeOut = (p) => 1 - (1 - p) ** 3;
+    const backOut = (p) => 1 + 2.2 * (p - 1) ** 3 + 1.2 * (p - 1) ** 2;
+    const TAU = Math.PI * 2;
+    const LOOP = 12;
+
+    const paper = document.getElementById("paper");
+    const garden = document.getElementById("garden");
+    const frame = document.getElementById("frame");
+    const words = document.getElementById("words");
+    const gx = garden.getContext("2d");
+
+    // ---------- Watercolour sprites, painted once on small canvases ----------
+
+    function smoothPath(g, pts) {
+      const n = pts.length, at = (i) => pts[(i + n) % n];
+      g.beginPath();
+      g.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 0; i < n; i++) {
+        const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
+        g.bezierCurveTo(p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6,
+          p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6, p2[0], p2[1]);
+      }
+      g.closePath();
+    }
+
+    // A petal that fans out from the flower centre, with a softly ruffled rim.
+    function petal(g, len, spread, ruffle, phase) {
+      const pts = [[0, 0]];
+      for (let i = 0; i <= 16; i++) {
+        const f = (i / 16) * 2 - 1, a = f * spread;
+        const r = len * Math.pow(1 - Math.pow(Math.abs(f), 4), 0.3) * (1 + ruffle * Math.sin(f * 6 + phase));
+        pts.push([Math.cos(a) * r, Math.sin(a) * r]);
+      }
+      smoothPath(g, pts);
+    }
+
+    // Fill the current path like a watercolour wash: pigment pools at the base and the rim.
+    function wash(g, R, col, alpha) {
+      const gr = g.createRadialGradient(0, 0, R * 0.04, 0, 0, R);
+      gr.addColorStop(0, col.deep);
+      gr.addColorStop(0.5, col.mid);
+      gr.addColorStop(1, col.pale);
+      g.globalAlpha = alpha;
+      g.fillStyle = gr;
+      g.fill();
+      g.globalAlpha = alpha * 0.5;
+      g.strokeStyle = col.edge;
+      g.lineWidth = R * 0.022;
+      g.filter = `blur(${Math.max(0.4, R * 0.012)}px)`;
+      g.stroke();
+      g.filter = "none";
+    }
+
+    // Tiny dots of pigment on top of what is already painted, like paper grain.
+    function granulate(g, R, col, count) {
+      g.globalCompositeOperation = "source-atop";
+      g.fillStyle = col;
+      for (let i = 0; i < count; i++) {
+        const a = rand() * TAU, r = Math.sqrt(rand()) * R;
+        g.globalAlpha = 0.05 + rand() * 0.08;
+        g.beginPath();
+        g.arc(Math.cos(a) * r, Math.sin(a) * r, R * (0.006 + rand() * 0.012), 0, TAU);
+        g.fill();
+      }
+      g.globalCompositeOperation = "source-over";
+      g.globalAlpha = 1;
+    }
+
+    function sprite(size, dpr, paint) {
+      const c = document.createElement("canvas");
+      c.width = c.height = Math.max(8, Math.ceil(size * dpr));
+      const g = c.getContext("2d");
+      const R = c.width / 2;
+      g.translate(R, R);
+      g.globalCompositeOperation = "multiply";
+      paint(g, R * 0.96);
+      return c;
+    }
+
+    // A flower is three sprites (outer petals, middle, heart), so it can open in stages.
+    function makeFlower(kind, size, dpr) {
+      const col = kind === "peony" ? FLOWER.blush : kind === "cream" ? FLOWER.cream : FLOWER.rose;
+      // A ring of petals. Each petal gets a darker cupped shadow near its base.
+      const ring = (g, R, n, len, spread, ruffle, alpha, c, twist) => {
+        for (let i = 0; i < n; i++) {
+          g.save();
+          g.rotate((i / n) * TAU + twist + (rand() - 0.5) * 0.35);
+          const L = R * len * (0.9 + rand() * 0.18);
+          petal(g, L, spread, ruffle, rand() * 6);
+          wash(g, R * len, c, alpha);
+          petal(g, L * 0.55, spread * 0.8, 0, 0);
+          g.globalAlpha = alpha * 0.35;
+          g.fillStyle = c.deep;
+          g.filter = `blur(${Math.max(0.5, R * 0.03)}px)`;
+          g.fill();
+          g.filter = "none";
+          g.restore();
+        }
+      };
+      const outer = sprite(size, dpr, (g, R) => {
+        if (kind === "peony") {
+          ring(g, R, 9, 1, 0.78, 0.07, 0.5, col, 0);
+          ring(g, R, 8, 0.88, 0.8, 0.08, 0.42, col, 0.35);
+        } else {
+          ring(g, R, 5, 1, 0.8, 0.04, 0.55, col, 0.2);
+          ring(g, R, 5, 0.9, 0.75, 0.04, 0.45, col, 0.85);
+        }
+        granulate(g, R, col.deep, 160);
+      });
+      const middle = sprite(size, dpr, (g, R) => {
+        if (kind === "peony") {
+          ring(g, R, 8, 0.68, 0.85, 0.1, 0.5, col, 0.15);
+          ring(g, R, 7, 0.52, 0.9, 0.12, 0.45, col, 0.6);
+        } else {
+          ring(g, R, 5, 0.72, 0.72, 0.02, 0.65, col, 0.5);
+          // Cupped petals: a soft crescent of shadow around the heart.
+          for (let i = 0; i < 4; i++) {
+            g.save();
+            g.rotate(i * 1.7 + 0.4);
+            g.beginPath();
+            g.ellipse(0, 0, R * 0.5, R * 0.44, 0, 0.2, Math.PI - 0.2);
+            g.ellipse(0, R * 0.05, R * 0.42, R * 0.34, 0, Math.PI - 0.25, 0.25, true);
+            g.closePath();
+            wash(g, R * 0.5, col, 0.45);
+            g.restore();
+          }
+        }
+        granulate(g, R * 0.7, col.deep, 80);
+      });
+      const heart = sprite(size, dpr, (g, R) => {
+        if (kind === "peony") {
+          ring(g, R, 8, 0.34, 1, 0.16, 0.55, col, 0.1);
+          g.globalCompositeOperation = "source-over";
+          for (let i = 0; i < 14; i++) {
+            const a = rand() * TAU, r = rand() * R * 0.16;
+            g.globalAlpha = 0.85;
+            g.fillStyle = i % 3 ? GOLD.light : GOLD.mid;
+            g.beginPath();
+            g.arc(Math.cos(a) * r, Math.sin(a) * r, R * 0.025, 0, TAU);
+            g.fill();
+          }
+        } else {
+          ring(g, R, 4, 0.4, 0.85, 0.02, 0.6, col, 1);
+          // The rolled heart of a rose: a loose spiral of darker strokes.
+          g.lineCap = "round";
+          for (let i = 0; i < 5; i++) {
+            const r = R * (0.3 - i * 0.05);
+            g.globalAlpha = 0.45 + i * 0.08;
+            g.strokeStyle = i % 2 ? col.edge : col.deep;
+            g.lineWidth = R * (0.05 - i * 0.006);
+            g.beginPath();
+            g.arc(R * 0.02 * i, -R * 0.015 * i, r, i * 1.9, i * 1.9 + 3.6);
+            g.stroke();
+          }
+          g.globalAlpha = 0.8;
+          g.fillStyle = col.edge;
+          g.beginPath();
+          g.arc(R * 0.08, -R * 0.05, R * 0.05, 0, TAU);
+          g.fill();
+        }
+      });
+      return [outer, middle, heart];
+    }
+
+    // A closed rose bud with two sepals, pointing up.
+    function makeBud(size, dpr) {
+      return sprite(size, dpr, (g, R) => {
+        const col = FLOWER.rose;
+        g.save();
+        g.translate(0, R * 0.1);
+        for (const s of [-1, 1]) {
+          g.beginPath();
+          g.moveTo(0, R * 0.5);
+          g.quadraticCurveTo(s * R * 0.7, R * 0.2, s * R * 0.25, -R * 0.35);
+          g.quadraticCurveTo(s * R * 0.25, R * 0.2, 0, R * 0.5);
+          wash(g, R, LEAF.sage, 0.7);
+        }
+        g.beginPath();
+        g.moveTo(0, R * 0.45);
+        g.bezierCurveTo(R * 0.55, R * 0.3, R * 0.45, -R * 0.45, 0, -R * 0.75);
+        g.bezierCurveTo(-R * 0.45, -R * 0.45, -R * 0.55, R * 0.3, 0, R * 0.45);
+        g.save();
+        g.translate(0, R * 0.3);
+        wash(g, R * 0.9, col, 0.8);
+        g.restore();
+        g.restore();
+      });
+    }
+
+    // Leaves have their base on the left edge, pointing right.
+    function makeLeaf(kind, size, dpr) {
+      return sprite(size, dpr, (g, R) => {
+        const col = kind === "euc" ? LEAF.euc : LEAF.sage;
+        g.translate(-R, 0);
+        g.beginPath();
+        if (kind === "euc") {
+          g.ellipse(R, 0, R * 0.92, R * 0.8, 0, 0, TAU);
+        } else {
+          g.moveTo(R * 0.05, 0);
+          g.bezierCurveTo(R * 0.6, -R * 0.6, R * 1.4, -R * 0.45, R * 1.95, 0);
+          g.bezierCurveTo(R * 1.4, R * 0.45, R * 0.6, R * 0.6, R * 0.05, 0);
+        }
+        g.save();
+        g.translate(R * 0.2, 0);
+        wash(g, R * 1.6, col, 0.8);
+        g.restore();
+        g.globalAlpha = 0.25;
+        g.strokeStyle = col.edge;
+        g.lineWidth = R * 0.04;
+        g.beginPath();
+        g.moveTo(R * 0.1, 0);
+        g.quadraticCurveTo(R, -R * 0.05, R * (kind === "euc" ? 1.6 : 1.85), 0);
+        g.stroke();
+        granulate(g, R * 2, col.deep, 50);
+      });
+    }
+
+    // ---------- Scene layout ----------
+
+    // Corner bouquets in units of the short side, measured inward from the corner.
+    const BIG = {
+      sprigs: [
+        { a: [0.0, 0.03], c: [0.24, 0.0], b: [0.5, 0.1], n: 9, kind: "euc", L: 0.052, d: 0.0 },
+        { a: [0.03, 0.0], c: [0.0, 0.26], b: [0.09, 0.52], n: 9, kind: "euc", L: 0.052, d: 0.15 },
+        { a: [0.06, 0.06], c: [0.2, 0.16], b: [0.36, 0.3], n: 6, kind: "sage", L: 0.05, d: 0.35 },
+        { a: [0.08, 0.1], c: [0.3, 0.2], b: [0.42, 0.18], n: 5, kind: "sage", L: 0.045, d: 0.5 },
+      ],
+      flowers: [
+        { kind: "peony", x: 0.11, y: 0.11, s: 0.34, d: 0.5, r: 0.3 },
+        { kind: "rose", x: 0.32, y: 0.05, s: 0.21, d: 0.85, r: 1.2 },
+        { kind: "cream", x: 0.04, y: 0.32, s: 0.22, d: 1.05, r: 2.1 },
+        { kind: "rose", x: 0.26, y: 0.24, s: 0.13, d: 1.25, r: 2.8 },
+        { kind: "bud", x: 0.43, y: 0.14, s: 0.085, d: 1.35, r: 0.9 },
+        { kind: "bud", x: 0.15, y: 0.42, s: 0.075, d: 1.5, r: 2.4 },
+      ],
+      berries: [[0.44, 0.24], [0.24, 0.41], [0.46, 0.05]],
+    };
+    const SMALL = {
+      sprigs: [
+        { a: [0.0, 0.03], c: [0.16, 0.0], b: [0.32, 0.07], n: 6, kind: "euc", L: 0.045, d: 0.3 },
+        { a: [0.03, 0.0], c: [0.0, 0.16], b: [0.07, 0.33], n: 6, kind: "euc", L: 0.045, d: 0.45 },
+      ],
+      flowers: [
+        { kind: "rose", x: 0.07, y: 0.07, s: 0.21, d: 0.95, r: 0.6 },
+        { kind: "cream", x: 0.24, y: 0.02, s: 0.13, d: 1.2, r: 1.9 },
+        { kind: "bud", x: 0.04, y: 0.25, s: 0.07, d: 1.4, r: 1.1 },
+      ],
+      berries: [[0.26, 0.17]],
+    };
+
+    let W, H, u, dpr, G = {};
+
+    function build() {
+      W = innerWidth;
+      H = innerHeight;
+      u = Math.min(W, H);
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      seed = 7;
+
+      // Arch size: tall and narrow, always fully inside the window.
+      const aw = Math.min(W * 0.74, H * 0.6);
+      const ah = Math.min(H * 0.86, aw * 1.68);
+      G = { aw, ah, ax: (W - aw) / 2, ay: (H - ah) / 2 + ah * 0.01 };
+      // Bouquets shrink a little on wide screens so they frame the arch, not the edges.
+      G.k = u * (W > H * 1.3 ? 1.3 : W < H * 0.7 ? 1.02 : 0.88);
+
+      buildFrame();
+      buildGarden();
+      buildWords();
+      for (const c of [paper, garden]) {
+        c.width = Math.round(W * dpr);
+        c.height = Math.round(H * dpr);
+      }
+      paintPaper();
+    }
+
+    // Ivory paper with a warm glow and soft washes of colour under the flowers.
+    function paintPaper() {
+      if (paper.width !== Math.round(W * dpr)) return;
+      const g = paper.getContext("2d");
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.fillStyle = C.bg;
+      g.fillRect(0, 0, W, H);
+      const glow = g.createRadialGradient(W / 2, H * 0.45, 0, W / 2, H * 0.45, Math.max(W, H) * 0.7);
+      glow.addColorStop(0, "rgba(255,255,255,0.75)");
+      glow.addColorStop(1, rgba(C.blush, 0.16));
+      g.fillStyle = glow;
+      g.fillRect(0, 0, W, H);
+      const corners = [[0, 0, C.blush], [W, H, C.blush], [W, 0, "#b9cbbb"], [0, H, "#b9cbbb"]];
+      let s = 3;
+      const r = () => ((s = (s * 16807) % 2147483647) - 1) / 2147483646;
+      for (const [cx, cy, col] of corners) {
+        for (let i = 0; i < 5; i++) {
+          const x = cx + (cx ? -1 : 1) * r() * u * 0.35, y = cy + (cy ? -1 : 1) * r() * u * 0.35, rad = u * (0.15 + r() * 0.2);
+          const wg = g.createRadialGradient(x, y, 0, x, y, rad);
+          wg.addColorStop(0, rgba(col, 0.2));
+          wg.addColorStop(0.7, rgba(col, 0.07));
+          wg.addColorStop(1, rgba(col, 0));
+          g.fillStyle = wg;
+          g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+        }
+      }
+      // Fine paper grain
+      const n = document.createElement("canvas");
+      n.width = n.height = 128;
+      const ng = n.getContext("2d"), img = ng.createImageData(128, 128);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const v = r();
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = v > 0.5 ? 255 : 120;
+        img.data[i + 3] = Math.abs(v - 0.5) * 40;
+      }
+      ng.putImageData(img, 0, 0);
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.fillStyle = g.createPattern(n, "repeat");
+      g.fillRect(0, 0, paper.width, paper.height);
+    }
+
+    // The gold arch: a panel, two fine lines that draw on, and a small star at the top.
+    function buildFrame() {
+      frame.replaceChildren();
+      frame.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      const { aw, ah, ax, ay } = G;
+      const defs = el("defs", {}, frame);
+      const lg = el("linearGradient", { id: "wf-gold", x1: 0, y1: 0, x2: 1, y2: 1 }, defs);
+      [[0, GOLD.deep], [0.3, GOLD.light], [0.5, GOLD.mid], [0.75, GOLD.light], [1, GOLD.deep]].forEach(([o, c]) => el("stop", { offset: o, "stop-color": c }, lg));
+      const arch = (i) => {
+        const l = ax + i, r = ax + aw - i, t = ay + i, b = ay + ah - i, rad = aw / 2 - i;
+        return `M${l} ${b} L${l} ${t + rad} A${rad} ${rad} 0 0 1 ${r} ${t + rad} L${r} ${b} Z`;
+      };
+      G.panel = el("path", { d: arch(aw * 0.035), fill: "#fffdf8", opacity: 0 }, frame);
+      const lw = Math.max(0.8, u * 0.0042);
+      G.lines = [
+        el("path", { d: arch(0), fill: "none", stroke: "url(#wf-gold)", "stroke-width": lw, pathLength: 1, "stroke-dasharray": "1 1" }, frame),
+        el("path", { d: arch(aw * 0.035), fill: "none", stroke: "url(#wf-gold)", "stroke-width": lw * 0.55, pathLength: 1, "stroke-dasharray": "1 1" }, frame),
+      ];
+      // A four point star with two dots, sitting on the top of the arch.
+      const s = aw * 0.05;
+      G.apex = el("g", { transform: `translate(${W / 2} ${ay})` }, frame);
+      el("path", { d: `M0 ${-s} Q${s * 0.12} ${-s * 0.12} ${s} 0 Q${s * 0.12} ${s * 0.12} 0 ${s} Q${-s * 0.12} ${s * 0.12} ${-s} 0 Q${-s * 0.12} ${-s * 0.12} 0 ${-s}Z`, fill: "url(#wf-gold)", stroke: C.bg, "stroke-width": lw * 1.5, "paint-order": "stroke" }, G.apex);
+      for (const x of [-1, 1]) el("circle", { cx: x * s * 1.6, cy: 0, r: s * 0.16, fill: GOLD.mid }, G.apex);
+    }
+
+    function buildGarden() {
+      const k = G.k;
+      const sizes = { peony: 0.34, rose: 0.21, cream: 0.22 };
+      const sprites = {};
+      for (const kind in sizes) sprites[kind] = makeFlower(kind, sizes[kind] * k, dpr);
+      sprites.bud = makeBud(0.09 * k, dpr);
+      const leaves = { euc: makeLeaf("euc", 0.06 * k, dpr), sage: makeLeaf("sage", 0.06 * k, dpr) };
+      G.sprites = sprites;
+      G.items = { sprigs: [], flowers: [], berries: [] };
+
+      // Corners: top left and bottom right get the big bouquet.
+      const corners = [
+        { x: 0, y: 0, sx: 1, sy: 1, set: BIG, delay: 0 },
+        { x: W, y: H, sx: -1, sy: -1, set: BIG, delay: 0.35 },
+        { x: W, y: 0, sx: -1, sy: 1, set: SMALL, delay: 0.55 },
+        { x: 0, y: H, sx: 1, sy: -1, set: SMALL, delay: 0.75 },
+      ];
+      for (const cn of corners) {
+        const P = ([x, y]) => [cn.x + cn.sx * x * k, cn.y + cn.sy * y * k];
+        for (const sp of cn.set.sprigs) {
+          const a = P(sp.a), c = P(sp.c), b = P(sp.b);
+          const at = (t) => [(1 - t) ** 2 * a[0] + 2 * (1 - t) * t * c[0] + t * t * b[0], (1 - t) ** 2 * a[1] + 2 * (1 - t) * t * c[1] + t * t * b[1]];
+          const pts = [];
+          for (let i = 0; i <= 24; i++) pts.push(at(i / 24));
+          const leafList = [];
+          for (let i = 0; i < sp.n; i++) {
+            const t = 0.14 + (i / sp.n) * 0.86;
+            const p = at(t), q = at(Math.min(1, t + 0.02)), tan = Math.atan2(q[1] - p[1], q[0] - p[0]);
+            const side = i % 2 ? 1 : -1;
+            const last = i === sp.n - 1;
+            leafList.push({ t, x: p[0], y: p[1], ang: tan + (last ? 0 : side * (0.95 + rand() * 0.3)), L: sp.L * k * (1.15 - t * 0.45) * (0.9 + rand() * 0.2), img: leaves[sp.kind], ph: rand() * TAU });
+          }
+          G.items.sprigs.push({ pts, leaves: leafList, d: sp.d + cn.delay, w: Math.max(0.6, u * 0.0035) });
+        }
+        for (const f of cn.set.flowers) {
+          const [x, y] = P([f.x, f.y]);
+          G.items.flowers.push({ ...f, x, y, size: f.s * k, d: f.d + cn.delay, ph: rand() * TAU });
+        }
+        for (const bpt of cn.set.berries) {
+          const [x, y] = P(bpt);
+          // Keep the gold berries out of the words.
+          if (x > G.ax - u * 0.03 && x < G.ax + G.aw + u * 0.03 && y > G.ay - u * 0.03 && y < G.ay + G.ah) continue;
+          const dots = [];
+          for (let i = 0; i < 5; i++) dots.push([x + (rand() - 0.5) * k * 0.05, y + (rand() - 0.5) * k * 0.05, k * (0.006 + rand() * 0.005)]);
+          G.items.berries.push({ dots, d: 1.6 + cn.delay + rand() * 0.4 });
+        }
+      }
+
+      // Floating gold glitter. Every motion repeats a whole number of times per loop.
+      const count = Math.round(Math.min(90, Math.max(28, (W * H) / 4500)));
+      G.glitter = [];
+      for (let i = 0; i < count; i++) {
+        G.glitter.push({
+          x: rand(), y: rand(), rise: 1 + Math.floor(rand() * 2), sway: 1 + Math.floor(rand() * 3),
+          tw: 2 + Math.floor(rand() * 4), ph: rand() * TAU, r: u * (0.0025 + rand() * rand() * 0.006),
+          star: rand() < 0.35, col: [GOLD.mid, GOLD.light, GOLD.light, "#fff6dc"][Math.floor(rand() * 4)],
+        });
+      }
+    }
+
+    // ---------- Words ----------
+
+    function buildWords() {
+      words.replaceChildren();
+      words.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      const { aw, ah, ay } = G;
+      const cx = W / 2;
+      const defs = el("defs", {}, words);
+
+      // Line specs: size and max width are in units of the arch width.
+      const specs = [
+        { key: "head", text: "WALIMATUL URUS", cls: "serif", weight: 600, size: 0.058, max: 0.66, lh: 1.5, ls: 0.28 },
+        { key: "gap", h: 0.03 },
+        ...nameLines.map((t, i) => t === "&"
+          ? { key: "name", text: "&", cls: "script", size: 0.13, max: 0.8, lh: 0.95, amp: true }
+          : { key: "name", text: t, cls: "script", size: nameLines.length === 1 ? 0.17 : 0.2, max: 0.82, lh: 1.08 }),
+        { key: "divider", h: 0.12 },
+        { key: "detail", text: "Saturday, 12 December 2026", cls: "serif", weight: 600, size: 0.068, max: 0.74, lh: 1.45, ls: 0.02 },
+        { key: "detail", text: "11.00 am to 4.00 pm", cls: "serif", weight: 500, italic: true, size: 0.066, max: 0.7, lh: 1.45 },
+        { key: "detail", text: "Dewan Seri Melati", cls: "serif", weight: 600, size: 0.064, max: 0.72, lh: 1.35, ls: 0.04 },
+        { key: "detail", text: "Kuala Lumpur", cls: "serif", weight: 500, size: 0.058, max: 0.7, lh: 1.35, ls: 0.12, caps: true },
+      ];
+
+      // Measure each line at its preferred size, then shrink it to fit the arch.
+      for (const s of specs) {
+        if (!s.text) { s.fs = 0; s.hh = s.h * aw; continue; }
+        const probe = el("text", { class: s.cls, "font-size": 100, "font-weight": s.weight || 400, "font-style": s.italic ? "italic" : "normal", "letter-spacing": (s.ls || 0) * 100 }, words);
+        probe.textContent = s.caps ? s.text.toUpperCase() : s.text;
+        const wAt100 = probe.getComputedTextLength();
+        probe.remove();
+        s.fs = Math.min(s.size * aw, (s.max * aw * 100) / Math.max(1, wAt100));
+        s.width = (wAt100 * s.fs) / 100;
+        s.hh = s.fs * s.lh;
+      }
+      // Scale the whole stack if it is taller than the space inside the arch.
+      const top = ay + aw * 0.3, bottom = ay + ah - aw * 0.1;
+      const total = specs.reduce((a, s) => a + s.hh, 0);
+      const k = Math.min(1, (bottom - top) / total);
+      let y = top + (bottom - top - total * k) / 2;
+
+      G.head = null;
+      G.names = [];
+      G.details = [];
+      const nameGroup = el("g", {}, words);
+      for (const s of specs) {
+        s.fs *= k;
+        s.hh *= k;
+        s.width *= k;
+        const base = y + s.hh * (s.key === "name" ? 0.74 : 0.68);
+        if (s.key === "head") {
+          const t = el("text", { class: s.cls, x: cx, y: base, "font-size": s.fs, "font-weight": s.weight, "letter-spacing": s.ls * s.fs, fill: GOLD.deep }, words);
+          t.textContent = s.text;
+          G.head = { el: t, y: base, fs: s.fs };
+        } else if (s.key === "name") {
+          G.names.push({ ...s, y: base });
+        } else if (s.key === "divider") {
+          const my = y + s.hh / 2, dw = aw * 0.26, dd = aw * 0.03;
+          const g = el("g", {}, words);
+          const lw = Math.max(0.6, u * 0.0028);
+          const lines = [-1, 1].map((d) => el("path", { d: `M${cx + d * dd} ${my} L${cx + d * dw} ${my}`, stroke: GOLD.mid, "stroke-width": lw, fill: "none", pathLength: 1, "stroke-dasharray": "1 1" }, g));
+          const r = aw * 0.016;
+          const dot = el("path", { d: `M${cx} ${my - r} L${cx + r} ${my} L${cx} ${my + r} L${cx - r} ${my}Z`, fill: GOLD.mid }, g);
+          G.divider = { lines, dot };
+        } else if (s.key === "detail") {
+          const t = el("text", { class: s.cls, x: cx, y: base, "font-size": s.fs, "font-weight": s.weight, "font-style": s.italic ? "italic" : "normal", "letter-spacing": (s.ls || 0) * s.fs, fill: C.ink }, words);
+          t.textContent = s.caps ? s.text.toUpperCase() : s.text;
+          G.details.push({ el: t, fs: s.fs });
+        }
+        y += s.hh;
+      }
+
+      // Gold foil for the names, with a moving shine on top.
+      const nTop = G.names[0].y - G.names[0].fs, nBot = G.names.at(-1).y + G.names.at(-1).fs * 0.3;
+      const nl = cx - aw * 0.45, nr = cx + aw * 0.45;
+      const foil = el("linearGradient", { id: "ww-foil", gradientUnits: "userSpaceOnUse", x1: nl, y1: nTop, x2: nr, y2: nBot }, defs);
+      [[0, GOLD.deep], [0.2, GOLD.mid], [0.38, GOLD.light], [0.5, GOLD.mid], [0.66, GOLD.deep], [0.82, GOLD.light], [1, GOLD.mid]].forEach(([o, c]) => el("stop", { offset: o, "stop-color": c }, foil));
+      G.shine = el("linearGradient", { id: "ww-shine", gradientUnits: "userSpaceOnUse", x1: 0, y1: 0, x2: 1, y2: 0 }, defs);
+      [[0, 0], [0.5, 0.95], [1, 0]].forEach(([o, a]) => el("stop", { offset: o, "stop-color": "#fffbea", "stop-opacity": a }, G.shine));
+      G.nTop = nTop;
+      G.nBot = nBot;
+      G.nl = nl;
+      G.nr = nr;
+
+      // Each name is revealed left to right by a mask with a soft edge, like ink flowing.
+      G.names.forEach((n, i) => {
+        const pad = n.fs * 0.35, left = cx - n.width / 2 - pad, w = n.width + pad * 2, f = n.fs * 0.8;
+        const grad = el("linearGradient", { id: `ww-edge${i}`, x1: 0, y1: 0, x2: 1, y2: 0 }, defs);
+        el("stop", { offset: w / (w + f), "stop-color": "#fff" }, grad);
+        el("stop", { offset: 1, "stop-color": "#000" }, grad);
+        const mask = el("mask", { id: `ww-mask${i}`, maskUnits: "userSpaceOnUse", x: 0, y: 0, width: W, height: H }, defs);
+        const rect = el("rect", { x: left - w - f, y: n.y - n.fs * 1.1, width: w + f, height: n.fs * 1.7, fill: `url(#ww-edge${i})` }, mask);
+        const g = el("g", { mask: `url(#ww-mask${i})` }, nameGroup);
+        const attrs = { class: "script", x: cx, y: n.y, "font-size": n.fs };
+        el("text", { ...attrs, y: n.y + n.fs * 0.025, fill: GOLD.deep, opacity: 0.22 }, g).textContent = n.text;
+        el("text", { ...attrs, fill: "url(#ww-foil)" }, g).textContent = n.text;
+        el("text", { ...attrs, fill: "url(#ww-shine)" }, g).textContent = n.text;
+        Object.assign(n, { rect, left, w, f, g });
+      });
+
+      // A tiny glowing pen tip that leads the writing.
+      const pr = G.names[0].fs * 0.28;
+      const glow = el("radialGradient", { id: "ww-pen" }, defs);
+      el("stop", { offset: 0, "stop-color": "#fffbe8", "stop-opacity": 1 }, glow);
+      el("stop", { offset: 0.35, "stop-color": GOLD.light, "stop-opacity": 0.6 }, glow);
+      el("stop", { offset: 1, "stop-color": GOLD.light, "stop-opacity": 0 }, glow);
+      G.pen = el("g", { opacity: 0 }, words);
+      el("circle", { r: pr, fill: "url(#ww-pen)" }, G.pen);
+      const s = pr * 0.8;
+      el("path", { d: `M0 ${-s} Q${s * 0.1} ${-s * 0.1} ${s} 0 Q${s * 0.1} ${s * 0.1} 0 ${s} Q${-s * 0.1} ${s * 0.1} ${-s} 0 Q${-s * 0.1} ${-s * 0.1} 0 ${-s}Z`, fill: "#fffdf2" }, G.pen);
+    }
+
+    // ---------- Timeline: GSAP moves these values, render() draws them ----------
+
+    const S = { arch: 0, archOut: 0, panel: 0, grow: 0, out: 0, head: 0, w0: 0, w1: 0, w2: 0, div: 0, d0: 0, d1: 0, d2: 0, d3: 0, sh1: 0, sh2: 0, text: 1 };
+    const tl = gsap.timeline({ repeat: -1, paused: true });
+    tl.to(S, { grow: 4.5, duration: 4.5, ease: "none" }, 0.1)
+      .to(S, { arch: 1, duration: 2.6, ease: "power2.inOut" }, 0.2)
+      .to(S, { panel: 1, duration: 1.8, ease: "sine.inOut" }, 0.8)
+      .to(S, { head: 1, duration: 1.1, ease: "power2.out" }, 1.6)
+      .to(S, { w0: 1, duration: 1.4, ease: "sine.inOut" }, 2.2)
+      .to(S, { w1: 1, duration: 0.5, ease: "sine.inOut" }, 3.55)
+      .to(S, { w2: 1, duration: 1.3, ease: "sine.inOut" }, 4.0)
+      .to(S, { div: 1, duration: 1, ease: "power2.inOut" }, 5.3)
+      .to(S, { d0: 1, duration: 0.9, ease: "power2.out" }, 5.6)
+      .to(S, { d1: 1, duration: 0.9, ease: "power2.out" }, 5.9)
+      .to(S, { d2: 1, duration: 0.9, ease: "power2.out" }, 6.2)
+      .to(S, { d3: 1, duration: 0.9, ease: "power2.out" }, 6.45)
+      .to(S, { sh1: 1, duration: 1.5, ease: "power1.inOut" }, 5.4)
+      .to(S, { sh2: 1, duration: 1.5, ease: "power1.inOut" }, 8.8)
+      .to(S, { text: 0, duration: 1, ease: "power1.in" }, 10.6)
+      .to(S, { out: 1, duration: 1.2, ease: "power2.in" }, 10.7)
+      .to(S, { archOut: 1, duration: 1.2, ease: "power2.inOut" }, 10.7)
+      .set({}, {}, LOOP);
+
+    // Only touch the SVG when a value really changes, so still parts are not repainted.
+    function set(node, key, value) {
+      const v = typeof value === "number" ? value.toFixed(3) : value;
+      const memo = node.__memo || (node.__memo = {});
+      if (memo[key] !== v) {
+        memo[key] = v;
+        node.setAttribute(key, v);
+      }
+    }
+
+    function render() {
+      const t = tl.time();
+      const keep = 1 - S.out;
+
+      // Arch
+      const a = clamp(S.arch - S.archOut);
+      set(G.lines[0], "stroke-dashoffset", 1 - a);
+      set(G.lines[1], "stroke-dashoffset", 1 - clamp(a * 1.15 - 0.15));
+      set(G.panel, "opacity", 0.62 * S.panel * keep);
+      set(G.apex, "opacity", clamp((a - 0.75) * 4));
+
+      // Words
+      words.style.opacity = S.text;
+      const hy = (1 - S.head) * G.head.fs * 0.6;
+      set(G.head.el, "opacity", S.head);
+      set(G.head.el, "transform", `translate(0 ${hy})`);
+      const ws = [S.w0, S.w1, S.w2];
+      let pen = null;
+      G.names.forEach((n, i) => {
+        const p = nameLines.length === 1 ? S.w0 : ws[i];
+        set(n.rect, "x", n.left - n.w - n.f + p * (n.w + n.f));
+        if (p > 0 && p < 1 && !pen) pen = { x: n.left + p * (n.w + n.f) - n.f * 0.6, y: n.y - n.fs * (0.3 + 0.18 * Math.sin(p * 17)), p };
+      });
+      if (pen) {
+        set(G.pen, "transform", `translate(${pen.x} ${pen.y})`);
+        set(G.pen, "opacity", Math.min(1, Math.sin(pen.p * Math.PI) * 3));
+      } else set(G.pen, "opacity", 0);
+      // Shine: a soft bright band that slides across the gold, twice a loop.
+      const sh = S.sh1 > 0 && S.sh1 < 1 ? S.sh1 : S.sh2;
+      const band = (G.nr - G.nl) * 0.22;
+      const sx = G.nl - band * 2 + sh * (G.nr - G.nl + band * 4);
+      set(G.shine, "x1", sx - band);
+      set(G.shine, "x2", sx + band);
+      set(G.shine, "y1", G.nTop);
+      set(G.shine, "y2", G.nBot);
+      G.divider.lines.forEach((l) => set(l, "stroke-dashoffset", 1 - S.div));
+      set(G.divider.dot, "opacity", clamp(S.div * 2 - 1));
+      [S.d0, S.d1, S.d2, S.d3].forEach((d, i) => {
+        const e = G.details[i];
+        if (!e) return;
+        set(e.el, "opacity", d);
+        set(e.el, "transform", `translate(0 ${(1 - d) * e.fs * 0.8})`);
+      });
+
+      // Garden
+      const g = gx;
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, W, H);
+      const shrink = 1 - S.out * S.out;
+      const breeze = (ph, n) => Math.sin((t / LOOP) * TAU * n + ph);
+
+      for (const sp of G.items.sprigs) {
+        const p = clamp((S.grow - sp.d) / 1.6) * shrink;
+        if (p <= 0) continue;
+        g.globalAlpha = keep;
+        const n = Math.max(1, Math.round(p * 24));
+        g.strokeStyle = LEAF.euc.deep;
+        g.lineWidth = sp.w;
+        g.lineCap = "round";
+        g.beginPath();
+        g.moveTo(sp.pts[0][0], sp.pts[0][1]);
+        for (let i = 1; i <= n; i++) g.lineTo(sp.pts[i][0], sp.pts[i][1]);
+        g.stroke();
+        for (const lf of sp.leaves) {
+          const q = backOut(clamp((p - lf.t + 0.1) / 0.22));
+          if (q <= 0) continue;
+          const L = lf.L * q;
+          g.save();
+          g.translate(lf.x, lf.y);
+          g.rotate(lf.ang + breeze(lf.ph, 2) * 0.06);
+          g.drawImage(lf.img, 0, -L / 2, L, L);
+          g.restore();
+        }
+      }
+      for (const b of G.items.berries) {
+        const p = clamp((S.grow - b.d) / 0.8) * shrink;
+        if (p <= 0) continue;
+        g.globalAlpha = keep * 0.9;
+        b.dots.forEach(([x, y, r], i) => {
+          g.fillStyle = i % 2 ? GOLD.mid : GOLD.light;
+          g.beginPath();
+          g.arc(x, y, r * easeOut(clamp(p * 1.6 - i * 0.12)), 0, TAU);
+          g.fill();
+        });
+      }
+      for (const f of G.items.flowers) {
+        const p = clamp((S.grow - f.d) / 1.7) * shrink;
+        if (p <= 0) continue;
+        g.save();
+        g.translate(f.x, f.y);
+        g.rotate(f.r + breeze(f.ph, 1) * 0.04);
+        g.globalAlpha = keep;
+        if (f.kind === "bud") {
+          const q = backOut(clamp(p / 0.8)), s = f.size * q;
+          g.drawImage(G.sprites.bud, -s / 2, -s / 2, s, s);
+        } else {
+          // The heart opens first, then the middle and outer petals unfold around it.
+          const layers = G.sprites[f.kind];
+          [[0, 0.32, 0.68], [1, 0.14, 0.62], [2, 0, 0.5]].forEach(([li, from, span]) => {
+            const q = clamp((p - from) / span);
+            if (q <= 0) return;
+            const e = backOut(q), s = f.size * (li === 2 ? 0.55 + 0.45 * e : e);
+            g.save();
+            g.rotate((1 - easeOut(q)) * (li === 0 ? -0.9 : 0.6));
+            g.globalAlpha = keep * Math.min(1, q * 2.5);
+            g.drawImage(layers[li], -s / 2, -s / 2, s, s);
+            g.restore();
+          });
+        }
+        g.restore();
+      }
+
+      // Glitter drifts up through the whole frame.
+      for (const d of G.glitter) {
+        const y = (((d.y - (t / LOOP) * d.rise) % 1) + 1) % 1;
+        const px = d.x * W + Math.sin((t / LOOP) * TAU * d.sway + d.ph) * u * 0.025;
+        const py = y * (H + u * 0.1) - u * 0.05;
+        const tw = 0.5 + 0.5 * Math.sin((t / LOOP) * TAU * d.tw + d.ph);
+        g.globalAlpha = 0.2 + 0.65 * tw;
+        g.fillStyle = d.col;
+        if (d.star) {
+          const r = d.r * (1.4 + tw * 1.6), w = r * 0.18;
+          g.beginPath();
+          g.moveTo(px, py - r);
+          g.lineTo(px + w, py - w);
+          g.lineTo(px + r, py);
+          g.lineTo(px + w, py + w);
+          g.lineTo(px, py + r);
+          g.lineTo(px - w, py + w);
+          g.lineTo(px - r, py);
+          g.lineTo(px - w, py - w);
+          g.closePath();
+          g.fill();
+        } else {
+          g.beginPath();
+          g.arc(px, py, d.r, 0, TAU);
+          g.fill();
+        }
+      }
+      g.globalAlpha = 1;
+    }
+
+    // Reduced motion: one still frame with everything in place, no glitter twinkle.
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    const HOLD = 8;
+    function apply() {
+      gsap.ticker.remove(render);
+      if (reduce.matches) {
+        tl.pause(HOLD);
+        render();
+      } else {
+        tl.play();
+        gsap.ticker.add(render);
+      }
+    }
+    reduce.addEventListener("change", apply);
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => { build(); render(); }, 150);
+    });
+
+    // Wait briefly for the fonts so the words are measured in the right face.
+    Promise.race([
+      Promise.all([document.fonts.load("1em 'Great Vibes'"), document.fonts.load("600 1em 'Cormorant Garamond'"), document.fonts.load("italic 500 1em 'Cormorant Garamond'")]),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(() => { build(); render(); apply(); });
+  </script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+Make my video in this style: Map journey.
+
+Look and motion
+- An animated travel map of the places in my request, visited in order. For example, a trip across Malaysia from Kuala Lumpur to Penang and on to Kota Kinabalu.
+- Use real geography so the places are easy to recognise. Draw a clean, flat, modern map: soft land, light sea, thin coastlines and a faint grid. No satellite photos, no 3D.
+- Fill the country of the trip in a stronger colour and the neighbouring countries in a lighter tone. Add a few faint names for nearby countries and seas in the wide shots.
+- The camera glides and zooms from stop to stop, framing each new stretch of the route. It is never fully still.
+- The route draws itself along a gentle curve from one stop to the next, with a small vehicle travelling along the line. Use a plane and a dotted line for long hops, a car or a boat for short ones.
+- At each stop, a numbered pin drops in with a bounce and a ripple, then a small card pops up with the place name and a tiny icon for it. If my request has days or dates, show them on the card, like "Day 2".
+- Keep every pin, card and the moving vehicle inside the frame.
+- End by zooming out to show the whole route with all pins and place names, then fade the route away and zoom back to the start, so the video can loop.
+
+Type and colour
+- A short title at the top in a clean, bold font (like Outfit), with a small line under it, such as the number of days and stops. Use a friendly rounded sans serif (like Nunito) for the cards and labels.
+- Use my brand colours if I give them. Otherwise use light sea blue #cfe7ee, warm cream land #f5f1e8, mint green #2fae86 for the trip country, coral #ff5a4e for the pins and deep navy #1d2b44 for the route and text.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation with a real map (for example with d3-geo and world map data) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

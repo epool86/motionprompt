@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Watercolour ink demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/kaushan-script@5.3.0/latin-400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/cormorant-garamond@5.3.0/latin-500-italic.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/cormorant-garamond@5.3.0/latin-600.css">
+  <style>
+    /* Colours can be set from the URL: ?text=Headline|Small+line&bg=f3ede0&ink=26314d&accent=c67b86&accent2=cda45e */
+    :root {
+      --paper: #f3ede0;
+      --ink: #26314d;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--paper);
+    }
+
+    .stage {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      background: var(--paper);
+    }
+
+    canvas.layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Ink sits in the paper, so it multiplies with the washes below it. */
+    #ink,
+    .title {
+      mix-blend-mode: multiply;
+    }
+
+    .title {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: var(--ink);
+    }
+
+    .title h1 {
+      margin: 0;
+      font-family: "Kaushan Script", "Brush Script MT", cursive;
+      font-weight: 400;
+      line-height: 1.2;
+      text-wrap: balance;
+    }
+
+    .word {
+      display: inline-block;
+      white-space: nowrap;
+    }
+
+    /* Each letter is painted in with a soft moving mask. Padding keeps the swashes inside the mask. */
+    .letter {
+      display: inline-block;
+      padding: 0.12em 0.14em;
+      margin: -0.12em -0.14em;
+      -webkit-mask-image: linear-gradient(100deg, #000 40%, transparent 60%);
+      mask-image: linear-gradient(100deg, #000 40%, transparent 60%);
+      -webkit-mask-size: 250% 100%;
+      mask-size: 250% 100%;
+      -webkit-mask-repeat: no-repeat;
+      mask-repeat: no-repeat;
+    }
+
+    .seal {
+      display: inline-block;
+      width: 0.52em;
+      height: 0.52em;
+      margin-left: 0.22em;
+      vertical-align: 0.1em;
+    }
+
+    .sub {
+      margin: 0.35em 0 0;
+      font-family: "Cormorant Garamond", Georgia, serif;
+      font-style: italic;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      line-height: 1.2;
+      opacity: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage" role="img">
+    <canvas class="layer" id="wash"></canvas>
+    <canvas class="layer" id="ink"></canvas>
+    <div class="title" id="title">
+      <h1 id="headline"></h1>
+      <p class="sub" id="sub"></p>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const colors = { paper: hex("bg", "f3ede0"), ink: hex("ink", "26314d"), rose: hex("accent", "c67b86"), ochre: hex("accent2", "cda45e") };
+    const root = document.documentElement;
+    root.style.setProperty("--paper", `#${colors.paper}`);
+    root.style.setProperty("--ink", `#${colors.ink}`);
+
+    // Headline and small line: split the text on "|", or use the defaults.
+    const text = (params.get("text") || "Let it bloom|Ink, water and a little time").slice(0, 90);
+    const [headText, subText = ""] = text.split("|").map((s) => s.trim());
+
+    const stage = document.getElementById("stage");
+    stage.setAttribute("aria-label", `Watercolour washes bloom on paper and an ink plum branch paints itself beside the words: ${headText}`);
+
+    const LOOP = 12; // seconds
+    const toVec = (h) => [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
+    const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+    const clamp01 = (x) => Math.min(1, Math.max(0, x));
+    const ease = (x) => x * x * (3 - 2 * x);
+    const easeOut = (x) => 1 - Math.pow(1 - x, 3);
+
+    const paper = toVec(colors.paper), inkV = toVec(colors.ink);
+    const rose = toVec(colors.rose), ochre = toVec(colors.ochre);
+    const indigo = params.has("ink") ? mix(inkV, [1, 1, 1], 0.3) : toVec("6377ad");
+    const inkRgb = inkV.map((v) => Math.round(v * 255 * 0.8)).join(",");
+    const roseRgb = rose.map((v) => Math.round(v * 255)).join(",");
+
+    // Small seeded random numbers, so every loop paints the same strokes.
+    function rng(seed) {
+      return () => {
+        seed = (seed + 0x6d2b79f5) | 0;
+        let r = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+        return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    const hash1 = (n) => { const s = Math.sin(n * 127.1) * 43758.5453; return s - Math.floor(s); };
+    const noise1 = (x) => { const i = Math.floor(x), f = x - i; return hash1(i) + (hash1(i + 1) - hash1(i)) * f * f * (3 - 2 * f); };
+
+    // ---------- Layout ----------
+    // Portrait and square: branch across the top, words below. Wide: branch on the right, words on the left.
+    let W = 0, H = 0, L = null;
+    function layout() {
+      W = innerWidth; H = innerHeight;
+      const wide = W / H > 1.25;
+      if (wide) {
+        const S = Math.min(H * 1.12, W * 0.6);
+        L = { wide, S, bx: W - S * 1.02, by: -S * 0.02, title: { x: W * 0.05, y: H * 0.14, w: W * 0.55, h: H * 0.72 } };
+      } else {
+        const S = Math.min(W * 1.22, H * 0.9);
+        const top = Math.max(S * 0.46, H * 0.36);
+        L = { wide, S, bx: W - S * 1.0, by: -S * 0.01, title: { x: W * 0.07, y: top, w: W * 0.86, h: (H - top) * 0.9 } };
+      }
+    }
+
+    // ---------- Paper and washes (WebGL) ----------
+    const washCanvas = document.getElementById("wash");
+    const gl = washCanvas.getContext("webgl", { antialias: false });
+    let drawWash = () => {};
+    let setWashes = () => {};
+    if (gl) {
+      const vert = `attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }`;
+      const frag = `
+        precision highp float;
+        uniform vec2 res;
+        uniform float t;       // seconds into the loop
+        uniform float fade;    // 1 while painted, 0 when the page is clean
+        uniform vec3 paper;
+        uniform vec4 W[6];     // centre xy, size, start time
+        uniform vec4 S[6];     // angle, stretch, strength, seed
+        uniform vec3 C[6];     // pigment colour
+        uniform vec4 keep;     // soft area kept lighter behind the words: centre xy, radius xy
+
+        float hash(vec2 q) { q = fract(q * vec2(123.34, 456.21)); q += dot(q, q + 45.32); return fract(q.x * q.y); }
+        float noise(vec2 x) {
+          vec2 i = floor(x), f = fract(x);
+          f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+        }
+        float fbm(vec2 x) {
+          float v = 0.0, a = 0.5;
+          for (int i = 0; i < 4; i++) { v += a * noise(x); x = mat2(0.8, 0.6, -0.6, 0.8) * x * 2.03 + 17.1; a *= 0.5; }
+          return v;
+        }
+        float tooth(vec2 p) { return 0.6 * noise(p * 70.0) + 0.4 * noise(p * 170.0 + 3.0); }
+
+        void main() {
+          float m = min(res.x, res.y);
+          vec2 p = (gl_FragCoord.xy - 0.5 * res) / m;
+
+          // Cold press paper: small bumps lit from the top left.
+          float h = tooth(p);
+          float h2 = tooth(p + vec2(0.003, -0.003));
+          vec3 col = paper * (1.0 + (h - h2) * 0.075 + (h - 0.5) * 0.018);
+
+          // Shared soft noise that makes every wash edge wander like water.
+          float n1 = fbm(p * 2.3), n2 = fbm(p * 2.3 + vec2(5.2, 1.3));
+          vec2 warp = vec2(n1, n2) - 0.5;
+          float fine = noise(p * 13.0);
+          vec2 kq = (p - keep.xy) / keep.zw;
+          float reserve = mix(0.3, 1.0, smoothstep(0.5, 1.3, length(kq)));
+
+          for (int i = 0; i < 6; i++) {
+            float age = t - W[i].w;
+            if (age <= 0.0) continue;
+            float R = W[i].z;
+            // Blooms fast while wet, then creeps and dries.
+            float grow = 1.0 - exp(-age * 1.15);
+            float r = R * (0.1 + 0.9 * grow + 0.01 * age);
+            vec2 q = p - W[i].xy + warp * R * 0.7;
+            float ca = cos(S[i].x), sa = sin(S[i].x);
+            q = mat2(ca, sa, -sa, ca) * q;
+            q.x /= S[i].y;
+            float lump = noise(p * 4.5 / R * 0.35 + S[i].w * 7.0);
+            float d = length(q) - r + R * 0.3 * (lump - 0.5) + R * 0.07 * (fine - 0.5);
+            float dry = smoothstep(0.0, 4.0, age);
+            float soft = R * mix(0.16, 0.012, dry) + 0.002;
+            float inside = smoothstep(soft, -soft, d);
+            // Pigment gathers at the drying edge.
+            float ring = exp(-pow(max(-d, 0.0) / (R * 0.07 + 0.004), 2.0)) * inside;
+            float body = mix(n1, n2, fract(S[i].w * 3.7));
+            float dens = inside * (0.42 + 0.55 * (body - 0.3)) + ring * 0.5 * dry;
+            // Granulation: pigment settles in the dips of the paper.
+            dens *= 1.0 + 0.6 * (0.5 - h) + 0.12 * (noise(gl_FragCoord.xy * 0.45) - 0.5);
+            dens *= S[i].z * fade * reserve;
+            col *= mix(vec3(1.0), C[i], clamp(dens, 0.0, 1.0));
+          }
+
+          vec2 uv = gl_FragCoord.xy / res - 0.5;
+          col *= 1.0 - 0.12 * dot(uv, uv);
+          gl_FragColor = vec4(col, 1.0);
+        }`;
+      const compile = (type, src) => {
+        const s = gl.createShader(type);
+        gl.shaderSource(s, src);
+        gl.compileShader(s);
+        return s;
+      };
+      const prog = gl.createProgram();
+      gl.attachShader(prog, compile(gl.VERTEX_SHADER, vert));
+      gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, frag));
+      gl.linkProgram(prog);
+      gl.useProgram(prog);
+      gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+      const loc = gl.getAttribLocation(prog, "p");
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      const u = (name) => gl.getUniformLocation(prog, name);
+      gl.uniform3fv(u("paper"), paper);
+      const uRes = u("res"), uT = u("t"), uFade = u("fade"), uW = u("W"), uS = u("S"), uC = u("C"), uKeep = u("keep");
+
+      // Washes placed by screen fraction (x, y from the top left), size in short side units.
+      setWashes = () => {
+        const m = Math.min(W, H);
+        const ex = W / m, ey = H / m;
+        const list = [
+          // x, y, size, start, angle, stretch, strength, colour
+          [0.14, 0.78, 0.34, 0.2, -0.35, 1.5, 0.55, ochre],
+          [0.9, 0.52, 0.27, 0.7, 0.5, 1.2, 0.55, rose],
+          [0.06, 0.16, 0.24, 1.2, 0.3, 1.3, 0.42, indigo],
+          [0.42, 1.02, 0.22, 1.8, 0.1, 1.8, 0.5, rose],
+          [0.95, 0.96, 0.24, 2.4, -0.6, 1.1, 0.5, indigo],
+          [0.66, 0.24, 0.17, 2.9, 0.9, 1.2, 0.42, ochre],
+        ];
+        const wv = [], sv = [], cv = [];
+        list.forEach(([x, y, size, start, angle, stretch, strength, c], i) => {
+          wv.push((x - 0.5) * ex, (0.5 - y) * ey, size, start);
+          sv.push(angle, stretch, strength, i * 0.137 + 0.21);
+          cv.push(...c);
+        });
+        gl.uniform4fv(uW, wv);
+        gl.uniform4fv(uS, sv);
+        gl.uniform3fv(uC, cv);
+        const tb = L.title;
+        gl.uniform4f(uKeep, (tb.x + tb.w / 2 - W / 2) / m, (H / 2 - (tb.y + tb.h / 2)) / m, (tb.w / 2) / m, (tb.h / 2.4) / m);
+      };
+
+      drawWash = (t, fade) => {
+        gl.uniform2f(uRes, washCanvas.width, washCanvas.height);
+        gl.uniform1f(uT, t);
+        gl.uniform1f(uFade, fade);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      };
+    } else {
+      stage.style.background = `radial-gradient(50% 40% at 20% 75%, #${colors.ochre}55, transparent 70%), radial-gradient(40% 35% at 85% 50%, #${colors.rose}55, transparent 70%), var(--paper)`;
+    }
+
+    // ---------- Ink branch (Canvas 2D) ----------
+    const inkCanvas = document.getElementById("ink");
+    const ictx = inkCanvas.getContext("2d");
+    const branchLayer = document.createElement("canvas");
+    const bctx = branchLayer.getContext("2d");
+    let dpr = 1;
+
+    // A plum branch in box units (the box is S wide, anchored at the top right).
+    const BRANCHES = [
+      { nodes: [[1.12, 0.05], [0.9, 0.13], [0.74, 0.12], [0.56, 0.23], [0.4, 0.26], [0.22, 0.37]], w: 0.06, start: 1.9, dur: 2.2 },
+      { nodes: [[0.74, 0.12], [0.63, 0.07], [0.5, 0.075]], w: 0.02, start: 3.2, dur: 0.9 },
+      { nodes: [[0.56, 0.23], [0.54, 0.32], [0.47, 0.4]], w: 0.019, start: 3.6, dur: 0.8 },
+      { nodes: [[0.9, 0.13], [0.87, 0.24], [0.79, 0.31]], w: 0.021, start: 2.9, dur: 0.9 },
+      { nodes: [[0.4, 0.26], [0.33, 0.2], [0.27, 0.19]], w: 0.012, start: 4.1, dur: 0.6 },
+    ];
+    // Blossoms: x, y, size, open time. Size 0 is a closed bud.
+    const BLOSSOMS = [
+      [0.62, 0.075, 0.05, 4.5], [0.47, 0.4, 0.045, 4.8], [0.36, 0.26, 0.055, 5.0],
+      [0.79, 0.31, 0.048, 4.3], [0.86, 0.19, 0.036, 5.3], [0.51, 0.075, 0.03, 5.5],
+      [0.23, 0.37, 0, 5.4], [0.27, 0.19, 0, 5.6], [0.55, 0.3, 0, 5.2],
+    ];
+
+    // Moss dots: small dark touches along the branch, as in ink painting.
+    const DOTS = [[0.95, 0.085, 4.0], [0.8, 0.105, 4.2], [0.66, 0.155, 4.4], [0.49, 0.225, 4.6], [0.3, 0.295, 4.8], [0.88, 0.2, 4.5]];
+
+    // Turn node lists into brush steps: position, direction, width and progress.
+    let strokes = [];
+    function buildStrokes() {
+      const S = L.S, bx = L.bx, by = L.by;
+      strokes = BRANCHES.map((b, bi) => {
+        const pts = b.nodes.map(([x, y]) => [bx + x * S, by + y * S]);
+        // Catmull-Rom through the nodes.
+        const dense = [];
+        for (let i = 0; i < pts.length - 1; i++) {
+          const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+          for (let k = 0; k < 24; k++) {
+            const s = k / 24, s2 = s * s, s3 = s2 * s;
+            dense.push([0, 1].map((j) => 0.5 * (2 * p1[j] + (-p0[j] + p2[j]) * s + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * s2 + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * s3)));
+          }
+        }
+        dense.push(pts[pts.length - 1]);
+        const len = [0];
+        for (let i = 1; i < dense.length; i++) len.push(len[i - 1] + Math.hypot(dense[i][0] - dense[i - 1][0], dense[i][1] - dense[i - 1][1]));
+        const total = len[len.length - 1];
+        const width = b.w * S;
+        const steps = [];
+        let j = 0;
+        for (let d = 0; d <= total; ) {
+          while (j < dense.length - 2 && len[j + 1] < d) j++;
+          const f = (d - len[j]) / Math.max(1e-6, len[j + 1] - len[j]);
+          const x = dense[j][0] + (dense[j + 1][0] - dense[j][0]) * f;
+          const y = dense[j][1] + (dense[j + 1][1] - dense[j][1]) * f;
+          const dx = dense[j + 1][0] - dense[j][0], dy = dense[j + 1][1] - dense[j][1];
+          const dl = Math.hypot(dx, dy) || 1;
+          const u = d / total;
+          // Pressure: a firm press at the start, a thin lifted tail, small knots along the way.
+          const press = Math.min(1, u / 0.05) * (1 - 0.62 * Math.pow(u, 1.3)) * (0.82 + 0.36 * noise1(u * 11 + bi * 5));
+          const w = Math.max(0.8, width * press);
+          steps.push({ x, y, nx: -dy / dl, ny: dx / dl, w, u });
+          d += Math.max(0.7, w * 0.1);
+        }
+        // Bristles: offsets across the brush and how much ink each one holds.
+        const r = rng(bi * 991 + 7);
+        const bristles = Array.from({ length: 18 }, (_, k) => ({ o: ((k / 17) * 2 - 1) * 0.92 + (r() - 0.5) * 0.06, ink: 0.6 + r() * 0.7, size: 0.7 + r() * 0.7, seed: r() * 100 }));
+        return { steps, bristles, start: b.start, dur: b.dur, drawn: 0 };
+      });
+    }
+
+    function dab(ctx, x, y, r) {
+      ctx.moveTo(x + r, y);
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+    }
+
+    // Paint brush steps from where we stopped up to the target.
+    function paintStroke(st, upto) {
+      const c = bctx;
+      if (upto <= st.drawn) return;
+      // Soft wet halo and a pale body under the bristles.
+      for (let i = st.drawn; i < upto; i++) {
+        const s = st.steps[i];
+        c.fillStyle = `rgba(${inkRgb},0.01)`;
+        c.beginPath(); dab(c, s.x, s.y, s.w * 0.66); c.fill();
+        c.fillStyle = `rgba(${inkRgb},${(0.09 * (1 - 0.8 * s.u)).toFixed(3)})`;
+        c.beginPath(); dab(c, s.x, s.y, s.w * 0.4); c.fill();
+      }
+      // Bristle streaks in short runs, so the width can follow the brush pressure.
+      c.lineCap = "butt";
+      c.lineJoin = "round";
+      const from = Math.max(0, st.drawn - 1);
+      for (let a = from; a < upto - 1; a += 6) {
+        const b0 = Math.min(upto - 1, a + 6);
+        const mid = st.steps[(a + b0) >> 1];
+        for (const b of st.bristles) {
+          c.lineWidth = mid.w * 0.1 * b.size + 0.4;
+          c.strokeStyle = `rgba(${inkRgb},${(0.62 * Math.min(1, b.ink)).toFixed(3)})`;
+          c.beginPath();
+          let pen = false;
+          for (let i = a; i <= b0; i++) {
+            const s = st.steps[i];
+            // Each bristle runs dry at its own pace, which leaves pale streaks.
+            if (noise1(s.u * 6 + b.seed) > b.ink - s.u * 0.75) { pen = false; continue; }
+            const off = (b.o + 0.07 * (noise1(s.u * 25 + b.seed * 3) - 0.5)) * s.w * 0.5;
+            const x = s.x + s.nx * off, y = s.y + s.ny * off;
+            pen ? c.lineTo(x, y) : c.moveTo(x, y);
+            pen = true;
+          }
+          c.stroke();
+        }
+      }
+      st.drawn = upto;
+    }
+
+    let paintedUpTo = -1;
+    function clearBranch() {
+      bctx.setTransform(1, 0, 0, 1, 0, 0);
+      bctx.clearRect(0, 0, branchLayer.width, branchLayer.height);
+      bctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      for (const st of strokes) st.drawn = 0;
+      paintedUpTo = -1;
+    }
+
+    function updateBranch(t) {
+      if (t < paintedUpTo) clearBranch();
+      for (const st of strokes) {
+        const p = clamp01((t - st.start) / st.dur);
+        paintStroke(st, Math.floor(ease(p) * st.steps.length));
+      }
+      paintedUpTo = t;
+    }
+
+    // One blossom: five soft petals with wet edges, then stamens.
+    function blossom(ctx, x, y, r, open, seed) {
+      if (open <= 0) return;
+      const R = r * (0.35 + 0.65 * easeOut(open));
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(seed * 1.7);
+      for (let k = 0; k < 5; k++) {
+        const a = (k / 5) * Math.PI * 2;
+        const px = Math.cos(a) * R * 0.52, py = Math.sin(a) * R * 0.52;
+        const pr = R * (0.5 + 0.06 * Math.sin(seed * 3 + k));
+        const g = ctx.createRadialGradient(px, py, 0, px, py, pr);
+        g.addColorStop(0, `rgba(${roseRgb},${(0.3 * open).toFixed(3)})`);
+        g.addColorStop(0.82, `rgba(${roseRgb},${(0.55 * open).toFixed(3)})`);
+        g.addColorStop(1, `rgba(${roseRgb},0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath(); dab(ctx, px, py, pr); ctx.fill();
+      }
+      if (open > 0.5) {
+        const a = (open - 0.5) * 2;
+        const ochreRgb = ochre.map((v) => Math.round(v * 200)).join(",");
+        ctx.fillStyle = `rgba(${ochreRgb},${(0.8 * a).toFixed(3)})`;
+        ctx.beginPath(); dab(ctx, 0, 0, R * 0.13); ctx.fill();
+        ctx.strokeStyle = `rgba(${inkRgb},${(0.45 * a).toFixed(3)})`;
+        ctx.fillStyle = `rgba(${inkRgb},${(0.8 * a).toFixed(3)})`;
+        ctx.lineWidth = Math.max(0.4, R * 0.025);
+        const tips = [];
+        ctx.beginPath();
+        for (let k = 0; k < 8; k++) {
+          const ang = (k / 8) * Math.PI * 2 + 0.3 + 0.2 * Math.sin(k * 5 + seed);
+          const len = R * (0.32 + 0.1 * Math.sin(k * 3.3 + seed * 2));
+          const tip = [Math.cos(ang) * len, Math.sin(ang) * len];
+          ctx.moveTo(Math.cos(ang) * R * 0.12, Math.sin(ang) * R * 0.12);
+          ctx.quadraticCurveTo(tip[0] * 0.6 + tip[1] * 0.1, tip[1] * 0.6 - tip[0] * 0.1, tip[0], tip[1]);
+          tips.push(tip);
+        }
+        ctx.stroke();
+        ctx.beginPath();
+        for (const [x, y] of tips) dab(ctx, x, y, Math.max(0.5, R * 0.045));
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function bud(ctx, x, y, r, open) {
+      if (open <= 0) return;
+      ctx.fillStyle = `rgba(${roseRgb},${(0.85 * open).toFixed(3)})`;
+      ctx.beginPath(); dab(ctx, x, y, r * easeOut(open)); ctx.fill();
+      ctx.fillStyle = `rgba(${inkRgb},${(0.7 * open).toFixed(3)})`;
+      ctx.beginPath(); dab(ctx, x + r * 0.5, y + r * 0.35, r * 0.45 * easeOut(open)); ctx.fill();
+    }
+
+    // A falling petal: a small teardrop that sways and flips.
+    function petal(ctx, x, y, size, rot, flip, alpha) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rot);
+      ctx.scale(1, flip);
+      ctx.beginPath();
+      ctx.moveTo(0, -size);
+      ctx.bezierCurveTo(size * 0.9, -size * 0.6, size * 0.7, size * 0.7, 0, size * 0.8);
+      ctx.bezierCurveTo(-size * 0.7, size * 0.7, -size * 0.9, -size * 0.6, 0, -size);
+      ctx.fillStyle = `rgba(${roseRgb},${(0.6 * alpha).toFixed(3)})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(${roseRgb},${(0.7 * alpha).toFixed(3)})`;
+      ctx.lineWidth = Math.max(0.5, size * 0.12);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    const PETALS = [
+      { from: [0.62, 0.1], start: 5.4, life: 5.2, drift: -0.5, fall: 0.95 },
+      { from: [0.36, 0.3], start: 6.3, life: 4.8, drift: -0.35, fall: 0.8 },
+      { from: [0.79, 0.34], start: 7.0, life: 4.4, drift: -0.6, fall: 0.85 },
+      { from: [0.47, 0.42], start: 8.0, life: 3.6, drift: 0.2, fall: 0.6 },
+    ];
+
+    function drawInk(t, fade) {
+      updateBranch(t);
+      ictx.setTransform(1, 0, 0, 1, 0, 0);
+      ictx.clearRect(0, 0, inkCanvas.width, inkCanvas.height);
+      ictx.globalAlpha = fade;
+      ictx.drawImage(branchLayer, 0, 0);
+      ictx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const S = L.S, bx = L.bx, by = L.by;
+      ictx.fillStyle = `rgba(${inkRgb},0.8)`;
+      for (const [x, y, at] of DOTS) {
+        const o = clamp01((t - at) / 0.25);
+        if (o <= 0) continue;
+        ictx.beginPath();
+        dab(ictx, bx + x * S, by + y * S, S * 0.007 * easeOut(o) + 0.3);
+        dab(ictx, bx + (x + 0.012) * S, by + (y - 0.006) * S, S * 0.004 * easeOut(o) + 0.2);
+        ictx.fill();
+      }
+      BLOSSOMS.forEach(([x, y, size, at], i) => {
+        const open = clamp01((t - at) / 0.9);
+        if (size > 0) blossom(ictx, bx + x * S, by + y * S, size * S, open, i + 1);
+        else bud(ictx, bx + x * S, by + y * S, 0.012 * S, open);
+      });
+      for (const [i, p] of PETALS.entries()) {
+        const age = t - p.start;
+        if (age <= 0 || age >= p.life) continue;
+        const a = age / p.life;
+        const alpha = clamp01(age / 0.5) * clamp01((p.life - age) / 0.9);
+        const x = bx + p.from[0] * S + p.drift * S * a + Math.sin(age * 1.5 + i) * S * 0.04;
+        const y = by + p.from[1] * S + p.fall * Math.max(H, S * 0.6) * a * (0.6 + 0.4 * a);
+        petal(ictx, x, y, S * 0.026, age * 0.8 + i * 1.3, Math.cos(age * 2 + i), alpha);
+      }
+      ictx.globalAlpha = 1;
+    }
+
+    // ---------- Words ----------
+    const titleEl = document.getElementById("title");
+    const headEl = document.getElementById("headline");
+    const subEl = document.getElementById("sub");
+    const letters = [];
+    headText.split(/\s+/).filter(Boolean).forEach((word, wi, all) => {
+      const w = document.createElement("span");
+      w.className = "word";
+      for (const ch of word) {
+        const s = document.createElement("span");
+        s.className = "letter";
+        s.textContent = ch;
+        w.append(s);
+        letters.push(s);
+      }
+      headEl.append(w);
+      if (wi < all.length - 1) headEl.append(" ");
+    });
+    const sealBox = document.createElement("canvas");
+    sealBox.className = "seal";
+    headEl.lastChild?.append(sealBox);
+    subEl.textContent = subText;
+    if (!subText) subEl.remove();
+
+    // The red seal: a slightly uneven square with a carved letter and worn specks.
+    function drawSeal() {
+      const size = Math.max(8, sealBox.getBoundingClientRect().width);
+      const px = Math.round(size * dpr);
+      sealBox.width = sealBox.height = px;
+      const c = sealBox.getContext("2d");
+      const r = rng(42);
+      c.clearRect(0, 0, px, px);
+      c.fillStyle = "#b4382c";
+      c.beginPath();
+      const pad = px * 0.04;
+      const corners = [[pad, pad], [px - pad, pad], [px - pad, px - pad], [pad, px - pad]];
+      corners.forEach(([x, y], i) => {
+        const jx = (r() - 0.5) * px * 0.04, jy = (r() - 0.5) * px * 0.04;
+        i ? c.lineTo(x + jx, y + jy) : c.moveTo(x + jx, y + jy);
+      });
+      c.closePath();
+      c.fill();
+      c.globalCompositeOperation = "destination-out";
+      c.strokeStyle = "#000";
+      c.lineWidth = px * 0.05;
+      c.strokeRect(px * 0.15, px * 0.15, px * 0.7, px * 0.7);
+      const initial = ([...headText].find((ch) => /[\p{L}\p{N}]/u.test(ch)) ?? "M").toUpperCase();
+      c.font = `600 ${px * 0.56}px "Cormorant Garamond", Georgia, serif`;
+      c.textAlign = "center";
+      c.textBaseline = "middle";
+      c.fillText(initial, px / 2, px * 0.54);
+      for (let i = 0; i < 40; i++) {
+        c.globalAlpha = 0.3 + r() * 0.6;
+        c.beginPath();
+        dab(c, r() * px, r() * px, px * (0.008 + r() * 0.02));
+        c.fill();
+      }
+      c.globalAlpha = 1;
+      c.globalCompositeOperation = "source-over";
+    }
+
+    // Largest size that keeps the words inside their box.
+    function fitTitle() {
+      const tb = L.title;
+      Object.assign(titleEl.style, { left: `${tb.x}px`, top: `${tb.y}px`, width: `${tb.w}px`, height: `${tb.h}px` });
+      let size = Math.min(tb.w * 0.3, tb.h * 0.42, Math.min(W, H) * 0.24);
+      const set = () => {
+        headEl.style.fontSize = `${size}px`;
+        subEl.style.fontSize = `${Math.max(7, size * 0.3)}px`;
+      };
+      set();
+      while (size > 8 && (headEl.scrollWidth > tb.w + 1 || headEl.offsetHeight + (subEl.isConnected ? subEl.offsetHeight + size * 0.35 : 0) > tb.h)) {
+        size *= 0.94;
+        set();
+      }
+    }
+
+    function paintWords(t, fade) {
+      letters.forEach((el, i) => {
+        const p = clamp01((t - 5.0 - i * 0.1) / 0.6);
+        const pos = (1 - easeOut(p)) * 100;
+        el.style.webkitMaskPosition = `${pos}% 0`;
+        el.style.maskPosition = `${pos}% 0`;
+        el.style.opacity = p > 0 ? (0.3 + 0.7 * p).toFixed(3) : "0";
+      });
+      const done = 5.0 + letters.length * 0.1 + 0.3;
+      const sp = clamp01((t - done) / 0.9);
+      subEl.style.opacity = ease(sp).toFixed(3);
+      subEl.style.transform = `translateY(${((1 - ease(sp)) * 0.3).toFixed(3)}em)`;
+      // The seal presses down after the words.
+      const st = clamp01((t - done - 0.7) / 0.35);
+      sealBox.style.opacity = st > 0 ? (0.92 * Math.min(1, st * 2)).toFixed(3) : "0";
+      sealBox.style.transform = `scale(${(1 + 0.35 * Math.pow(1 - st, 2)).toFixed(3)}) rotate(-4deg)`;
+      titleEl.style.opacity = fade.toFixed(3);
+    }
+
+    // ---------- Frame ----------
+    function frameAt(t) {
+      // Everything fades back to clean paper at the end of the loop.
+      const fade = 1 - ease(clamp01((t - 10.4) / 1.4));
+      drawWash(t, fade);
+      drawInk(t, fade);
+      paintWords(t, fade);
+    }
+
+    function resize() {
+      layout();
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const gdpr = Math.min(dpr, 1.5);
+      washCanvas.width = Math.round(W * gdpr);
+      washCanvas.height = Math.round(H * gdpr);
+      if (gl) gl.viewport(0, 0, washCanvas.width, washCanvas.height);
+      inkCanvas.width = branchLayer.width = Math.round(W * dpr);
+      inkCanvas.height = branchLayer.height = Math.round(H * dpr);
+      buildStrokes();
+      clearBranch();
+      setWashes();
+      fitTitle();
+      drawSeal();
+    }
+
+    // ?t=seconds freezes one moment (handy for thumbnails).
+    const frozen = params.has("t") ? ((Number(params.get("t")) % LOOP) + LOOP) % LOOP : null;
+    let raf = 0, startAt = performance.now();
+    function loop(now) {
+      frameAt((((now - startAt) / 1000) % LOOP + LOOP) % LOOP);
+      raf = requestAnimationFrame(loop);
+    }
+
+    // Reduced motion: one calm still frame with everything painted.
+    const STILL = 9.2;
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    function apply() {
+      if (reduce.matches || frozen !== null) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+        frameAt(frozen ?? STILL);
+      } else if (!raf) {
+        raf = requestAnimationFrame(loop);
+      }
+    }
+    reduce.addEventListener("change", apply);
+    window.addEventListener("resize", () => {
+      resize();
+      if (!raf) frameAt(frozen ?? STILL);
+    });
+
+    // Wait briefly for the fonts so the words are measured in the right face.
+    Promise.race([
+      Promise.all([document.fonts.load("1em 'Kaushan Script'"), document.fonts.load("italic 500 1em 'Cormorant Garamond'"), document.fonts.load("600 1em 'Cormorant Garamond'")]),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(() => {
+      resize();
+      startAt = performance.now();
+      apply();
+    });
+    resize();
+  </script>
+</body>
+</html>

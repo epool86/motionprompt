@@ -1,0 +1,19 @@
+Make my video in this style: Pixel art.
+
+Look and motion
+- A retro 16-bit video game. Build my message and brand as a side scrolling pixel game world, drawn at a very low resolution and scaled up so every pixel stays sharp and square. No blur, no smooth gradients.
+- A bright sky with pixel clouds, rolling hills and a grassy ground strip that scrolls steadily, with slower layers behind for depth. Add a few scenery props that fit my topic (for example palm trees or a small kampung house).
+- A cute little pixel hero runs through the level with a simple step animation. It jumps to grab spinning coins and bumps blocks that pop out coins or a power up, with small sparkles and "+100" style score pop ups.
+- A score bar at the top counts up as coins are collected.
+- My headline sits in the sky in big chunky pixel letters with a dark outline and a drop shadow. The letters drop in one by one at the start, then ripple gently.
+- At the high point, the hero powers up and flashes, and a game style dialog box pops in with a short line like "LEVEL UP!" or "NEW!" (use my own words if I give them).
+- Open with a classic circle wipe that opens on the hero, and close with one that shuts on the hero, so the video loops.
+
+Type and colour
+- A pixel font (like Press Start 2P), all capitals.
+- Use my brand colours if I give them. Otherwise use a small retro palette: sky blue #41a6f6, deep navy #1a1c2c for outlines, coin yellow #ffcd75, warm orange #ef7d57, grass green #38b764 and a red #b13e53 for the hero's cap.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML canvas animation and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

@@ -1,0 +1,20 @@
+Make my video in this style: Property tour.
+
+Look and motion
+- A 3D floor plan of a home that builds itself, seen from above at a three quarter angle. Use the layout, rooms, sizes and price from my request. If I attach a floor plan, follow it.
+- First the floor slab appears. Then the walls rise room by room, cut at about chest height so every room stays visible. Then the windows and doors cut in: glass fades into the window gaps and the doors swing open.
+- Furniture pops into each room with a small springy bounce: sofa, coffee table and rug, dining table and chairs, kitchen counters and island, beds with pillows, wardrobes, bathroom fittings and a few plants.
+- The rooms light up one by one in soft pastel colours, each with a clean tag showing its name and size, for example "Master bedroom 15 x 18 ft".
+- The camera orbits slowly and smoothly the whole time, never fully still.
+- The project name and a short line like "3 bed · 2 bath" sit in a corner. Near the end, a price card slides in with the price and one or two short chips, for example "Freehold".
+- At the end, everything folds away so the video can loop.
+- Clean architectural look: white walls with dark cut tops, light oak wood floors, pale stone tiles in the kitchen and bathrooms, soft daylight and soft shadows on a warm off white background.
+
+Type and colour
+- A clean, modern sans serif font (like Manrope), bold for names and the price.
+- Use my brand colours if I give them, as the one accent colour. Otherwise use deep teal #0f7b6c as the accent, with dark slate #1f2a30 text on a warm off white #f3f1ec background.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as a 3D scene in HTML (for example with Three.js) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

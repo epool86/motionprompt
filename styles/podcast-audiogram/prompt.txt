@@ -1,0 +1,19 @@
+Make my video in this style: Podcast audiogram.
+
+Look and motion
+- Make a podcast or interview clip card. Use the transcript or quote in my request as the captions. If I attach audio, sync the captions and the waveform to it.
+- Show a round speaker photo. If I attach a photo, use it. If not, draw a simple, friendly portrait or an initials avatar. A ring around it pulses gently with the voice.
+- Show the show name, an episode label, and the speaker's name and role if I give them.
+- A lively audio waveform or row of bars moves in time with the voice: big when they talk, calm in the pauses.
+- Big, bold captions appear a few words at a time, karaoke style. The word being spoken sits on a coloured highlight that glides from word to word, spoken words stay solid and the next words are faint.
+- Add a progress bar and a time counter at the bottom that fill as the clip plays.
+- Stack everything in tall frames. In wide frames, put the portrait on the left and the captions on the right. Keep it clean, bold and uncluttered.
+
+Type and colour
+- A bold, rounded grotesque font (like Bricolage Grotesque), extra bold for the captions and names, medium for small labels.
+- Use my brand colours if I give them. Otherwise use a warm off white background #f3eee4, near black #16140f text, one strong orange red accent #ff4a1c for the highlight, waveform and progress, and soft peach #ffd6c2 behind the portrait.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP and canvas) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

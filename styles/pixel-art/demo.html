@@ -1,0 +1,856 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pixel art demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/press-start-2p@5.3.0/400.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=41a6f6&ink=1a1c2c&accent=ffcd75&accent2=b13e53 */
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #1a1c2c;
+    }
+
+    /* The canvas is tiny (about 144 pixels on the short side) and scaled up without blur. */
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="scene" role="img"></canvas>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => "#" + (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const colors = { bg: hex("bg", "41a6f6"), ink: hex("ink", "1a1c2c"), accent: hex("accent", "ffcd75"), accent2: hex("accent2", "b13e53") };
+    const text = (params.get("text") || "Press start").trim().slice(0, 40).toUpperCase();
+
+    const canvas = document.getElementById("scene");
+    canvas.setAttribute("aria-label", `A retro 8-bit game level: a little pixel hero runs past a kampung house and palm trees, collects coins and levels up under the words: ${text}`);
+    const ctx = canvas.getContext("2d");
+
+    const LOOP = 10; // seconds
+    const FONT = '64px "Press Start 2P"';
+
+    // Mix two hex colours, t from 0 to 1.
+    function mix(a, b, t) {
+      const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
+      const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
+      return "#" + pa.map((v, i) => Math.round(v + (pb[i] - v) * t).toString(16).padStart(2, "0")).join("");
+    }
+
+    // A small 16 colour palette, in the spirit of the Sweetie 16 palette.
+    const PAL = {
+      k: colors.ink, w: "#f4f4f4", r: colors.accent2, R: mix(colors.accent2, "#ef7d57", 0.6),
+      o: "#ef7d57", y: "#ffcd75", Y: "#fff3b0", g: "#a7f070", G: "#38b764", t: "#257179",
+      n: "#29366f", b: "#3b5dc9", c: "#41a6f6", C: "#73eff7", s: "#94b0c2", d: "#333c57",
+      f: "#f2b28a", h: "#6b3e2e", m: "#8a4b2f", M: "#d9a066", p: mix(colors.accent2, "#f4f4f4", 0.35),
+    };
+
+    function makeCanvas(w, h) {
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, w);
+      c.height = Math.max(1, h);
+      const g = c.getContext("2d");
+      g.imageSmoothingEnabled = false;
+      return [c, g];
+    }
+
+    // Turn rows of letters into a sprite, one letter per pixel ("." is see-through).
+    function sprite(rows, pal = PAL) {
+      const [c, g] = makeCanvas(rows[0].length, rows.length);
+      rows.forEach((row, y) => {
+        for (let x = 0; x < row.length; x++) {
+          const col = pal[row[x]];
+          if (!col) continue;
+          g.fillStyle = col;
+          g.fillRect(x, y, 1, 1);
+        }
+      });
+      return c;
+    }
+
+    // ---- Sprites ----
+    const HEAD = [
+      ".....kkkkkk.....",
+      "....krrrrrrk....",
+      "...krrrrrwwrk...",
+      "...krrrrrrrrrkk.",
+      "..kkkkkkkkrrrrrk",
+      "..khhhfffkkkkkk.",
+      "..khhffffffkfk..",
+      "..khfffffffkffk.",
+      "..kfffffffffffk.",
+      "...kffffffoffk..",
+      "....kkffffkk....",
+    ];
+    const BODY = [
+      "...kbbbbbbk.....",
+      "..kfkbbybbkfk...",
+      "...kkbbbbbkk....",
+    ];
+    const LEGS = [
+      ["..kddk...kddk...", ".kkkk....kkkk..."],
+      ["....kddddk......", "....kkkkkk......"],
+      ["...kddk.kddk....", "..kkkk..kkkkk..."],
+    ];
+    const JUMP = [
+      "...kbbbbbbkkfk..",
+      "..kfkbbybbbbkk..",
+      "...kkbbbbbkk....",
+      "..kddkk.kddk....",
+      ".kkkk....kkkk...",
+    ];
+    const heroFrames = (pal) => [
+      sprite([...HEAD, ...BODY, ...LEGS[0]], pal),
+      sprite([...HEAD, ...BODY, ...LEGS[1]], pal),
+      sprite([...HEAD, ...BODY, ...LEGS[2]], pal),
+      sprite([...HEAD, ...JUMP], pal),
+    ];
+    // Normal hero, plus two flashing palettes for the level up.
+    const hero = [
+      heroFrames(PAL),
+      heroFrames({ ...PAL, r: PAL.y, b: PAL.G, R: PAL.o }),
+      heroFrames({ ...PAL, r: PAL.C, b: PAL.r, R: PAL.w }),
+    ];
+
+    const coinFrames = [
+      sprite(["..kkkk..", ".kyyyyk.", "kyYyyyok", "kyYyyyok", "kyYyyyok", "kyyyyyok", ".kyyook.", "..kkkk.."]),
+      sprite(["...kk...", "..kyyk..", ".kYyyok.", ".kYyyok.", ".kYyyok.", ".kyyyok.", "..kyok..", "...kk..."]),
+      sprite(["...kk...", "...yo...", "...yo...", "...yo...", "...yo...", "...yo...", "...yo...", "...kk..."]),
+      sprite(["...kk...", "..kyyk..", ".kyyYok.", ".kyyYok.", ".kyyYok.", ".kyyyok.", "..kyok..", "...kk..."]),
+    ];
+
+    const star = sprite([
+      ".....k.....",
+      "....kyk....",
+      "....kyk....",
+      "kkkkyYykkkk",
+      "kyyyyYyyyyk",
+      ".kyykykyyk.",
+      "..kyykyyk..",
+      "..kyyyyyk..",
+      ".kyykkkyyk.",
+      ".kykk.kkyk.",
+      "kkk.....kkk",
+    ]);
+
+    const sparkleFrames = [
+      sprite([".....", ".....", "..w..", ".....", "....."]),
+      sprite([".....", "..w..", ".wYw.", "..w..", "....."]),
+      sprite(["..w..", "..Y..", "wYwYw", "..Y..", "..w.."]),
+      sprite(["w...w", ".....", "..w..", ".....", "w...w"]),
+    ];
+
+    // Blocks, 16 by 16, drawn with a few rectangles.
+    function block(kind) {
+      const [c, g] = makeCanvas(16, 16);
+      const R = (col, x, y, w, h) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
+      if (kind === "brick") {
+        R(PAL.k, 0, 0, 16, 16);
+        const brick = "#c8643c", light = "#e8905c";
+        for (let row = 0; row < 4; row++) {
+          const y = row * 4;
+          const off = row % 2 ? 4 : 0;
+          for (let x = -8 + off; x < 16; x += 8) {
+            R(brick, Math.max(0, x), y, Math.min(7, x + 7) - Math.max(0, x), 3);
+            R(light, Math.max(0, x), y, Math.min(7, x + 7) - Math.max(0, x), 1);
+          }
+        }
+        return c;
+      }
+      const used = kind === "used";
+      R(PAL.k, 0, 0, 16, 16);
+      R(used ? PAL.m : PAL.o, 1, 1, 14, 14);
+      R(used ? PAL.M : PAL.y, 1, 1, 14, 1);
+      R(used ? PAL.M : PAL.y, 1, 1, 1, 14);
+      R(used ? "#5a2e1e" : "#b8562c", 1, 14, 14, 1);
+      R(used ? "#5a2e1e" : "#b8562c", 14, 1, 1, 14);
+      // Rivets
+      [[3, 3], [11, 3], [3, 11], [11, 11]].forEach(([x, y]) => R(used ? "#5a2e1e" : PAL.k, x, y, 2, 2));
+      if (kind === "q" || kind === "star") {
+        const q = kind === "q"
+          ? [".wwww.", "ww..ww", "....ww", "...ww.", "..ww..", "......", "..ww.."]
+          : ["...w...", "..www..", "wwwwwww", ".wwwww.", "..www..", ".ww.ww.", "w.....w"];
+        const x0 = 8 - Math.ceil(q[0].length / 2);
+        q.forEach((row, y) => {
+          for (let x = 0; x < row.length; x++) if (row[x] === "w") R(PAL.k, x0 + x + 1, 5 + y, 1, 1);
+        });
+        q.forEach((row, y) => {
+          for (let x = 0; x < row.length; x++) if (row[x] === "w") R(PAL.w, x0 + x, 4 + y, 1, 1);
+        });
+      }
+      return c;
+    }
+    const blocks = { brick: block("brick"), q: block("q"), star: block("star"), used: block("used") };
+
+    const crate = (() => {
+      const [c, g] = makeCanvas(16, 16);
+      const R = (col, x, y, w, h) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
+      R(PAL.k, 0, 0, 16, 16);
+      R(PAL.M, 1, 1, 14, 14);
+      R(PAL.m, 1, 1, 14, 2);
+      R(PAL.m, 1, 13, 14, 2);
+      R(PAL.m, 1, 1, 2, 14);
+      R(PAL.m, 13, 1, 2, 14);
+      for (let i = 0; i < 10; i++) R(PAL.m, 3 + i, 3 + i, 1, 1), R(PAL.m, 12 - i, 3 + i, 1, 1);
+      return c;
+    })();
+
+    // Tiny 3 by 5 digits for the score pop ups.
+    const TINY = {
+      "0": "111101101101111", "1": "010110010010111", "2": "111001111100111", "3": "111001111001111",
+      "4": "101101111001001", "5": "111100111001111", "6": "111100111101111", "7": "111001010010010",
+      "8": "111101111101111", "9": "111101111001111", "+": "000010111010000",
+    };
+    function tinyText(g, str, x, y, col) {
+      for (let i = 0; i < str.length; i++) {
+        const bits = TINY[str[i]];
+        if (!bits) continue;
+        for (let j = 0; j < 15; j++) {
+          if (bits[j] !== "1") continue;
+          const px = x + i * 4 + (j % 3), py = y + Math.floor(j / 3);
+          g.fillStyle = PAL.k;
+          g.fillRect(px + 1, py + 1, 1, 1);
+          g.fillStyle = col;
+          g.fillRect(px, py, 1, 1);
+        }
+      }
+    }
+
+    // ---- Pixel font: read Press Start 2P back onto its 8 by 8 grid, so every letter is crisp ----
+    const glyphs = new Map();
+    let grid = null;
+    function glyph(ch) {
+      if (glyphs.has(ch)) return glyphs.get(ch);
+      const [c, g] = makeCanvas(96, 96);
+      g.font = FONT;
+      g.textBaseline = "alphabetic";
+      g.fillStyle = "#fff";
+      if (!grid) {
+        // Find where the grid starts from the letter H.
+        g.fillText("H", 8, 72);
+        const d = g.getImageData(0, 0, 96, 96).data;
+        let top = 96, left = 96;
+        for (let y = 0; y < 96; y++) for (let x = 0; x < 96; x++) {
+          if (d[(y * 96 + x) * 4 + 3] > 128) { top = Math.min(top, y); left = Math.min(left, x); }
+        }
+        grid = { top: top < 96 ? top : 16, left: left < 96 ? left : 8 };
+        g.clearRect(0, 0, 96, 96);
+      }
+      g.fillText(ch, 8, 72);
+      const d = g.getImageData(0, 0, 96, 96).data;
+      const bits = [];
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+        const sx = grid.left + x * 8 + 4, sy = grid.top + y * 8 + 4;
+        bits.push(sx < 96 && sy < 96 && d[(sy * 96 + sx) * 4 + 3] > 128);
+      }
+      glyphs.set(ch, bits);
+      return bits;
+    }
+
+    // A string as a crisp single colour image, each font pixel k by k.
+    const textCache = new Map();
+    function textImage(str, col, k = 1) {
+      const key = `${str}|${col}|${k}`;
+      if (textCache.has(key)) return textCache.get(key);
+      const [c, g] = makeCanvas(str.length * 8 * k, 8 * k);
+      g.fillStyle = col;
+      [...str].forEach((ch, i) => {
+        if (ch === " ") return;
+        glyph(ch).forEach((on, j) => { if (on) g.fillRect((i * 8 + (j % 8)) * k, Math.floor(j / 8) * k, k, k); });
+      });
+      textCache.set(key, c);
+      return c;
+    }
+    // Text with a one pixel shadow, used for the score bar.
+    function drawText(str, x, y, col = PAL.w) {
+      ctx.drawImage(textImage(str, PAL.k), x + 1, y + 1);
+      ctx.drawImage(textImage(str, col), x, y);
+    }
+
+    // A chunky headline letter: dark outline, drop shadow and a two tone fill.
+    function bigLetter(ch, k, top, bottom) {
+      const w = 8 * k + 2, h = 8 * k + 2 + Math.max(1, k - 1);
+      const [c, g] = makeCanvas(w, h);
+      const [f, fg] = makeCanvas(8 * k, 8 * k);
+      const bits = glyph(ch);
+      const paint = (col, dx, dy) => {
+        g.fillStyle = col;
+        bits.forEach((on, j) => { if (on) g.fillRect(1 + dx + (j % 8) * k, 1 + dy + Math.floor(j / 8) * k, k, k); });
+      };
+      paint(PAL.n, 0, Math.max(1, k - 1) + 1);
+      for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]]) paint(PAL.k, dx, dy);
+      // Fill: light top half, warmer bottom half.
+      bits.forEach((on, j) => {
+        if (!on) return;
+        const row = Math.floor(j / 8);
+        fg.fillStyle = row < 4 ? top : bottom;
+        fg.fillRect((j % 8) * k, row * k, k, k);
+      });
+      g.drawImage(f, 1, 1);
+      return c;
+    }
+
+    // ---- Timeline, in seconds ----
+    const SPEED = 46; // world pixels per second
+    const JH = 32; // jump height
+    const JD = 0.7; // jump length
+    const jumps = [2.4, 3.6, 4.9, 6.2, 8.2];
+    const Q_AT = 3.6, STAR_AT = 6.2, LEVEL_AT = 6.62;
+    const jumpY = (t) => {
+      let y = 0;
+      for (const p of jumps) {
+        const u = (t - p + JD / 2) / JD;
+        if (u > 0 && u < 1) y = Math.max(y, 4 * JH * u * (1 - u));
+      }
+      return y;
+    };
+
+    // Coins: T is when the hero reaches it, lift is its height above the ground.
+    const coins = [
+      ...[1.0, 1.2, 1.4].map((T) => ({ T, lift: 0 })),
+      ...[2.2, 2.4, 2.6].map((T) => ({ T, lift: jumpY(T) })),
+      ...[7.1, 7.3, 7.5].map((T) => ({ T, lift: 0 })),
+      ...[8.0, 8.2, 8.4].map((T) => ({ T, lift: jumpY(T) })),
+    ];
+    // Score events, for the counter and the pop ups.
+    const events = [
+      ...coins.map((c) => ({ t: c.T, add: 100, coin: 1 })),
+      { t: Q_AT + 0.45, add: 200, coin: 1 },
+      { t: LEVEL_AT, add: 1000, coin: 0 },
+    ];
+
+    const clamp01 = (v) => Math.min(1, Math.max(0, v));
+    const easeOut = (u) => 1 - Math.pow(1 - clamp01(u), 3);
+    const backOut = (u) => {
+      const s = 2.4, v = clamp01(u) - 1;
+      return 1 + (s + 1) * v * v * v + s * v * v;
+    };
+
+    // ---- Layout, rebuilt on resize ----
+    let W = 0, H = 0, L = null, bg = null;
+
+    function build() {
+      // About 144 pixels on the short side (176 tall when wide), scaled up to fill the window.
+      const vw = innerWidth, vh = innerHeight;
+      const scale = Math.max(0.25, Math.min(vw / 144, vh / 176));
+      W = Math.max(96, Math.round(vw / scale));
+      H = Math.max(96, Math.round(vh / scale));
+      canvas.width = W;
+      canvas.height = H;
+      ctx.imageSmoothingEnabled = false;
+
+      const oneRow = W >= 240;
+      const hudBottom = oneRow ? 13 : 23;
+      const groundH = Math.max(32, Math.round(H * 0.17));
+      const groundY = H - groundH;
+      const blockBottom = groundY - 16 - JH;
+      const blockTop = blockBottom - 16;
+      const heroX = Math.round(W * 0.3) - 8;
+
+      // Headline: the biggest pixel size whose lines fit above the blocks.
+      const bandTop = hudBottom + 4, bandBottom = blockTop - 6;
+      const words = text.split(/\s+/).filter(Boolean);
+      let head = null;
+      for (let k = 5; k >= 1; k--) {
+        const maxChars = Math.floor((W - 10) / (8 * k));
+        if (maxChars < 1) continue;
+        const lines = [];
+        let fits = true;
+        for (const word of words) {
+          if (word.length > maxChars) { fits = false; break; }
+          const last = lines[lines.length - 1];
+          if (last && last.length + 1 + word.length <= maxChars) lines[lines.length - 1] = `${last} ${word}`;
+          else lines.push(word);
+        }
+        const lineH = 8 * k + 2 + Math.max(1, k - 1);
+        const gap = 2 * k;
+        const height = lines.length * lineH + (lines.length - 1) * gap;
+        if (fits && height <= bandBottom - bandTop) {
+          head = { k, lines, lineH, gap, height };
+          break;
+        }
+      }
+      if (!head) head = { k: 1, lines: [text.slice(0, Math.floor((W - 10) / 8))], lineH: 10, gap: 2, height: 10 };
+
+      // The banner goes under the headline if there is room, else in a dialog box over the ground.
+      const room = bandBottom - bandTop;
+      let headTop = bandTop + Math.floor((room - head.height) / 3), bannerY = 0, bannerK = 0;
+      for (const k of oneRow ? [2, 1] : [1]) {
+        const stack = head.height + 6 + 8 * k + 14;
+        if (stack > room) continue;
+        headTop = bandTop + Math.floor((room - stack) / 2);
+        bannerY = headTop + head.height + 6;
+        bannerK = k;
+        break;
+      }
+      if (!bannerK) {
+        bannerK = groundH >= 40 && oneRow ? 2 : 1;
+        bannerY = groundY + 5 + Math.floor((groundH - 5 - (8 * bannerK + 14)) / 2);
+      }
+      const bannerH = 8 * bannerK + 14;
+      const letters = [];
+      head.lines.forEach((line, li) => {
+        const x0 = Math.round((W - line.length * 8 * head.k) / 2);
+        [...line].forEach((ch, ci) => {
+          if (ch === " ") return;
+          letters.push({ ch, x: x0 + ci * 8 * head.k - 1, y: headTop + li * (head.lineH + head.gap) - 1 });
+        });
+      });
+      const bigTop = colors.accent, bigBottom = mix(colors.accent, "#ef7d57", 0.65);
+      const letterImg = new Map(), letterFlash = new Map();
+      for (const l of letters) {
+        if (letterImg.has(l.ch)) continue;
+        letterImg.set(l.ch, bigLetter(l.ch, head.k, bigTop, bigBottom));
+        letterFlash.set(l.ch, bigLetter(l.ch, head.k, PAL.w, PAL.Y));
+      }
+
+      L = { oneRow, groundY, groundH, blockTop, blockBottom, heroX, letters, letterImg, letterFlash, k: head.k, bannerK, bannerH, bannerY };
+      buildBackground();
+    }
+
+    // Pixel disc, drawn as crisp rows.
+    function disc(g, cx, cy, r, col) {
+      g.fillStyle = col;
+      for (let y = -r; y <= r; y++) {
+        const half = Math.floor(Math.sqrt(r * r - y * y) + 0.3);
+        g.fillRect(cx - half, cy + y, half * 2 + 1, 1);
+      }
+    }
+
+    // Parts drawn once per size: sky, clouds, hills, the ground tile, houses and palms.
+    function buildBackground() {
+      const { groundY, groundH } = L;
+      // Sky in four bands with dithered edges.
+      const [sky, gs] = makeCanvas(W, groundY);
+      const bands = [mix(colors.bg, "#29366f", 0.55), mix(colors.bg, "#29366f", 0.2), colors.bg, mix(colors.bg, "#73eff7", 0.45)];
+      const bandH = groundY / bands.length;
+      bands.forEach((col, i) => {
+        gs.fillStyle = col;
+        gs.fillRect(0, Math.round(i * bandH), W, Math.ceil(bandH) + 1);
+      });
+      for (let i = 1; i < bands.length; i++) {
+        const y = Math.round(i * bandH);
+        gs.fillStyle = bands[i];
+        for (let x = 0; x < W; x += 2) gs.fillRect(x + ((y >> 0) % 2), y - 2, 1, 1);
+        gs.fillStyle = bands[i - 1];
+        for (let x = 0; x < W; x += 2) gs.fillRect(x + 1, y, 1, 1);
+      }
+
+      // Clouds
+      const cloud = (w) => {
+        const [c, g] = makeCanvas(w + 4, 18);
+        const shade = mix(colors.bg, "#f4f4f4", 0.55);
+        const puffs = [[0.22, 11, 5], [0.45, 8, 7], [0.7, 10, 5], [0.88, 12, 3]];
+        for (const [fx, cy, r] of puffs) disc(g, Math.round(2 + fx * w), cy + 1, r, shade);
+        for (const [fx, cy, r] of puffs) disc(g, Math.round(2 + fx * w), cy, r, "#f4f4f4");
+        g.fillStyle = shade;
+        g.fillRect(2, 15, w, 2);
+        g.fillStyle = "#f4f4f4";
+        g.fillRect(2, 12, w, 3);
+        return c;
+      };
+      const clouds = [cloud(30), cloud(22), cloud(36)];
+
+      // Ground tile: grass on top, earth with pebbles below.
+      const [tile, gt] = makeCanvas(16, groundH);
+      gt.fillStyle = "#c07038";
+      gt.fillRect(0, 0, 16, groundH);
+      gt.fillStyle = "#9a522a";
+      for (let y = 8; y < groundH; y += 8) gt.fillRect(0, y, 16, 1);
+      for (let y = 8; y < groundH; y += 8) gt.fillRect((y / 8) % 2 ? 4 : 11, y, 1, 8);
+      gt.fillStyle = "#e0925a";
+      gt.fillRect(6, 11, 2, 1);
+      gt.fillRect(13, 19, 2, 1);
+      gt.fillRect(2, 27, 2, 1);
+      gt.fillStyle = PAL.k;
+      gt.fillRect(0, 4, 16, 1);
+      gt.fillStyle = PAL.G;
+      gt.fillRect(0, 0, 16, 4);
+      gt.fillRect(2, 4, 3, 1);
+      gt.fillRect(9, 4, 4, 2);
+      gt.fillStyle = PAL.g;
+      gt.fillRect(0, 0, 16, 1);
+      gt.fillRect(4, 1, 2, 1);
+      gt.fillRect(12, 1, 1, 1);
+
+      // Far hills (slow) and near hills with bushes (faster), as tall strips that repeat.
+      const farCol = mix(colors.bg, "#257179", 0.55), farEdge = mix(colors.bg, "#257179", 0.4);
+      const [far, gf] = makeCanvas(256, 60);
+      for (let x = 0; x < 256; x++) {
+        const hh = Math.round(24 + Math.sin((x / 256) * Math.PI * 4) * 12 + Math.sin((x / 256) * Math.PI * 10 + 1) * 5);
+        gf.fillStyle = farEdge;
+        gf.fillRect(x, 60 - hh, 1, 1);
+        gf.fillStyle = farCol;
+        gf.fillRect(x, 61 - hh, 1, hh);
+      }
+      const [near, gn] = makeCanvas(192, 40);
+      [[24, 26, 22], [74, 32, 16], [120, 30, 24], [168, 34, 14]].forEach(([cx, cy, r]) => {
+        disc(gn, cx, cy + 1, r, PAL.k);
+        disc(gn, cx, cy + 2, r, "#2a8a50");
+        disc(gn, cx, cy + 3, r, PAL.G);
+        gn.fillStyle = PAL.g;
+        gn.fillRect(cx - 6, cy - r + 6, 3, 1);
+        gn.fillRect(cx + 3, cy - r + 10, 2, 1);
+        gn.fillStyle = "#2a8a50";
+        gn.fillRect(cx - 3, cy - r + 14, 1, 2);
+        gn.fillRect(cx + 7, cy - r + 17, 1, 2);
+      });
+
+      bg = { sky, clouds, tile, far, near, house: house(), palm: palm(), palmSmall: palm(0.8) };
+    }
+
+    // A small kampung house on stilts.
+    function house() {
+      const [c, g] = makeCanvas(48, 40);
+      const R = (col, x, y, w, h) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
+      // Stilts and stairs
+      [7, 17, 29, 39].forEach((x) => { R(PAL.k, x - 1, 28, 4, 12); R(PAL.m, x, 28, 2, 12); });
+      for (let i = 0; i < 5; i++) { R(PAL.k, 40 + i * 2 - 1, 29 + i * 2, 4, 2); R(PAL.M, 40 + i * 2, 29 + i * 2, 3, 1); }
+      // Floor beam and walls
+      R(PAL.k, 3, 13, 40, 17);
+      R(PAL.M, 4, 14, 38, 13);
+      R(PAL.m, 4, 27, 38, 2);
+      for (let x = 6; x < 42; x += 3) R("#b87c46", x, 14, 1, 13);
+      // Windows with teal shutters, and a door
+      [[9, 16], [21, 16]].forEach(([x, y]) => {
+        R(PAL.k, x - 1, y - 1, 8, 9);
+        R(PAL.n, x, y, 6, 7);
+        R(PAL.y, x + 2, y + 2, 2, 3);
+        R(PAL.t, x - 3, y, 2, 7);
+        R(PAL.t, x + 7, y, 2, 7);
+      });
+      R(PAL.k, 32, 15, 8, 13);
+      R(PAL.m, 33, 16, 6, 12);
+      R(PAL.y, 37, 21, 1, 1);
+      // Roof: a long pitched roof with a decorated gable at the front.
+      for (let y = 0; y < 13; y++) {
+        const x0 = 12 - y, x1 = 36 + y;
+        R(PAL.k, x0 - 1, y + 1, x1 - x0 + 2, 1);
+        R(y % 3 === 2 ? mix(PAL.r, "#1a1c2c", 0.35) : PAL.r, x0, y + 1, x1 - x0, 1);
+      }
+      R(PAL.k, 11, 0, 26, 1);
+      for (let y = 2; y < 12; y++) {
+        const half = Math.floor(y / 1.2);
+        R(PAL.w, 36 + y - half - 3, y + 1, 2, 1);
+      }
+      R(PAL.k, 0, 13, 48, 1);
+      return c;
+    }
+
+    // A coconut palm.
+    function palm(size = 1) {
+      const h = Math.round(46 * size);
+      const [c, g] = makeCanvas(40, h + 10);
+      const R = (col, x, y, w, hh) => { g.fillStyle = col; g.fillRect(x, y, w, hh); };
+      const topX = 20, topY = 8;
+      for (let y = topY; y < h + 10; y++) {
+        const u = (y - topY) / (h + 2 - topY);
+        const x = Math.round(topX + Math.sin(u * 1.6) * 5 - 2);
+        R(PAL.k, x - 1, y, 5, 1);
+        R(y % 4 < 2 ? PAL.M : PAL.m, x, y, 3, 1);
+      }
+      // Fronds drooping out from the top.
+      const fronds = [[-1, -0.35, 15], [1, -0.35, 15], [-1, 0.25, 13], [1, 0.25, 13], [0.35, -1, 8]];
+      for (const [dx, dy, len] of fronds) {
+        for (let i = 0; i < len; i++) {
+          const u = i / len;
+          const x = Math.round(topX + dx * i + (dx === 0 ? 0 : 0));
+          const y = Math.round(topY + dy * i + u * u * 9);
+          const thick = i < len - 3 ? 2 : 1;
+          R(PAL.k, x - 1, y - 1, 3, thick + 2);
+        }
+      }
+      for (const [dx, dy, len] of fronds) {
+        for (let i = 0; i < len; i++) {
+          const u = i / len;
+          const x = Math.round(topX + dx * i);
+          const y = Math.round(topY + dy * i + u * u * 9);
+          const thick = i < len - 3 ? 2 : 1;
+          R(i % 3 ? PAL.G : PAL.g, x, y, 1, thick);
+        }
+      }
+      R(PAL.k, topX - 3, topY + 1, 7, 5);
+      R(PAL.m, topX - 2, topY + 2, 2, 2);
+      R(PAL.h, topX + 1, topY + 2, 2, 3);
+      R(PAL.G, topX - 1, topY - 1, 3, 2);
+      return c;
+    }
+
+    const mod = (a, n) => ((a % n) + n) % n;
+
+    // ---- One frame ----
+    function draw(t) {
+      const { groundY, blockTop, heroX } = L;
+      const scroll = Math.round(t * SPEED);
+      const worldToScreen = (T) => Math.round(T * SPEED) - scroll + heroX;
+      const period = SPEED * LOOP;
+
+      // Sky and clouds
+      ctx.drawImage(bg.sky, 0, 0);
+      const cloudSpots = [[0.08, 0.38], [0.52, 0.3], [0.86, 0.48]];
+      const skyTop = L.oneRow ? 14 : 24;
+      bg.clouds.forEach((cl, i) => {
+        const span = W + 60;
+        const x = mod(Math.round(cloudSpots[i][0] * span - t * (4 + i * 1.5)), span) - 40;
+        const y = Math.round(skyTop + (groundY - 60 - skyTop) * cloudSpots[i][1]);
+        ctx.drawImage(cl, x, y);
+      });
+
+      // Hills
+      const farOff = mod(Math.round(t * SPEED * 0.15), 256);
+      for (let x = -farOff; x < W; x += 256) ctx.drawImage(bg.far, x, groundY - 60);
+      const nearOff = mod(Math.round(t * SPEED * 0.35), 192);
+      for (let x = -nearOff; x < W; x += 192) ctx.drawImage(bg.near, x, groundY - 40);
+
+      // Kampung houses and palms, drifting at half speed.
+      const backSpan = Math.max(W + 60, 300);
+      const backOff = Math.round(t * SPEED * 0.5);
+      [[0.04, bg.palm], [0.2, bg.house], [0.42, bg.palmSmall], [0.62, bg.palm], [0.8, bg.palmSmall]].forEach(([fx, img]) => {
+        const x = mod(Math.round(fx * backSpan) - backOff, backSpan) - 50;
+        ctx.drawImage(img, x, groundY - img.height + 2);
+      });
+
+      // Ground
+      const tileOff = mod(scroll, 16);
+      for (let x = -tileOff; x < W; x += 16) ctx.drawImage(bg.tile, x, groundY);
+
+      // World objects repeat every loop, so the level scrolls forever. Copy n is reached in loop n.
+      for (let n = -1; n <= 2; n++) {
+        const shift = n * period;
+        const tt = t - n * LOOP;
+        // Crate
+        const cx = worldToScreen(4.9) + shift - 8;
+        if (cx > -20 && cx < W + 20) ctx.drawImage(crate, cx, groundY - 16);
+        // Block rows: a ? block between bricks, and a star block.
+        for (const [T, kind] of [[Q_AT, "q"], [STAR_AT, "star"]]) {
+          const bx = worldToScreen(T) + shift - 8;
+          if (bx < -40 || bx > W + 40) continue;
+          const bump = tt >= T && tt < T + 0.16 ? -Math.round(Math.sin(((tt - T) / 0.16) * Math.PI) * 4) : 0;
+          ctx.drawImage(blocks.brick, bx - 16, blockTop);
+          ctx.drawImage(blocks.brick, bx + 16, blockTop);
+          ctx.drawImage(tt >= T ? blocks.used : blocks[kind], bx, blockTop + bump);
+        }
+        // Coins, spinning until they are picked up.
+        coins.forEach((c, i) => {
+          if (tt >= c.T) return;
+          const x = worldToScreen(c.T) + shift - 4;
+          if (x < -10 || x > W + 10) return;
+          const f = Math.floor(t * 8 + i * 0.7) % 4;
+          ctx.drawImage(coinFrames[f], x, Math.round(groundY - 12 - c.lift));
+        });
+        // Coin that pops out of the ? block
+        const qt = tt - Q_AT;
+        if (qt >= 0 && qt < 0.45) {
+          const x = worldToScreen(Q_AT) + shift - 4;
+          const rise = Math.sin((qt / 0.45) * Math.PI * 0.85) * 26;
+          ctx.drawImage(coinFrames[Math.floor(qt * 20) % 4], x, Math.round(blockTop - 8 - rise));
+        }
+        // The star rises out of its block, then flies into the hero.
+        const st = tt - STAR_AT;
+        if (st >= 0 && st < LEVEL_AT - STAR_AT) {
+          const x0 = worldToScreen(STAR_AT) + shift - 5, y0 = blockTop - 11;
+          const up = easeOut(st / 0.22) * 12;
+          const fly = clamp01((st - 0.22) / (LEVEL_AT - STAR_AT - 0.22));
+          const hx = heroX + 3, hy = groundY - 16 - jumpY(t) + 2;
+          const x = x0 + (hx - x0) * fly, y = (y0 - up) + (hy - (y0 - up)) * fly * fly;
+          ctx.drawImage(star, Math.round(x), Math.round(y));
+        }
+        // Sparkles and score pop ups where things were picked up.
+        const pops = [
+          ...coins.map((c) => ({ t: c.T, x: worldToScreen(c.T), y: groundY - 8 - c.lift, add: 100 })),
+          { t: Q_AT + 0.45, x: worldToScreen(Q_AT), y: blockTop - 20, add: 200 },
+        ];
+        for (const p of pops) {
+          const u = tt - p.t;
+          if (u < 0 || u > 0.7) continue;
+          const x = p.x + shift;
+          if (u < 0.32) ctx.drawImage(sparkleFrames[Math.min(3, Math.floor(u / 0.08))], x - 2, Math.round(p.y) - 2);
+          tinyText(ctx, `+${p.add}`, x - 7, Math.round(p.y - 10 - easeOut(u / 0.7) * 10), PAL.w);
+        }
+      }
+
+      // The hero
+      const jy = Math.round(jumpY(t));
+      const inAir = jy > 0;
+      const powered = t >= LEVEL_AT && t < 9.2;
+      const pal = powered ? 1 + (Math.floor(t * 12) % 2) : 0;
+      const step = [0, 1, 2, 1][Math.floor(t * 12) % 4];
+      const frame = inAir ? 3 : step;
+      const bob = !inAir && step === 1 ? -1 : 0;
+      const heroY = groundY - 16 - jy + bob;
+      // Landing dust
+      for (const p of jumps) {
+        const u = t - (p + JD / 2);
+        if (u < 0 || u > 0.3) continue;
+        const r = 1 + Math.floor(u * 8);
+        ctx.fillStyle = PAL.w;
+        ctx.fillRect(heroX - 1 - r * 2, groundY - 2 - (r > 1 ? 1 : 0), 2, 2);
+        ctx.fillRect(heroX + 15 + r, groundY - 2 - (r > 2 ? 1 : 0), 2, 2);
+      }
+      // Sparkle trail while powered up
+      if (powered) {
+        for (let i = 0; i < 4; i++) {
+          const age = mod(t * 6 + i * 0.25, 1);
+          const f = Math.min(3, Math.floor(age * 4));
+          ctx.drawImage(sparkleFrames[f], heroX - 4 - Math.round(age * 16), heroY + 2 + ((i * 5) % 12));
+        }
+      }
+      ctx.drawImage(hero[pal][frame], heroX, heroY);
+
+      // Level up burst around the hero
+      const bt = t - LEVEL_AT;
+      if (bt >= 0 && bt < 0.6) {
+        const cx = heroX + 8, cy = heroY + 8;
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2;
+          const d = 4 + easeOut(bt / 0.6) * 22;
+          ctx.drawImage(sparkleFrames[Math.min(3, Math.floor(bt / 0.15))], Math.round(cx + Math.cos(a) * d) - 2, Math.round(cy + Math.sin(a) * d) - 2);
+        }
+      }
+
+      drawHud(t);
+      drawHeadline(t);
+      drawBanner(t);
+      drawIris(t, heroX + 8, heroY + 8);
+    }
+
+    function drawHud(t) {
+      let score = 0, count = 0;
+      for (const e of events) if (t >= e.t) { score += e.add; count += e.coin; }
+      const scoreStr = String(score).padStart(6, "0");
+      const coinStr = `x${String(count).padStart(2, "0")}`;
+      const coinImg = coinFrames[Math.floor(t * 6) % 4];
+      if (L.oneRow) {
+        drawText(`SCORE ${scoreStr}`, 6, 4);
+        const cx = Math.round(W / 2 - 16);
+        ctx.drawImage(coinImg, cx, 4);
+        drawText(coinStr, cx + 10, 4);
+        drawText("WORLD 1-1", W - 6 - 72, 4);
+      } else {
+        drawText("SCORE", 6, 4);
+        drawText(scoreStr, 6, 14);
+        drawText("WORLD", W - 46, 4);
+        drawText("1-1", W - 30, 14);
+        const cx = Math.round(W / 2 - 14);
+        ctx.drawImage(coinImg, cx, 9);
+        drawText(coinStr, cx + 10, 9);
+      }
+    }
+
+    // Headline letters drop in one by one, then ripple gently in whole pixels.
+    function drawHeadline(t) {
+      const flash = t >= LEVEL_AT && t < LEVEL_AT + 0.5 && Math.floor(t * 16) % 2 === 0;
+      L.letters.forEach((l, i) => {
+        const start = 0.45 + i * 0.07;
+        const u = (t - start) / 0.45;
+        if (u < 0) return;
+        let dy = -Math.round((1 - backOut(u)) * 24);
+        if (u >= 1) dy = Math.sin(t * 5 - i * 0.6) > 0.55 ? -1 : 0;
+        ctx.drawImage((flash ? L.letterFlash : L.letterImg).get(l.ch), l.x, l.y + dy);
+      });
+    }
+
+    // "LEVEL UP!" in a game style dialog box.
+    function drawBanner(t) {
+      const u = t - (LEVEL_AT + 0.05);
+      const end = 9.1;
+      if (u < 0 || t > end + 0.2) return;
+      const k = L.bannerK;
+      const label = "LEVEL UP!";
+      const fullW = label.length * 8 * k + 16;
+      const grow = t > end ? 1 - clamp01((t - end) / 0.2) : backOut(u / 0.3);
+      const bw = Math.max(4, Math.round(fullW * grow / 2) * 2);
+      const bh = Math.max(4, Math.round(L.bannerH * Math.min(1, grow)));
+      const x = Math.round((W - bw) / 2), y = L.bannerY + Math.round((L.bannerH - bh) / 2);
+      ctx.fillStyle = PAL.k;
+      ctx.fillRect(x - 1, y - 1, bw + 2, bh + 3);
+      ctx.fillStyle = PAL.w;
+      ctx.fillRect(x, y, bw, bh);
+      ctx.fillStyle = PAL.n;
+      ctx.fillRect(x + 2, y + 2, bw - 4, bh - 4);
+      if (grow < 0.95) return;
+      // Text blinks through three colours, then settles.
+      const cols = [PAL.y, PAL.w, PAL.C, PAL.g];
+      const col = u < 1.2 && !reduce.matches ? cols[Math.floor(u * 10) % cols.length] : PAL.y;
+      const tx = Math.round(W / 2 - (label.length * 8 * k) / 2);
+      const ty = L.bannerY + Math.round((L.bannerH - 8 * k) / 2);
+      ctx.drawImage(textImage(label, PAL.k, k), tx + 1, ty + 1);
+      ctx.drawImage(textImage(label, col, k), tx, ty);
+      // Two twinkling sparkles on the corners.
+      const f = Math.floor(t * 8) % 4;
+      ctx.drawImage(sparkleFrames[f], x - 3, y - 3);
+      ctx.drawImage(sparkleFrames[(f + 2) % 4], x + bw - 2, y + bh - 2);
+    }
+
+    // Classic circle wipe: closes on the hero at the end of the loop and opens at the start.
+    function drawIris(t, cx, cy) {
+      const maxR = Math.hypot(W, H);
+      let r = maxR;
+      if (t < 0.65) r = maxR * Math.pow(clamp01((t - 0.08) / 0.57), 2);
+      else if (t > 9.3) r = maxR * Math.pow(1 - clamp01((t - 9.3) / 0.6), 2);
+      if (r >= maxR) return;
+      ctx.fillStyle = PAL.k;
+      for (let y = 0; y < H; y++) {
+        const dy = y + 0.5 - cy;
+        if (Math.abs(dy) >= r) { ctx.fillRect(0, y, W, 1); continue; }
+        const half = Math.round(Math.sqrt(r * r - dy * dy));
+        ctx.fillRect(0, y, Math.max(0, cx - half), 1);
+        ctx.fillRect(cx + half, y, W, 1);
+      }
+    }
+
+    // ---- Run ----
+    let frame = 0, start = 0;
+    function loop(now) {
+      if (!start) start = now;
+      draw(((now - start) / 1000) % LOOP);
+      frame = requestAnimationFrame(loop);
+    }
+
+    // Reduced motion: one still frame, just after the level up.
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    const STILL = 6.98;
+    function apply() {
+      cancelAnimationFrame(frame);
+      frame = 0;
+      if (reduce.matches) draw(STILL);
+      else {
+        start = 0;
+        frame = requestAnimationFrame(loop);
+      }
+    }
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        build();
+        if (reduce.matches) draw(STILL);
+      }, 100);
+    });
+    reduce.addEventListener("change", apply);
+
+    // Wait briefly for the font so the letters are read from the right face.
+    const chars = [...new Set((text + "SCOREWORLD0123456789-xLEVEUP!").replace(/\s/g, ""))].join("");
+    Promise.race([
+      document.fonts.load(FONT, chars),
+      new Promise((resolve) => setTimeout(resolve, 2500)),
+    ]).finally(() => {
+      build();
+      apply();
+    });
+  </script>
+</body>
+</html>
