@@ -27,12 +27,14 @@ without a one-line explanation.
 ## Layout
 
 ```
-index.html              home: what this is, links to gallery, builder, guide
-gallery.html            grid of styles; each card lazy-loads its demo in an iframe
+index.html              home = the style directory: search, tag filters, grid of live tiles,
+                        and a detail sheet (preview, prompt, copy). Each style links as #slug
+gallery.html            old address, redirects to index.html
 builder.html            prompt builder form, copy-to-clipboard output
 guide.html              prompting tips + export to MP4
 assets/css/site.css     shared styles (design tokens on :root, light and dark)
-assets/js/*.js          shared scripts (ES modules)
+assets/js/*.js          shared scripts (ES modules); gallery.js drives the directory
+assets/img/logo.svg     logo mark and favicon
 styles/styles.json      list of styles (the single source of truth for the gallery and builder)
 styles/<slug>/demo.html self-contained animation, loads its own library from a CDN
 styles/<slug>/prompt.txt prompt template for that style, with {placeholders}
@@ -40,6 +42,9 @@ scripts/check.mjs       validation, run before every commit
 ```
 
 Pages that are listed above but missing are not built yet.
+
+Design: mobile first and compact. The home page is the app itself (no marketing sections).
+Dark "film studio" look with a light variant; tokens live on `:root` in `site.css`.
 
 ### `styles/styles.json` entry
 
