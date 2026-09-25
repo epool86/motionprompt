@@ -54,7 +54,7 @@ function tile(style) {
     thumb,
     el("span", { class: "tile-meta" },
       el("span", { class: "tile-name" }, style.name),
-      el("span", { class: "tile-lib", "data-lib": style.library.toLowerCase().replace(/[^a-z0-9]+/g, "-") }, style.library)));
+      el("span", { class: "tile-lib" }, style.library)));
   if (observer) observer.observe(thumb);
   else thumb.append(frame(style));
   return link;

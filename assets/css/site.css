@@ -22,13 +22,6 @@
   --amber: #ffb35c;
   --accent: #a48bff;
   --gradient: linear-gradient(100deg, var(--violet) 0%, var(--pink) 55%, var(--amber) 100%);
-  --band: linear-gradient(120deg, #4f2fe0 0%, #8b2fd6 45%, #d62a7c 100%);
-
-  /* One colour per animation library, used as a small dot on tiles */
-  --lib-gsap: #2fd66b;
-  --lib-canvas: #ffb35c;
-  --lib-three: #8b6cff;
-  --lib-other: #ff5fc8;
 
   /* Primary button inverts the page */
   --btn-bg: #f4f3fa;
@@ -65,10 +58,10 @@
     --pink: #e3389f;
     --amber: #e8871a;
     --accent: #5b3cf0;
-    --btn-bg: #5b3cf0;
+    --btn-bg: #121120;
     --btn-fg: #ffffff;
-    --glow-a: rgba(124, 92, 255, 0.3);
-    --glow-b: rgba(255, 79, 200, 0.2);
+    --glow-a: rgba(124, 92, 255, 0.2);
+    --glow-b: rgba(255, 79, 200, 0.12);
     --glow-c: rgba(255, 170, 80, 0.12);
     --grid-line: rgba(20, 16, 50, 0.045);
     --shadow: 0 30px 70px -35px rgba(40, 30, 90, 0.35);
@@ -231,65 +224,11 @@ a { color: var(--accent); }
 .site-nav .soon { color: var(--faint); cursor: default; }
 
 /* Intro: one heading, one line */
-/* Intro: a bold colour band, one heading and one line */
-.intro {
-  position: relative;
-  overflow: hidden;
-  margin: 14px 0 4px;
-  padding: 20px 20px 22px;
-  border-radius: 20px;
-  background: var(--band);
-  box-shadow: 0 18px 40px -22px rgba(91, 60, 240, 0.7);
-  isolation: isolate;
-}
+.intro { padding: 20px 0 14px; }
 
-/* Warm light in the corner and a soft ring, for depth */
-.intro::before,
-.intro::after {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  border-radius: 50%;
-  pointer-events: none;
-}
+.intro h1 { font-size: clamp(1.55rem, 5.2vw, 2.4rem); margin-bottom: 6px; }
 
-.intro::before {
-  width: 260px;
-  height: 260px;
-  right: -70px;
-  top: -120px;
-  background: radial-gradient(circle, rgba(255, 190, 110, 0.75), transparent 65%);
-}
-
-.intro::after {
-  width: 220px;
-  height: 220px;
-  right: 18%;
-  bottom: -150px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  box-shadow: 0 0 0 36px rgba(255, 255, 255, 0.05);
-}
-
-.intro h1 {
-  color: #fff;
-  font-size: clamp(1.55rem, 5.2vw, 2.4rem);
-  margin-bottom: 6px;
-}
-
-.intro .shine {
-  background: none;
-  color: #ffd7a8;
-}
-
-.intro p {
-  max-width: 52ch;
-  color: rgba(255, 255, 255, 0.86);
-  font-size: 0.95rem;
-}
-
-@media (min-width: 720px) {
-  .intro { margin-top: 20px; padding: 28px 32px 30px; border-radius: 24px; }
-}
+.intro p { font-size: 0.95rem; }
 
 /* Search and tag filters. Sticks under the header while scrolling. */
 .toolbar {
@@ -388,13 +327,13 @@ a { color: var(--accent); }
 
 .filter[aria-pressed="true"] {
   border-color: transparent;
-  background: var(--band);
-  color: #fff;
+  background: var(--btn-bg);
+  color: var(--btn-fg);
 }
 
 .count {
   margin: 4px 0 10px;
-  color: var(--accent);
+  color: var(--faint);
   font: 500 0.72rem var(--font-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -490,24 +429,9 @@ a { color: var(--accent); }
 }
 
 .tile-lib {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   color: var(--faint);
   font: 500 0.72rem var(--font-mono);
 }
-
-.tile-lib::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--dot, var(--lib-other));
-}
-
-[data-lib="gsap"] { --dot: var(--lib-gsap); }
-[data-lib="canvas"] { --dot: var(--lib-canvas); }
-[data-lib="three-js"] { --dot: var(--lib-three); }
 
 /* Buttons */
 .button {
