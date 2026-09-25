@@ -1,7 +1,8 @@
 // The style directory on the home page: search, tag filters and a grid of live tiles.
 // Tapping a tile slides the list away and slides in a full detail view for that style.
 // Each style has its own link (#slug), so the browser back button and shared links work.
-import { fillPrompt, loadStyles, loadTemplate, copyText } from "./prompt.js";
+import { fillPrompt, demoSrc, loadStyles, loadTemplate, copyText } from "./prompt.js";
+import { choices, showFor, onChange } from "./customize.js";
 
 const grid = document.getElementById("gallery");
 const search = document.getElementById("search");
@@ -11,9 +12,9 @@ const count = document.getElementById("count");
 const listView = document.getElementById("list-view");
 const detailView = document.getElementById("detail-view");
 const detailPreview = document.getElementById("detail-preview");
+const previewDock = document.querySelector(".preview-dock");
 const detailTitle = document.getElementById("detail-title");
 const detailSummary = document.getElementById("detail-summary");
-const detailChips = document.getElementById("detail-chips");
 const detailCopy = document.getElementById("detail-copy");
 const detailOpen = document.getElementById("detail-open");
 const detailStatus = document.getElementById("detail-status");
@@ -28,7 +29,7 @@ let current = null; // slug shown in the detail view, or null when the list is s
 let listScroll = 0; // where the list was scrolled to, restored on the way back
 let cameFromList = false; // true when the detail was opened from a tile (so Back can use history)
 let running = null; // finishes the slide in progress, if any
-const prompts = new Map();
+const templates = new Map();
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -40,11 +41,11 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
-const demoUrl = (style) => `styles/${style.slug}/demo.html`;
 const findStyle = (slug) => styles.find((s) => s.slug === slug);
 
+// Demos show the visitor's own words and colours.
 function frame(style) {
-  return el("iframe", { src: demoUrl(style), title: `${style.name} demo`, tabindex: "-1" });
+  return el("iframe", { src: demoSrc(style, choices), title: `${style.name} demo`, tabindex: "-1" });
 }
 
 // Tiles play their demo only while on screen, so a long list stays light.
@@ -100,26 +101,24 @@ function renderFilters() {
   }));
 }
 
-function getPrompt(style) {
-  if (!prompts.has(style.slug)) {
-    prompts.set(style.slug, loadTemplate(style.slug).then((t) => fillPrompt(t, { library: style.library })));
-  }
-  return prompts.get(style.slug);
+function getTemplate(style) {
+  if (!templates.has(style.slug)) templates.set(style.slug, loadTemplate(style.slug));
+  return templates.get(style.slug);
 }
 
-async function fillDetail(style) {
-  detailTitle.textContent = style.name;
-  detailSummary.textContent = style.summary;
-  detailChips.replaceChildren(
-    el("li", { class: "chip library" }, style.library),
-    ...(style.ratios ?? []).map((r) => el("li", { class: "chip" }, r)),
-    ...(style.tags ?? []).map((t) => el("li", { class: "chip" }, `#${t}`)));
-  detailOpen.href = demoUrl(style);
-  detailOpen.setAttribute("aria-label", `Open the ${style.name} demo full screen`);
-  detailStatus.textContent = "";
-  detailPrompt.textContent = "Loading prompt...";
-  detailPreview.replaceChildren(frame(style));
-  document.title = `${style.name} · ${baseTitle}`;
+async function getPrompt(style) {
+  return fillPrompt(await getTemplate(style), choices, style);
+}
+
+// The preview takes the shape of the chosen format.
+function setPreviewShape() {
+  const [w, h] = choices.ratio.split(":").map(Number);
+  previewDock.style.setProperty("--ar", String(w / h));
+}
+
+async function updatePrompt() {
+  const style = findStyle(current);
+  if (!style) return;
   try {
     const text = await getPrompt(style);
     if (current === style.slug) detailPrompt.textContent = text;
@@ -127,6 +126,42 @@ async function fillDetail(style) {
     detailPrompt.textContent = "Could not load this prompt. Try refreshing the page.";
   }
 }
+
+function updateLinks(style) {
+  detailOpen.href = demoSrc(style, choices);
+}
+
+async function fillDetail(style) {
+  detailTitle.textContent = style.name;
+  detailSummary.textContent = style.summary;
+  detailOpen.setAttribute("aria-label", `Open the ${style.name} demo full screen`);
+  updateLinks(style);
+  detailStatus.textContent = "";
+  detailPrompt.textContent = "Loading prompt...";
+  showFor(style);
+  setPreviewShape();
+  detailPreview.replaceChildren(frame(style));
+  document.title = `${style.name} · ${baseTitle}`;
+  updatePrompt();
+}
+
+// Words and colours reload the preview (after a short pause while typing).
+// Format only reshapes it, since every demo adapts to its window.
+let reloadTimer;
+onChange((what) => {
+  const style = findStyle(current);
+  if (!style) return;
+  detailStatus.textContent = "";
+  updatePrompt();
+  updateLinks(style);
+  if (what === "ratio") setPreviewShape();
+  if (what === "text" || what === "colors") {
+    clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(() => {
+      if (current === style.slug) detailPreview.replaceChildren(frame(style));
+    }, what === "text" ? 450 : 120);
+  }
+});
 
 // Slide one view out and the other in. The outgoing view is lifted out of the page flow
 // and pinned where it was on screen, so the page can jump to the right scroll position
@@ -227,7 +262,7 @@ detailCopy.addEventListener("click", async () => {
   if (!style) return;
   try {
     await copyText(await getPrompt(style));
-    detailStatus.textContent = "Copied. Now paste it into Claude.";
+    detailStatus.textContent = "Copied. Now paste it into Claude or Claude Code.";
   } catch {
     detailStatus.textContent = "Could not copy. Select the prompt below and copy it by hand.";
   }

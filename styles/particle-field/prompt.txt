@@ -1,19 +1,11 @@
-Make me a single HTML file that shows a glowing particle field. I will screen-record it and post it as a short video, or use it as a background.
+Make me a short animated video and give me the final MP4 file.
 
-Size and timing
-- Aspect ratio: {ratio}. Put the animation on a stage with exactly this shape, centred and scaled to fit the browser window.
-- It should run for at least {duration} and feel calm and endless, with no obvious start or end.
+Style: a glowing particle field. A few thousand tiny dots drift along smooth, invisible currents, like smoke or wind, with a slight upward drift like warm air. They leave soft fading trails, and where they overlap they add up to a gentle glow. The currents slowly change, so it feels calm and endless. My text sits still in the lower third with a soft glow, so it stays easy to read.
 
-Look and feel
-- Colours: {colors}. Use the background colour for the page and the brighter colours for the particles.
-- Draw a few thousand tiny dots that drift along smooth, invisible currents, like smoke, wind or water. The currents should slowly change over time.
-- Leave soft fading trails behind each dot, and let overlapping dots add up to a gentle glow.
-- Add a slight upward drift, like warm air rising.
-- Show the text "{text}" in the lower third, in a clean font, with a soft glow in the accent colour. Keep it still so it stays readable.
+- Text: "{text}"
+- Video size: {ratio}
+- Length: about {duration}
+- Colours: {colors}. The background colour fills the frame, the brighter colours are the particles.
 
-Technical
-- Draw with {library}. For the plain HTML canvas no extra library is needed. For anything else, load it from a CDN with an exact version number (no "latest").
-- Keep it smooth on a phone: cap the number of particles and handle high-resolution screens.
-- Redraw correctly when the window is resized.
-- Keep everything in one file. No buttons or controls, so the recording is clean.
-- If the viewer has "reduce motion" turned on in their system settings, draw one finished frame with trails and stop there.
+Hint: build it as an HTML canvas animation (for example with {library}) and render it to MP4 frame by frame so the motion is smooth. Send me the HTML file as well so I can tweak it later.
+{notes}

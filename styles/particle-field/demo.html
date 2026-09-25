@@ -5,11 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Particle field demo</title>
   <style>
+    /* Colours can be set from the URL: ?text=...&bg=0a0d1a&ink=f6f3ea&accent=ff5a4e&accent2=ffd23f */
+    :root {
+      --bg: #0a0d1a;
+      --ink: #f6f3ea;
+      --accent: #ff5a4e;
+    }
+
     html, body {
       margin: 0;
       height: 100%;
       overflow: hidden;
-      background: #0a0d1a;
+      background: var(--bg);
     }
 
     canvas {
@@ -27,22 +34,36 @@
       bottom: 14%;
       margin: 0;
       text-align: center;
-      color: #f6f3ea;
-      font: 600 min(9vw, 5.5vh) / 1.1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      padding: 0 6%;
+      color: var(--ink);
+      font: 600 min(8vw, 5.5vh) / 1.15 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       letter-spacing: 0.02em;
-      text-shadow: 0 0 24px rgba(255, 90, 78, 0.6);
+      text-shadow: 0 0 24px color-mix(in srgb, var(--accent) 60%, transparent);
+      overflow-wrap: anywhere;
     }
   </style>
 </head>
 <body>
   <canvas id="field" role="img" aria-label="Glowing particles drifting along soft currents"></canvas>
-  <p class="caption">Make it move</p>
+  <p class="caption" id="caption">Make it move</p>
 
   <script>
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const rgb = (h) => [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)).join(", ");
+    const colors = { bg: hex("bg", "0a0d1a"), ink: hex("ink", "f6f3ea"), accent: hex("accent", "ff5a4e"), accent2: hex("accent2", "ffd23f") };
+    const root = document.documentElement;
+    for (const key of ["bg", "ink", "accent"]) root.style.setProperty(`--${key}`, `#${colors[key]}`);
+    document.getElementById("caption").textContent = (params.get("text") || "Make it move").trim().slice(0, 80);
+
     const canvas = document.getElementById("field");
     const ctx = canvas.getContext("2d");
-    const background = "10, 13, 26"; // rgb of the page background, used for fading trails
-    const hues = [8, 28, 200]; // coral, amber, cool blue
+    const background = rgb(colors.bg); // used for fading trails
+    // Glow adds light, which only shows on a dark background. On a light one, paint normally.
+    const lightBg = rgb(colors.bg).split(", ").reduce((sum, v, i) => sum + v * [0.3, 0.59, 0.11][i], 0) > 150;
+    const blend = lightBg ? "source-over" : "lighter";
+    // Particle colours: mostly the two accents, with a few in the text colour for sparkle.
+    const tints = [colors.accent, colors.accent, colors.accent2, colors.accent2, colors.ink].map(rgb);
 
     let width = 0, height = 0, particles = [], time = 0, frame = 0;
 
@@ -61,7 +82,7 @@
       p.y = Math.random() * height;
       p.life = 80 + Math.random() * 220;
       p.speed = 0.6 + Math.random() * 1.4;
-      p.hue = hues[Math.floor(Math.random() * hues.length)] + Math.random() * 16;
+      p.tint = tints[Math.floor(Math.random() * tints.length)];
       p.size = Math.random() < 0.08 ? 2.2 : 1.1;
       return p;
     }
@@ -86,7 +107,7 @@
       ctx.fillStyle = `rgba(${background}, 0.08)`;
       ctx.fillRect(0, 0, width, height);
 
-      ctx.globalCompositeOperation = "lighter";
+      ctx.globalCompositeOperation = blend;
       for (const p of particles) {
         const a = angleAt(p.x, p.y, time);
         p.x += Math.cos(a) * p.speed;
@@ -97,7 +118,7 @@
           continue;
         }
         const fade = Math.min(1, p.life / 40);
-        ctx.fillStyle = `hsla(${p.hue}, 95%, 62%, ${0.55 * fade})`;
+        ctx.fillStyle = `rgba(${p.tint}, ${0.55 * fade})`;
         ctx.fillRect(p.x, p.y, p.size, p.size);
       }
     }

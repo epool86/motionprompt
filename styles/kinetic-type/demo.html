@@ -6,18 +6,19 @@
   <title>Kinetic typography demo</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/anton@5.3.0/index.css">
   <style>
+    /* Colours can be set from the URL: ?text=...&bg=10131f&ink=f6f3ea&accent=ff5a4e&accent2=ffd23f */
     :root {
-      --navy: #10131f;
+      --bg: #10131f;
       --ink: #f6f3ea;
-      --coral: #ff5a4e;
-      --sun: #ffd23f;
+      --accent: #ff5a4e;
+      --accent2: #ffd23f;
     }
 
     html, body {
       margin: 0;
       height: 100%;
       overflow: hidden;
-      background: var(--navy);
+      background: var(--bg);
     }
 
     .stage {
@@ -25,7 +26,7 @@
       inset: 0;
       display: grid;
       place-items: center;
-      background: var(--navy);
+      background: var(--bg);
       color: var(--ink);
       font-family: "Anton", "Arial Narrow", Impact, sans-serif;
       text-transform: uppercase;
@@ -39,7 +40,6 @@
     }
 
     .word {
-      font-size: min(38vw, 32vh);
       line-height: 1;
       letter-spacing: -0.01em;
       white-space: nowrap;
@@ -52,40 +52,75 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      font-size: min(32vw, 19vh);
       line-height: 0.92;
+      white-space: nowrap;
     }
-
-    .final .l2 { color: var(--coral); }
-    .final .l3 { color: var(--sun); }
 
     .wipe {
       position: absolute;
       inset: 0;
-      background: var(--coral);
+      background: var(--accent);
       transform: scaleY(0);
       transform-origin: 50% 100%;
     }
   </style>
 </head>
 <body>
-  <div class="stage" id="stage" role="img" aria-label="Animated words: Make it move">
-    <div class="word" id="w1">Make</div>
-    <div class="word" id="w2">it</div>
-    <div class="word" id="w3">move</div>
-    <div class="final" id="final">
-      <span class="l1">Make</span>
-      <span class="l2">it</span>
-      <span class="l3">move</span>
-    </div>
+  <div class="stage" id="stage" role="img">
+    <div class="final" id="final"></div>
     <div class="wipe" id="wipe"></div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
   <script>
-    const css = getComputedStyle(document.documentElement);
+    const params = new URLSearchParams(location.search);
+    const root = document.documentElement;
+    for (const key of ["bg", "ink", "accent", "accent2"]) {
+      const value = params.get(key);
+      if (/^[0-9a-f]{6}$/i.test(value ?? "")) root.style.setProperty(`--${key}`, `#${value}`);
+    }
+    const text = (params.get("text") || "Make it move").trim().slice(0, 80);
+    const words = text.split(/\s+/).filter(Boolean).slice(0, 8);
+
+    const css = getComputedStyle(root);
     const color = (name) => css.getPropertyValue(name).trim();
-    const navy = color("--navy"), ink = color("--ink"), coral = color("--coral"), sun = color("--sun");
+    const bg = color("--bg"), ink = color("--ink"), accent = color("--accent"), accent2 = color("--accent2");
+
+    const stage = document.getElementById("stage");
+    const final = document.getElementById("final");
+    const wipe = document.getElementById("wipe");
+    stage.setAttribute("aria-label", `Animated words: ${text}`);
+
+    // One element per word, plus the stacked final line.
+    const wordEls = words.map((w) => {
+      const node = document.createElement("div");
+      node.className = "word";
+      node.textContent = w;
+      stage.insertBefore(node, final);
+      return node;
+    });
+    const lineColors = [ink, accent, accent2];
+    const lineEls = words.map((w, i) => {
+      const span = document.createElement("span");
+      span.textContent = w;
+      span.style.color = lineColors[i % lineColors.length];
+      final.append(span);
+      return span;
+    });
+
+    // Size the words so the longest one always fits the frame.
+    function fit() {
+      const w = innerWidth, h = innerHeight;
+      const charW = 0.5; // Anton capitals are about half an em wide
+      for (const node of wordEls) {
+        const len = Math.max(2, node.textContent.length);
+        node.style.fontSize = `${Math.min((w * 0.86) / (len * charW), h * 0.34)}px`;
+      }
+      const longest = Math.max(2, ...words.map((x) => x.length));
+      final.style.fontSize = `${Math.min((w * 0.84) / (longest * charW), (h * 0.8) / (words.length * 0.92))}px`;
+    }
+    fit();
+    addEventListener("resize", fit);
 
     // Wrap each letter in a span so letters can move on their own.
     function splitLetters(node) {
@@ -99,53 +134,52 @@
     }
 
     function build() {
-      const stage = document.getElementById("stage");
-      const [w1, w2, w3] = ["w1", "w2", "w3"].map((id) => document.getElementById(id));
-      const lines = document.querySelectorAll("#final span");
-      const final = document.getElementById("final");
-      const wipe = document.getElementById("wipe");
-      const itLetters = splitLetters(w2);
-      const moveLetters = splitLetters(w3);
-
       const beat = 0.45; // about 133 beats per minute
       const tl = gsap.timeline({ repeat: -1, defaults: { ease: "expo.out" } });
+      // Background cuts between the palette colours; text flips to stay readable.
+      const looks = [
+        { backgroundColor: bg, color: ink },
+        { backgroundColor: accent, color: bg },
+        { backgroundColor: accent2, color: bg },
+      ];
 
-      // Beat 1: MAKE punches in from big
-      tl.set(stage, { backgroundColor: navy, color: ink })
-        .fromTo(w1, { autoAlpha: 0, scale: 2.6, rotation: -12 },
-          { autoAlpha: 1, scale: 1, rotation: -3, duration: 0.35 })
+      wordEls.forEach((node, i) => {
+        const at = i * beat * 2;
+        const look = looks[i % looks.length];
+        if (i > 0) tl.set(wordEls[i - 1], { autoAlpha: 0 }, at);
+        tl.set(stage, look, at).set(node, { autoAlpha: 1 }, at);
+        const kind = i % 3;
+        if (kind === 0) {
+          // Punch in from big and rotated
+          tl.fromTo(node, { scale: 2.6, rotation: -12 }, { scale: 1, rotation: -3, duration: 0.35 }, at);
+        } else if (kind === 1) {
+          // Letters spin in one by one
+          tl.fromTo(splitLetters(node), { scale: 0, rotation: 25 },
+            { scale: 1, rotation: 0, duration: 0.4, stagger: 0.06, ease: "back.out(2.5)" }, at);
+        } else {
+          // Letters drop from above
+          tl.fromTo(splitLetters(node), { yPercent: -160, rotation: (j) => (j % 2 ? 14 : -14) },
+            { yPercent: 0, rotation: 0, duration: 0.45, stagger: 0.05, ease: "back.out(1.6)" }, at);
+        }
+      });
 
-      // Beat 3: hard cut to coral, IT spins in letter by letter
-        .set(w1, { autoAlpha: 0 }, beat * 2)
-        .set(stage, { backgroundColor: coral, color: navy }, beat * 2)
-        .set(w2, { autoAlpha: 1 }, beat * 2)
-        .fromTo(itLetters, { scale: 0, rotation: 25 },
-          { scale: 1, rotation: 0, duration: 0.4, stagger: 0.06, ease: "back.out(2.5)" }, beat * 2)
-
-      // Beat 5: cut to yellow, MOVE drops from above
-        .set(w2, { autoAlpha: 0 }, beat * 4)
-        .set(stage, { backgroundColor: sun, color: navy }, beat * 4)
-        .set(w3, { autoAlpha: 1 }, beat * 4)
-        .fromTo(moveLetters, { yPercent: -160, rotation: (i) => (i % 2 ? 14 : -14) },
-          { yPercent: 0, rotation: 0, duration: 0.45, stagger: 0.05, ease: "back.out(1.6)" }, beat * 4)
-
-      // Beat 7: back to navy, the full line slides in from alternating sides
-        .set(w3, { autoAlpha: 0 }, beat * 6)
-        .set(stage, { backgroundColor: navy, color: ink }, beat * 6)
-        .set(final, { autoAlpha: 1 }, beat * 6)
-        .fromTo(lines, { xPercent: (i) => (i % 2 ? 140 : -140), autoAlpha: 0 },
-          { xPercent: 0, autoAlpha: 1, duration: 0.5, stagger: beat / 2 }, beat * 6)
+      // The full line slides in from alternating sides, holds, then a wipe restarts the loop.
+      const end = wordEls.length * beat * 2;
+      tl.set(wordEls[wordEls.length - 1], { autoAlpha: 0 }, end)
+        .set(stage, looks[0], end)
+        .set(final, { autoAlpha: 1 }, end)
+        .fromTo(lineEls, { xPercent: (i) => (i % 2 ? 140 : -140), autoAlpha: 0 },
+          { xPercent: 0, autoAlpha: 1, duration: 0.5, stagger: beat / 2 }, end)
         .addLabel("hold")
-
-      // Hold, then a colour wipe clears the screen so the loop restarts cleanly
         .to(wipe, { scaleY: 1, duration: 0.35, ease: "power3.in" }, `hold+=${beat * 3}`)
         .set(final, { autoAlpha: 0 })
         .set(wipe, { transformOrigin: "50% 0%" })
-        .to(wipe, { scaleY: 0, duration: 0.35, ease: "power3.out" });
+        .to(wipe, { scaleY: 0, duration: 0.35, ease: "power3.out" })
+        .set(wipe, { transformOrigin: "50% 100%" });
 
       // Reduced motion: show the finished line as a still frame.
       const reduce = matchMedia("(prefers-reduced-motion: reduce)");
-      const apply = () => (reduce.matches ? tl.pause("hold") : tl.play());
+      const apply = () => (reduce.matches ? tl.pause("hold+=1") : tl.play());
       apply();
       reduce.addEventListener("change", apply);
     }

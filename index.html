@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>MotionPrompt</title>
-  <meta name="description" content="Animation styles you can make with Claude. Tap a style, copy its prompt, paste it into Claude, and record the result as a video.">
+  <meta name="description" content="Animated video styles you can make with Claude. Pick a style, add your words and colours, copy the prompt, and get back an MP4.">
   <meta name="theme-color" content="#07070c">
   <link rel="icon" href="assets/img/logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource-variable/geist@5.3.0/index.css">
@@ -18,7 +18,6 @@
     <div class="wrap">
       <a class="brand" href="index.html" aria-current="page"><img src="assets/img/logo.svg" alt="" width="26" height="26">MotionPrompt</a>
       <nav class="site-nav" aria-label="Main">
-        <span class="soon" title="Coming soon">Builder</span>
         <span class="soon" title="Coming soon">Guide</span>
       </nav>
     </div>
@@ -31,7 +30,7 @@
       <div class="wrap">
         <div class="intro">
           <h1>Pick a style. <span class="serif shine">Copy the prompt.</span></h1>
-          <p>Paste it into Claude, open the page it makes, and screen-record it as a video.</p>
+          <p>Make it yours, copy the prompt, and Claude sends back a finished MP4.</p>
         </div>
 
         <div class="toolbar">
@@ -61,18 +60,58 @@
         </div>
       </div>
       <div class="wrap detail-body">
-        <div class="detail-preview" id="detail-preview"></div>
+        <div class="preview-dock">
+          <div class="detail-preview" id="detail-preview"></div>
+        </div>
         <div class="detail-info">
           <h2 id="detail-title" tabindex="-1"></h2>
           <p id="detail-summary"></p>
-          <ul class="chips" id="detail-chips" aria-label="Details"></ul>
+
+          <form class="customize" id="customize" autocomplete="off">
+            <h3 class="panel-title">Make it yours</h3>
+            <div class="field">
+              <label for="f-text" id="f-text-label">Your words</label>
+              <input type="text" id="f-text" maxlength="60" aria-describedby="f-text-hint">
+              <p class="hint" id="f-text-hint"></p>
+            </div>
+
+            <fieldset class="field">
+              <legend>Colours</legend>
+              <div class="palettes" id="palettes"></div>
+              <div class="color-inputs" id="color-inputs" hidden></div>
+            </fieldset>
+
+            <div class="field-row">
+              <fieldset class="field">
+                <legend>Format</legend>
+                <div class="segmented" id="formats"></div>
+              </fieldset>
+              <fieldset class="field">
+                <legend>Length</legend>
+                <div class="segmented" id="durations"></div>
+              </fieldset>
+            </div>
+
+            <div class="field">
+              <label for="f-notes">Anything else? <span class="optional">Optional</span></label>
+              <textarea id="f-notes" rows="2" maxlength="300" placeholder="For example: use my attached logo, add upbeat music, end with our website"></textarea>
+            </div>
+          </form>
+
           <div class="detail-actions">
-            <button class="button" type="button" id="detail-copy">Copy prompt</button>
+            <button class="button" type="button" id="detail-copy">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/></svg>
+              Copy prompt
+            </button>
             <a class="button secondary" id="detail-open" target="_blank" rel="noopener">Full screen</a>
           </div>
           <p class="status" id="detail-status" role="status" aria-live="polite"></p>
-          <h3 class="prompt-label">The prompt</h3>
-          <pre class="prompt-text" id="detail-prompt" tabindex="0" aria-label="Prompt"></pre>
+          <p class="paste-tip">Paste it into <strong>Claude</strong> on the web, or into <strong>Claude Code</strong> on your computer for longer videos. Claude sends back the finished MP4.</p>
+
+          <details class="prompt-box">
+            <summary>See the full prompt</summary>
+            <pre class="prompt-text" id="detail-prompt" tabindex="0" aria-label="Prompt"></pre>
+          </details>
         </div>
       </div>
     </section>

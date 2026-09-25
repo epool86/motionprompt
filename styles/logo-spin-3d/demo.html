@@ -5,11 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>3D logo spin demo</title>
   <style>
+    /* Colours can be set from the URL: ?text=...&bg=120e2b&ink=f6f3ea&accent=ffb547&accent2=6bd5ff */
+    :root {
+      --bg: #120e2b;
+      --ink: #f6f3ea;
+    }
+
     html, body {
       margin: 0;
       height: 100%;
       overflow: hidden;
-      background: radial-gradient(120% 80% at 50% 40%, #2a1f5c 0%, #120e2b 55%, #07060f 100%);
+      background: radial-gradient(120% 80% at 50% 40%,
+        color-mix(in srgb, var(--bg) 70%, white) 0%, var(--bg) 55%, color-mix(in srgb, var(--bg) 60%, black) 100%);
     }
 
     canvas {
@@ -27,19 +34,30 @@
       bottom: 16%;
       margin: 0;
       text-align: center;
-      color: #f6f3ea;
-      font: 700 min(8vw, 5vh) / 1.1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      padding: 0 6%;
+      color: var(--ink);
+      font: 700 min(7vw, 5vh) / 1.15 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       letter-spacing: 0.08em;
       text-transform: uppercase;
+      overflow-wrap: anywhere;
     }
   </style>
 </head>
 <body>
-  <canvas id="scene" role="img" aria-label="A shiny 3D logo with the letter M, spinning and floating"></canvas>
-  <p class="caption">Make it move</p>
+  <canvas id="scene" role="img" aria-label="A shiny 3D logo, spinning and floating"></canvas>
+  <p class="caption" id="caption">Make it move</p>
 
   <script type="module">
     import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js";
+
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const colors = { bg: hex("bg", "120e2b"), ink: hex("ink", "f6f3ea"), accent: hex("accent", "ffb547"), accent2: hex("accent2", "6bd5ff") };
+    document.documentElement.style.setProperty("--bg", `#${colors.bg}`);
+    document.documentElement.style.setProperty("--ink", `#${colors.ink}`);
+    const text = (params.get("text") || "Make it move").trim().slice(0, 60);
+    document.getElementById("caption").textContent = text;
+    const letter = ([...text].find((ch) => /[\p{L}\p{N}]/u.test(ch)) ?? "M").toUpperCase();
 
     const canvas = document.getElementById("scene");
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
@@ -49,7 +67,7 @@
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
 
-    // The logo: a rounded square badge with a bold letter M cut out of it.
+    // The logo: a rounded square badge with the first letter of the text pressed into its face.
     function roundedSquare(size, radius) {
       const h = size / 2;
       const s = new THREE.Shape();
@@ -66,11 +84,35 @@
     }
 
     const badge = roundedSquare(2, 0.5);
-    const letterM = [
-      [-0.55, -0.45], [-0.55, 0.45], [-0.33, 0.45], [0, 0.05], [0.33, 0.45], [0.55, 0.45],
-      [0.55, -0.45], [0.33, -0.45], [0.33, 0.1], [0, -0.28], [-0.33, 0.1], [-0.33, -0.45],
-    ];
-    badge.holes.push(new THREE.Path(letterM.map(([x, y]) => new THREE.Vector2(x, y))).closePath());
+
+    // Draw the letter on a canvas: one copy in colour for the face, one in grey as a bump map
+    // so the letter looks pressed in. No font file needed.
+    function letterCanvas(fill, ink) {
+      const c = document.createElement("canvas");
+      c.width = c.height = 1024;
+      const g = c.getContext("2d");
+      g.fillStyle = fill;
+      g.fillRect(0, 0, 1024, 1024);
+      g.fillStyle = ink;
+      g.font = '900 600px "Arial Black", "Helvetica Neue", Arial, sans-serif';
+      g.textAlign = "center";
+      g.textBaseline = "alphabetic";
+      const m = g.measureText(letter);
+      const width = m.actualBoundingBoxLeft + m.actualBoundingBoxRight;
+      const scale = Math.min(1, 560 / width);
+      g.translate(512, 512);
+      g.scale(scale, scale);
+      g.fillText(letter, 0, (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2);
+      const texture = new THREE.CanvasTexture(c);
+      // Face UVs run from -1 to 1 across the badge; map them onto the whole texture.
+      texture.repeat.set(0.5, 0.5);
+      texture.offset.set(0.5, 0.5);
+      texture.anisotropy = 8;
+      return texture;
+    }
+    const faceMap = letterCanvas(`#${colors.accent}`, `#${colors.bg}`);
+    faceMap.colorSpace = THREE.SRGBColorSpace;
+    const bumpMap = letterCanvas("#ffffff", "#000000");
 
     const geometry = new THREE.ExtrudeGeometry(badge, {
       depth: 0.4,
@@ -82,20 +124,22 @@
     });
     geometry.center();
 
-    const material = new THREE.MeshStandardMaterial({ color: 0xffb547, metalness: 0.5, roughness: 0.3 });
-    const logo = new THREE.Mesh(geometry, material);
+    // The badge has two material groups: the flat faces (with the letter) and the sides.
+    const faces = new THREE.MeshStandardMaterial({ map: faceMap, bumpMap, bumpScale: 4, metalness: 0.5, roughness: 0.3 });
+    const sides = new THREE.MeshStandardMaterial({ color: new THREE.Color(`#${colors.accent}`), metalness: 0.5, roughness: 0.3 });
+    const logo = new THREE.Mesh(geometry, [faces, sides]);
     const pivot = new THREE.Group();
     pivot.add(logo);
     scene.add(pivot);
 
-    scene.add(new THREE.HemisphereLight(0xd9d3ff, 0x2a1f5c, 2));
+    scene.add(new THREE.HemisphereLight(0xffffff, new THREE.Color(`#${colors.bg}`), 2));
     const key = new THREE.DirectionalLight(0xffffff, 3);
     key.position.set(3, 4, 5);
     scene.add(key);
-    const rim = new THREE.PointLight(0x6bd5ff, 40, 20);
+    const rim = new THREE.PointLight(new THREE.Color(`#${colors.accent2}`), 40, 20);
     rim.position.set(-3, 1, -2);
     scene.add(rim);
-    const warm = new THREE.PointLight(0xffd23f, 25, 20);
+    const warm = new THREE.PointLight(new THREE.Color(`#${colors.accent}`), 25, 20);
     warm.position.set(2, -3, 2);
     scene.add(warm);
 
