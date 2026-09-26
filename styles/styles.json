@@ -281,8 +281,8 @@
   {
     "slug": "swiss-geometric",
     "name": "Swiss geometric",
-    "summary": "Bold circles, squares and bars snap along a strict grid beside a tight grotesk headline.",
+    "summary": "A bold Swiss poster that lists your services, with a geometric marker for each one.",
     "library": "GSAP",
-    "tags": ["text", "brand"]
+    "tags": ["brand", "promo", "text"]
   }
 ]

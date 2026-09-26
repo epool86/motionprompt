@@ -1,15 +1,22 @@
 Make my video in this style: Swiss geometric.
 
 Look and motion
-- A Bauhaus and Swiss poster that moves. Bold flat shapes (circles, squares, half circles, quarter circles and thick lines) sit on a strict, visible grid with thin hairlines. Only three or four flat colours, no gradients or shadows.
+- Present my business and list my services as a bold Swiss style poster in motion. Bold flat shapes (circles, squares, half circles, quarter circles and thick lines) sit on a strict, visible grid with thin hairlines. Only three or four flat colours, no gradients or shadows.
 - Every move is precise: shapes slide along the grid one direction at a time, turn in quarter turns and snap exactly into their cells, with crisp ease in and ease out. No wobble, no bounce.
-- Rearrange the shapes into a few different compositions, holding each one for a moment like a new poster.
-- Set my message as a big headline in its own area of the grid, left aligned, with a thick rule above it. Each line slides up into view from behind a clean edge.
-- Open by popping the shapes on and revealing the headline, and end by clearing everything back to the empty page.
+- Open with my brand line: my business name big, with a small role line under it (for example "Design & Motion"), while the shapes compose around it.
+- Then a numbered list of my services or products from my request (3 to 5 items, for example "01 Branding"), in large, tight type with thin rules between the rows. The rows slide up into view one by one. Light up one row at a time in the accent colour, and each time rearrange the shapes into a bold marker for that item (for example a circle, a grid of squares or a quarter circle).
+- Close with one key fact or price from my request, and my call to action as a solid accent button with my contact (website or handle) next to it.
+- Keep the text in its own area of the grid, left aligned, with a thick rule above it. Each line slides up from behind a clean edge. End by clearing everything back to the empty page, so the video can loop.
+- Keep every line short and easy to read at a glance.
 
 Type and colour
-- A clean, heavy grotesk sans serif font (like Archivo or Inter), tight letter spacing and tight line spacing.
+- A clean, heavy grotesk sans serif font (like Archivo or Inter), tight letter spacing and tight line spacing, with small spaced capitals for the role line, the numbers and the contact.
 - Use my brand colours if I give them. Otherwise use warm off white #efe9dc, near black #141414, signal red #e23b2e and cobalt blue #1f45c7.
+
+Sound
+- Effects: crisp, precise and dry. A small snap as each shape pops on or away, a sharp tick as each line and each list row slides in, a soft slide that swells and settles with each move along the grid, quick ratchet clicks through every quarter turn, a clean mechanical thunk as each shape locks into its cell, a subtle bright ping when a row lights up, and a clean two-note confirm tone when the call to action button is pressed.
+- Music: a minimal, precise electronic bed for a design studio mood, about 120 bpm, with each service and the call to action starting on a bar line: a clean kick, clicky hats, a rim click on 2 and 4, a simple bass line and a small pluck on each bar. It drops out for the build out and loops cleanly.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
 
 Output
 - Size: {size}

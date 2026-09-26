@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Swiss geometric demo</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/archivo@5.3.0/800.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/archivo@5.3.0/500.css">
   <style>
-    /* Colours can be set from the URL: ?text=...&bg=efe9dc&ink=141414&accent=e23b2e&accent2=1f45c7 */
+    /* Colours can be set from the URL: ?text=Brand|Service 1|Service 2|Service 3|Call to action&bg=efe9dc&ink=141414&accent=e23b2e&accent2=1f45c7 */
     :root {
       --bg: #efe9dc;
       --ink: #141414;
@@ -19,6 +20,8 @@
       height: 100%;
       overflow: hidden;
       background: var(--bg);
+      color: var(--ink);
+      font-family: "Archivo", "Helvetica Neue", Arial, sans-serif;
     }
 
     .stage {
@@ -47,30 +50,70 @@
       will-change: transform;
     }
 
-    .headline {
+    /* Every piece of text sits in a mask so it can slide up into view */
+    .block {
       position: absolute;
       margin: 0;
-      color: var(--ink);
-      font-family: "Archivo", "Helvetica Neue", Arial, sans-serif;
-      font-weight: 800;
-      letter-spacing: -0.045em;
-      line-height: 0.9;
       white-space: nowrap;
     }
-
-    /* Each line sits in a mask so it can slide up into view */
     .line {
       display: block;
       overflow: hidden;
-      padding: 0.02em 0.1em 0.06em 0;
-      margin-bottom: -0.04em;
     }
+    .line > span { display: inline-block; }
 
-    .line span { display: inline-block; }
+    .big {
+      font-weight: 800;
+      letter-spacing: -0.045em;
+      line-height: 0.9;
+    }
+    .big .line { padding: 0.02em 0.1em 0.07em 0; margin-bottom: -0.05em; }
+
+    .small {
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      line-height: 1;
+    }
+    .small .line { padding: 0.1em 0.1em 0.14em 0; }
+
+    .row {
+      position: absolute;
+      white-space: nowrap;
+    }
+    .row .hair {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 1px;
+      background: color-mix(in srgb, var(--ink) 40%, transparent);
+      transform-origin: 0 50%;
+    }
+    .row .num {
+      position: absolute;
+      left: 0;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    .row .num .line { padding: 0.08em 0 0.1em; }
+    .row .name { position: absolute; }
+
+    .btn {
+      background: var(--accent);
+      color: var(--bg);
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      line-height: 1;
+      padding: 0.55em 0.8em 0.5em;
+    }
+    .foot .line { padding: 0; }
 
     .rule {
       position: absolute;
-      height: 2px;
       background: var(--ink);
       transform-origin: 0 50%;
     }
@@ -80,7 +123,13 @@
   <div class="stage" id="stage" role="img">
     <div class="zone" id="zone"></div>
     <div class="rule" id="rule"></div>
-    <h1 class="headline" id="headline"></h1>
+    <div class="block big" id="brand"></div>
+    <div class="block small" id="role"></div>
+    <div id="list"></div>
+    <div class="block small" id="tag"></div>
+    <div class="block big" id="fact"></div>
+    <div class="block foot" id="cta"></div>
+    <div class="block small" id="contact"></div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
@@ -91,16 +140,27 @@
       const value = params.get(key);
       if (/^[0-9a-f]{6}$/i.test(value ?? "")) root.style.setProperty(`--${key}`, `#${value}`);
     }
-    const text = (params.get("text") || "Make it move").trim().slice(0, 48);
+    const css = getComputedStyle(root);
+    const ink = css.getPropertyValue("--ink").trim(), accent = css.getPropertyValue("--accent").trim();
 
-    const stage = document.getElementById("stage");
-    const zone = document.getElementById("zone");
-    const rule = document.getElementById("rule");
-    const headline = document.getElementById("headline");
-    stage.setAttribute("aria-label", `Bold geometric shapes moving on a grid, with the headline: ${text}`);
+    // Content: ?text=Brand|Service 1|Service 2|Service 3|Call to action (1 to 5 services).
+    // The brand can carry a role line after a slash: "Kedai Mei / Coffee & cakes".
+    const parts = (params.get("text") || "").split("|").map((s) => s.trim().slice(0, 40)).filter(Boolean);
+    const [brandPart, rolePart] = (parts[0] || "").split("/").map((s) => s.trim().slice(0, 28));
+    const brandText = brandPart || "STUDIO RUANG";
+    const items = (parts.length > 1 ? parts.slice(1, parts.length >= 3 ? -1 : undefined) : ["Branding", "Web design", "Motion video"]).slice(0, 5);
+    const ctaText = parts.length >= 3 ? parts[parts.length - 1] : "Book a call";
+    const roleText = parts[0] ? rolePart || "" : "Design & Motion";
+    const factText = "From RM 800";
+    const contactText = brandPart ? "@" + (brandText.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 18) || "yourbrand") : "studioruang.my";
+
+    const $ = (id) => document.getElementById(id);
+    const stage = $("stage"), zone = $("zone"), rule = $("rule");
+    const brandEl = $("brand"), roleEl = $("role"), listEl = $("list"), tagEl = $("tag");
+    const factEl = $("fact"), ctaEl = $("cta"), contactEl = $("contact");
+    stage.setAttribute("aria-label", `A Swiss style poster in motion for ${brandText}${roleText ? `, ${roleText}` : ""}. Services: ${items.map((s, i) => `${String(i + 1).padStart(2, "0")} ${s}`).join(", ")}. ${factText}. ${ctaText}: ${contactText}`);
 
     // Split words into n lines, keeping the longest line as short as possible.
-    const words = text.split(/\s+/).filter(Boolean);
     function split(list, n) {
       if (n === 1 || list.length === 1) return [list.join(" ")];
       let best = null;
@@ -112,60 +172,92 @@
       return best.lines;
     }
 
-    // A hidden copy of the headline style, used to measure line widths.
-    const measure = document.createElement("div");
-    measure.className = "headline";
-    Object.assign(measure.style, { visibility: "hidden", fontSize: "100px", left: "0", top: "0" });
-    document.body.append(measure);
-    const widthAt100 = (line) => {
-      measure.textContent = line;
-      return measure.getBoundingClientRect().width;
+    // Hidden copies used to measure text width at a 100px size.
+    const probe = (cls) => {
+      const el = document.createElement("div");
+      el.className = `block ${cls}`;
+      Object.assign(el.style, { visibility: "hidden", fontSize: "100px", left: "0", top: "0" });
+      document.body.append(el);
+      return (text) => { el.textContent = text; return el.getBoundingClientRect().width; };
     };
+    const wideBig = probe("big"), wideSmall = probe("small");
+    const wideBtn = probe("btn");
 
-    let lines = [], spans = [];
-    function setLines(list) {
-      lines = list;
-      headline.replaceChildren();
-      spans = list.map((line) => {
-        const wrap = document.createElement("span");
-        wrap.className = "line";
+    // Fill a block with masked lines. Returns the inner spans that slide.
+    function setLines(el, lines) {
+      el.replaceChildren();
+      return lines.map((text) => {
+        const line = document.createElement("span");
+        line.className = "line";
         const span = document.createElement("span");
-        span.textContent = line;
-        wrap.append(span);
-        headline.append(wrap);
+        span.textContent = text;
+        line.append(span);
+        el.append(line);
         return span;
       });
     }
 
-    // Shapes, sized in grid cells. Each has a style and a size.
-    const cell = (w, h, css) => ({ w, h, css });
-    const defs = {
-      circle: cell(2, 2, { background: "var(--accent)", borderRadius: "50%" }),
-      square: cell(1, 1, { background: "var(--accent2)" }),
-      quarter: cell(1, 1, { background: "var(--accent)", borderTopLeftRadius: "100%" }),
-      half: cell(2, 1, { background: "var(--ink)", borderRadius: "999px 999px 0 0" }),
-      bar: cell(3, 0.18, { background: "var(--ink)" }),
-      dot: cell(0.36, 0.36, { background: "var(--ink)", borderRadius: "50%" }),
-    };
+    // The service rows: a hairline, a number and a name, each in a mask.
+    const rows = items.map((name, i) => {
+      const row = document.createElement("div");
+      row.className = "row";
+      const hair = document.createElement("i");
+      hair.className = "hair";
+      const num = document.createElement("div");
+      num.className = "num";
+      const nameEl = document.createElement("div");
+      nameEl.className = "name big";
+      row.append(hair, num, nameEl);
+      listEl.append(row);
+      return { row, hair, num: setLines(num, [String(i + 1).padStart(2, "0")])[0], numEl: num, nameEl, name: setLines(nameEl, [name])[0] };
+    });
+    const roleSpan = setLines(roleEl, [roleText])[0];
+    const tagSpan = setLines(tagEl, [brandText])[0];
+    const contactSpan = setLines(contactEl, [contactText])[0];
+    const ctaSpan = setLines(ctaEl, [""])[0];
+    ctaSpan.className = "btn";
+    ctaSpan.textContent = `${ctaText} →`;
+    let brandSpans = [], factSpans = [];
 
-    // Three arrangements on the 3 by 3 grid: centre x, centre y (in cells) and rotation.
-    // The last one repeats the first, turned a full circle, so the loop is seamless.
-    const poses = {
-      circle: [[1, 1, 0], [2, 2, 0], [1, 2, 0], [1, 1, 0]],
-      square: [[2.5, 0.5, 0], [0.5, 0.5, 90], [2.5, 2.5, 180], [2.5, 0.5, 360]],
-      quarter: [[2.5, 1.5, 0], [1.5, 0.5, 90], [2.5, 1.5, 180], [2.5, 1.5, 360]],
-      half: [[1, 2.5, 0], [0.5, 2, -90], [2, 0.5, -180], [1, 2.5, -360]],
-      bar: [[1.5, 2, 0], [1, 1.5, 90], [1.5, 1, 180], [1.5, 2, 360]],
-      dot: [[2.5, 2.5, 0], [2.5, 0.5, 0], [0.5, 0.5, 0], [2.5, 2.5, 0]],
-    };
-
-    const shapes = Object.entries(defs).map(([name, d]) => {
+    // Shapes, sized in grid cells.
+    const cell = (w, h, style) => ({ w, h, style });
+    const defs = [
+      ["circle", cell(2, 2, { background: "var(--accent)", borderRadius: "50%" })],
+      ["sq1", cell(1, 1, { background: "var(--accent2)" })],
+      ["sq2", cell(1, 1, { background: "var(--accent2)" })],
+      ["sq3", cell(1, 1, { background: "var(--accent2)" })],
+      ["sq4", cell(1, 1, { background: "var(--accent2)" })],
+      ["quarter", cell(2, 2, { background: "var(--accent)", borderTopLeftRadius: "100%" })],
+      ["half", cell(2, 1, { background: "var(--ink)", borderRadius: "999px 999px 0 0" })],
+      ["bar", cell(3, 0.16, { background: "var(--ink)" })],
+      ["dot", cell(0.36, 0.36, { background: "var(--ink)", borderRadius: "50%" })],
+    ];
+    const shapes = defs.map(([name, d]) => {
       const node = document.createElement("div");
       node.className = "shape";
-      Object.assign(node.style, d.css);
+      Object.assign(node.style, d.style);
       zone.append(node);
-      const [x, y, r] = poses[name][0];
-      return { name, node, d, state: { x, y, r, s: 0 } };
+      return { name, node, d, state: { x: 1.5, y: 1.5, r: 0, s: 0 } };
+    });
+
+    // Arrangements on the 3 by 3 grid: [centre x, centre y, rotation, scale] per shape.
+    // Scale 0 means the shape is put away for that arrangement.
+    const A = (o) => defs.map(([name]) => o[name] || [1.5, 1.5, 0, 0]);
+    const opening = A({
+      circle: [1, 1, 0, 1], sq1: [2.5, 0.5, 0, 1], sq2: [2.5, 1.5, 0, 0], sq3: [1, 1, 0, 0], sq4: [2, 2, 0, 0],
+      quarter: [2.5, 2.5, 0, 0.5], half: [1, 2.5, 0, 1], bar: [1.5, 2, 0, 1], dot: [2.5, 1.5, 0, 1],
+    });
+    // One marker per service: a circle, a grid of squares, a quarter circle, a half circle, stripes.
+    const markers = [
+      A({ circle: [1.5, 1.5, 0, 1.5], bar: [1.5, 1.5, 90, 1], dot: [1.5, 1.5, 0, 1.4], sq1: [2.5, 0.5, 0, 0], quarter: [2.5, 2.5, 0, 0], half: [1, 2.5, 0, 0] }),
+      A({ sq1: [1, 1, 0, 0.86], sq2: [2, 1, 0, 0.86], sq3: [1, 2, 0, 0.86], sq4: [2, 2, 0, 0.86], bar: [1.5, 0.25, 0, 1], circle: [1.5, 1.5, 0, 0], dot: [1.5, 1.5, 0, 0] }),
+      A({ quarter: [1.5, 1.5, 0, 1.5], dot: [2.5, 2.5, 0, 1], bar: [1.5, 0.25, 0, 0], sq1: [1, 1, 0, 0], sq2: [2, 1, 0, 0], sq3: [1, 2, 0, 0], sq4: [2, 2, 0, 0] }),
+      A({ half: [1.5, 2.25, 0, 1.5], bar: [1.5, 2.9, 0, 1], dot: [1.5, 0.5, 0, 1.4], quarter: [2.5, 2.5, 90, 0] }),
+      A({ sq1: [0.5, 1.5, 0, 0.86], sq2: [1.5, 1.5, 0, 0.86], sq3: [2.5, 1.5, 0, 0.86], bar: [1.5, 0.75, 0, 1], dot: [1.5, 2.5, 0, 1.4], half: [1.5, 2.25, 0, 0] }),
+    ];
+    const closing = A({
+      circle: [2, 2, 0, 1], sq1: [2.5, 0.5, 0, 1], half: [1, 0.5, 180, 1], quarter: [0.5, 2.5, 90, 0.5],
+      bar: [0.5, 1.5, 0, 0], dot: [0.5, 1.5, 0, 1], sq2: [1.5, 1.5, 0, 0], sq3: [1, 2, 0, 0], sq4: [2, 2, 0, 0],
     });
 
     let c = 100;
@@ -178,103 +270,638 @@
       }
     }
 
-    // Place the grid and the headline for the current window shape.
+    // Place the grid and the text for the current window shape.
+    let U = 100;
     function layout() {
       const W = innerWidth, H = innerHeight, u = Math.min(W, H), m = u * 0.08, gap = u * 0.06;
+      U = u;
       let zx, zy, box;
       if (W / H > 1.15) {
-        c = Math.min((H - 2 * m) / 3, (W * 0.5) / 3);
+        c = Math.min((H - 2 * m) / 3, (W * 0.44) / 3);
         zx = W - m - 3 * c;
         zy = (H - 3 * c) / 2;
-        box = { x: m, y: m, w: zx - m - gap, h: H - 2 * m, bottom: zy + 3 * c };
+        box = { x: m, y: zy, w: zx - m - gap * 1.2, bottom: zy + 3 * c };
       } else {
-        c = Math.min((W - 2 * m) / 3, (H * (W / H > 0.9 ? 0.52 : 0.6) - m) / 3);
+        const share = W / H > 0.9 ? 0.46 : u < 300 ? 0.44 : 0.5;
+        c = Math.min((W - 2 * m) / 3, (H * share - m) / 3);
         zx = W - m - 3 * c;
         zy = m;
-        box = { x: m, y: zy + 3 * c + gap, w: W - 2 * m, h: H - m - (zy + 3 * c + gap), bottom: H - m };
+        box = { x: m, y: zy + 3 * c + gap, w: W - 2 * m, bottom: H - m };
       }
+      box.h = box.bottom - box.y;
       Object.assign(zone.style, { left: `${zx}px`, top: `${zy}px`, width: `${3 * c}px`, height: `${3 * c}px` });
       zone.style.setProperty("--c", `${c}px`);
 
-      // Fit the headline: try three, two and one lines and keep the biggest type.
-      // Fewer lines must win clearly, so tall frames keep a stacked headline.
+      // A thick rule on top, the main text under it, a footer line at the bottom.
+      const ruleH = Math.max(2, u * 0.008);
+      Object.assign(rule.style, { left: `${box.x}px`, top: `${box.y}px`, width: `${box.w}px`, height: `${ruleH}px` });
+      let fs = Math.max(6.5, Math.min(box.h * 0.075, u * 0.034, 20));
+      // The footer must fit the button and the contact side by side.
+      const footW = (wideBtn(ctaSpan.textContent) * 1.25 + wideSmall(contactText)) / 100 + 2;
+      fs = Math.min(fs, box.w / footW);
+      const footH = fs * 2.56;
+      const top = box.y + ruleH + fs * 1.1;
+      const area = { x: box.x, y: top, w: box.w, h: box.bottom - footH - fs * 1.2 - top };
+
+      // Brand: one to three lines, the biggest that fits.
+      const words = brandText.split(/\s+/).filter(Boolean);
       let pick = null;
       for (let n = Math.min(3, words.length); n >= 1; n--) {
         const list = split(words, n);
-        const widest = Math.max(...list.map(widthAt100)) || 1;
-        const size = Math.min((box.w * 100) / widest, box.h / (n * 0.96), u * 0.3);
+        const size = Math.min((area.w * 100) / (Math.max(...list.map(wideBig)) || 1), area.h / (n * 0.92), u * 0.26);
         if (!pick || size > pick.size * 1.12) pick = { list, size };
       }
-      const changed = pick.list.join("|") !== lines.join("|");
-      if (changed) setLines(pick.list);
-      const size = pick.size;
-      headline.style.fontSize = `${size}px`;
-      const hh = headline.getBoundingClientRect().height;
-      headline.style.left = `${box.x - size * 0.04}px`;
-      headline.style.top = `${box.bottom - hh}px`;
-      Object.assign(rule.style, {
-        left: `${box.x}px`,
-        top: `${box.bottom - hh - size * 0.18}px`,
-        width: `${box.w}px`,
-        height: `${Math.max(2, u * 0.008)}px`,
+      if (pick.list.join("|") !== brandSpans.map((s) => s.textContent).join("|")) brandSpans = setLines(brandEl, pick.list);
+      Object.assign(brandEl.style, { left: `${area.x - pick.size * 0.04}px`, top: `${area.y}px`, fontSize: `${pick.size}px` });
+
+      // Footer items sit on the bottom edge.
+      const footTop = box.bottom - footH;
+      for (const el of [roleEl, tagEl]) Object.assign(el.style, { left: `${box.x}px`, top: `${box.bottom - fs * 1.24}px`, fontSize: `${fs}px` });
+      Object.assign(ctaEl.style, { left: `${box.x}px`, top: `${footTop}px`, fontSize: `${fs * 1.25}px` });
+      const contactW = (wideSmall(contactText) / 100) * fs;
+      Object.assign(contactEl.style, { left: `${box.x + box.w - contactW - fs * 0.14}px`, top: `${box.bottom - fs * 1.24}px`, fontSize: `${fs}px` });
+
+      // Service list: a number column, then the names as big as the rows allow.
+      const n = rows.length;
+      const widest = Math.max(...items.map(wideBig)) / 100;
+      let S = Math.min(area.w / (0.62 + widest), area.h / (n * 1.18), u * 0.15);
+      const numSize = Math.max(fs * 0.9, S * 0.26);
+      // Keep the number column clear of the names when the type gets small.
+      const indent = Math.max(S * 0.62, numSize * 2.2);
+      S = Math.min(S, (area.w - indent) / widest);
+      rows.forEach((r, i) => {
+        Object.assign(r.row.style, { left: `${area.x}px`, top: `${area.y + i * S * 1.18}px`, width: `${area.w}px`, height: `${S * 1.18}px` });
+        Object.assign(r.numEl.style, { top: `${S * 0.2}px`, fontSize: `${numSize}px` });
+        Object.assign(r.nameEl.style, { left: `${indent}px`, top: `${S * 0.1}px`, fontSize: `${S}px` });
       });
+
+      // Key fact: one or two lines.
+      const fw = factText.split(/\s+/);
+      let fpick = null;
+      for (let k = Math.min(2, fw.length); k >= 1; k--) {
+        const list = split(fw, k);
+        const size = Math.min((area.w * 100) / Math.max(...list.map(wideBig)), area.h / (k * 0.92), u * 0.2);
+        if (!fpick || size > fpick.size * 1.12) fpick = { list, size };
+      }
+      if (fpick.list.join("|") !== factSpans.map((s) => s.textContent).join("|")) factSpans = setLines(factEl, fpick.list);
+      Object.assign(factEl.style, { left: `${area.x - fpick.size * 0.04}px`, top: `${area.y}px`, fontSize: `${fpick.size}px` });
       render();
-      return changed;
     }
 
-    let tl;
+    // ---- Timeline. Sound cues are noted here too, so sound and motion share one set of numbers. ----
+    let tl, cues = [];
     const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    const E = "power4.inOut";
+    const panOf = (x) => ((x - 1.5) / 1.5) * 0.45;
+
+    // Move every shape from one arrangement to the next, one axis at a time.
+    function arrange(from, to, at) {
+      shapes.forEach(({ d, state }, i) => {
+        const [x0, y0, r0, s0] = from[i], [x1, y1, r1, s1] = to[i];
+        const t = at + i * 0.04;
+        const size = Math.max(d.w, d.h) * Math.max(s0, s1, 0.3);
+        if (s0 === 0 && s1 === 0) {
+          tl.set(state, { x: x1, y: y1, r: r1 }, t);
+        } else if (s0 === 0) {
+          // Appears in its new cell.
+          tl.set(state, { x: x1, y: y1, r: r1 }, t)
+            .to(state, { s: s1, duration: 0.55, ease: "expo.out" }, t + 0.25);
+          cues.push({ t: t + 0.27, type: "snap", i, pan: panOf(x1) });
+        } else if (s1 === 0) {
+          // Shrinks away where it is.
+          tl.to(state, { s: 0, duration: 0.35, ease: "expo.in" }, t)
+            .set(state, { x: x1, y: y1, r: r1 }, t + 0.36);
+          cues.push({ t: t + 0.3, type: "snap", i, out: 1, pan: panOf(x0) });
+        } else {
+          if (x1 !== x0 || r1 !== r0 || s1 !== s0) tl.to(state, { x: x1, r: r1, s: s1, duration: 0.5, ease: E }, t);
+          if (y1 !== y0) tl.to(state, { y: y1, duration: 0.5, ease: E }, t + 0.45);
+          if (x1 !== x0) cues.push({ t, type: "slide", size, p0: panOf(x0), p1: panOf(x1) });
+          if (y1 !== y0) cues.push({ t: t + 0.45, type: "slide", size, p0: panOf(x1), p1: panOf(x1) });
+          ratchet(t, 0.5, r1 - r0, panOf(x1));
+          if (x1 !== x0 || y1 !== y0 || r1 !== r0 || s1 !== s0) cues.push({ t: y1 !== y0 ? t + 0.95 : t + 0.5, type: "thunk", size, pan: panOf(x1) });
+        }
+      });
+    }
+    // Ratchet clicks spaced evenly along an eased turn, five per quarter turn.
+    const inOut = gsap.parseEase(E);
+    function ratchet(t, dur, turn, pan) {
+      const clicks = Math.round((Math.abs(turn) / 90) * 5);
+      for (let k = 1; k <= clicks; k++) {
+        let lo = 0, hi = 1;
+        for (let n = 0; n < 24; n++) { const mid = (lo + hi) / 2; if (inOut(mid) < k / (clicks + 1)) lo = mid; else hi = mid; }
+        cues.push({ t: t + lo * dur, type: "click", pan });
+      }
+    }
+    // Lines slide up out of their masks, with a sharp tick for each.
+    function linesIn(spans, at, gapT = 0.09, j0 = 0) {
+      tl.fromTo(spans, { yPercent: 130 }, { yPercent: 0, duration: 0.8, ease: "expo.out", stagger: gapT, immediateRender: false }, at);
+      spans.forEach((s, j) => cues.push({ t: at + j * gapT + 0.05, type: "tick", j: j0 + j }));
+    }
+    function linesOut(spans, at, gapT = 0.05) {
+      tl.to(spans, { yPercent: -130, duration: 0.45, ease: "expo.in", stagger: gapT }, at);
+      spans.forEach((s, j) => cues.push({ t: at + j * gapT + 0.4, type: "tick", j, out: 1 }));
+    }
+
     function makeTimeline(time = 0) {
       if (tl) tl.kill();
+      cues = [];
+      const n = rows.length;
+      const listAt = 3, ctaAt = 3 + 2 * n, outAt = ctaAt + 2, L = outAt + 1;
       tl = gsap.timeline({ repeat: -1, onUpdate: render });
-      const all = shapes.map((s) => s.state);
-      all.forEach((state) => { state.s = 0; });
 
-      // Build in: shapes pop on, the rule draws, the headline slides up line by line.
-      tl.to(all, { s: 1, duration: 0.6, ease: "expo.out", stagger: 0.07 }, 0.1)
-        .fromTo(rule, { scaleX: 0, transformOrigin: "0% 50%" }, { scaleX: 1, duration: 0.8, ease: "expo.inOut" }, 0)
-        .fromTo(spans, { yPercent: 110 }, { yPercent: 0, duration: 0.8, ease: "expo.out", stagger: 0.09 }, 0.25);
+      // Everything starts hidden, in the opening arrangement.
+      shapes.forEach(({ state }, i) => tl.set(state, { x: opening[i][0], y: opening[i][1], r: opening[i][2], s: 0 }, 0));
+      const texts = [...brandSpans, roleSpan, tagSpan, ...factSpans, ctaSpan, contactSpan, ...rows.flatMap((r) => [r.num, r.name])];
+      tl.set(texts, { yPercent: 130 }, 0)
+        .set(rows.map((r) => r.hair), { scaleX: 0 }, 0)
+        .set(rows.map((r) => r.row), { color: ink }, 0)
+        .set(ctaSpan, { scale: 1, transformOrigin: "0% 50%" }, 0);
 
-      // Three moves between arrangements. Shapes slide along one axis at a time,
-      // across and turning first, then up or down, so they snap to the grid.
-      [2.1, 4.3, 6.5].forEach((at, step) => {
-        shapes.forEach(({ name, state }, i) => {
-          const [x, y, r] = poses[name][step + 1];
-          const t = at + i * 0.05;
-          tl.to(state, { x, r, duration: 0.5, ease: "power4.inOut" }, t)
-            .to(state, { y, duration: 0.5, ease: "power4.inOut" }, t + 0.45);
-        });
+      // 1. Brand: the rule draws, shapes pop on, the name and role slide up.
+      tl.fromTo(rule, { scaleX: 0, transformOrigin: "0% 50%" }, { scaleX: 1, duration: 0.8, ease: "expo.inOut", immediateRender: false }, 0);
+      cues.push({ t: 0, type: "draw", dur: 0.8, dir: 1 });
+      let k = 0;
+      shapes.forEach(({ state }, i) => {
+        if (!opening[i][3]) return;
+        const t = 0.1 + k++ * 0.07;
+        tl.to(state, { s: opening[i][3], duration: 0.6, ease: "expo.out" }, t);
+        cues.push({ t: t + 0.02, type: "snap", i, pan: panOf(opening[i][0]) });
+      });
+      linesIn(brandSpans, 0.25);
+      const roleSpans = roleText ? [roleSpan] : [];
+      linesIn(roleSpans, 0.6, 0.09, brandSpans.length);
+      linesOut([...brandSpans, ...roleSpans], 2.75);
+
+      // 2. Services: the rows come in, then each one lights up while the shapes
+      // turn into its marker.
+      rows.forEach((r, i) => {
+        const t = listAt + 0.05 + i * 0.1;
+        tl.fromTo(r.hair, { scaleX: 0 }, { scaleX: 1, duration: 0.6, ease: "expo.inOut", immediateRender: false }, t);
+        tl.fromTo([r.num, r.name], { yPercent: 130 }, { yPercent: 0, duration: 0.8, ease: "expo.out", stagger: 0.04, immediateRender: false }, t + 0.1);
+        cues.push({ t: t + 0.15, type: "tick", j: i });
+      });
+      linesIn([tagSpan], listAt + 0.4, 0.09, 5);
+      let from = opening;
+      rows.forEach((r, i) => {
+        const at = listAt + i * 2;
+        const marker = markers[i % markers.length];
+        arrange(from, marker, at);
+        from = marker;
+        if (i) tl.to(rows[i - 1].row, { color: ink, duration: 0.25, ease: "power2.out" }, at);
+        tl.to(r.row, { color: accent, duration: 0.25, ease: "power2.out" }, at + 0.3);
+        cues.push({ t: at + 0.3, type: "accent", k: i });
+        // The quarter circle marker makes one quarter turn while it is on show.
+        if (marker === markers[2]) {
+          const q = shapes.find((s) => s.name === "quarter").state;
+          tl.to(q, { r: 90, duration: 0.6, ease: E }, at + 1.15);
+          ratchet(at + 1.15, 0.6, 90, 0);
+          cues.push({ t: at + 1.75, type: "thunk", size: 3, pan: 0 });
+          from = from.map((p, j) => (shapes[j].name === "quarter" ? [p[0], p[1], 90, p[3]] : p));
+        }
       });
 
+      // 3. Key fact and call to action, with a small press on the button.
+      tl.to(rows[n - 1].row, { color: ink, duration: 0.25 }, ctaAt);
+      tl.to(rows.flatMap((r) => [r.num, r.name]), { yPercent: -130, duration: 0.45, ease: "expo.in", stagger: 0.03 }, ctaAt - 0.15)
+        .to(rows.map((r) => r.hair), { scaleX: 0, transformOrigin: "100% 50%", duration: 0.5, ease: "expo.in", stagger: 0.04 }, ctaAt - 0.1)
+        .set(rows.map((r) => r.hair), { transformOrigin: "0% 50%" }, ctaAt + 0.5);
+      rows.forEach((r, i) => cues.push({ t: ctaAt - 0.15 + i * 0.06 + 0.38, type: "tick", j: i, out: 1 }));
+      linesOut([tagSpan], ctaAt - 0.25);
+      arrange(from, closing, ctaAt);
+      linesIn(factSpans, ctaAt + 0.35);
+      linesIn([ctaSpan], ctaAt + 0.7, 0.09, 3);
+      linesIn([contactSpan], ctaAt + 0.85, 0.09, 4);
+      tl.to(ctaSpan, { scale: 0.93, duration: 0.09, ease: "power2.in" }, ctaAt + 1.3)
+        .to(ctaSpan, { scale: 1, duration: 0.35, ease: "expo.out" }, ctaAt + 1.39);
+      cues.push({ t: ctaAt + 1.39, type: "confirm" });
+
       // Build out, then an empty beat before the loop starts again.
-      tl.to(all, { s: 0, duration: 0.45, ease: "expo.in", stagger: 0.05 }, 8.8)
-        .to(spans, { yPercent: -110, duration: 0.5, ease: "expo.in", stagger: 0.06 }, 8.9)
-        .to(rule, { scaleX: 0, transformOrigin: "100% 50%", duration: 0.5, ease: "expo.in" }, 9)
-        .set({}, {}, 10);
+      shapes.forEach(({ state }, i) => {
+        if (!closing[i][3]) return;
+        tl.to(state, { s: 0, duration: 0.45, ease: "expo.in" }, outAt + i * 0.04);
+        cues.push({ t: outAt + i * 0.04 + 0.4, type: "snap", i, out: 1, pan: panOf(closing[i][0]) });
+      });
+      linesOut([...factSpans, ctaSpan, contactSpan], outAt + 0.1);
+      tl.to(rule, { scaleX: 0, transformOrigin: "100% 50%", duration: 0.5, ease: "expo.in" }, outAt + 0.2)
+        .set({}, {}, L);
+      cues.push({ t: outAt + 0.2, type: "draw", dur: 0.5, dir: -1 });
 
       apply(time);
+      sound.attach({ length: tl.duration(), time: () => tl.totalTime(), running: () => !tl.paused() });
     }
 
-    // Reduced motion: hold the first arrangement with the headline in place.
+    // Reduced motion: a still of the full list, the first service lit, with the call to action.
     function apply(time = tl.time()) {
       if (reduce.matches) {
-        tl.pause(1.6);
+        tl.pause(3 + 1.6);
+        gsap.set(tagSpan, { yPercent: 130 });
+        gsap.set([ctaSpan, contactSpan], { yPercent: 0, scale: 1 });
         render(); // seeking does not fire onUpdate, so draw the frame here
       } else tl.play(time);
     }
-    reduce.addEventListener("change", () => apply());
+    reduce.addEventListener("change", () => makeTimeline(tl.time()));
 
     function build() {
       layout();
       makeTimeline();
+      let timer;
       addEventListener("resize", () => {
-        if (layout()) makeTimeline(tl.time());
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          const t = tl.time();
+          layout();
+          makeTimeline(t);
+        }, 120);
       });
     }
 
-    // Wait briefly for the font so the headline is measured in the right face.
+    // Sound: every sound is made with the Web Audio API, no files. It is off until the
+    // parent page (or ?sound=1 / ?sound=effects) turns it on, and it follows the GSAP
+    // timeline clock so each hit lands on its picture.
+    const sound = (() => {
+      const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+      const LEVEL = 0.55, MUSIC = 0.3;
+      let clock = null, events = [], loopLen = 0;
+      let ctx = null, master, impulse, noiseBuf, session = null, fxBus, musicBus, verbSend;
+      let wantOn = false, wantMusic = true, playing = false;
+      let timer = 0, sleepTimer = 0, anchor = null, doneUpTo = 0, frameAt = 0;
+
+      // The list of sounds for one loop: the cues noted while the timeline was built,
+      // plus the music.
+      function plan() {
+        const list = cues.map((c) => ({ ...c, music: false }));
+        const add = (t, type, extra = {}) => list.push({ t, type, music: true, ...extra });
+
+        // Music at 120 bpm (0.5 s a beat, 2 s a bar). Each service and the call to action
+        // start on a bar line. A clean kick, clicky hats, a rim click on 2 and 4, a simple
+        // bass line and a small pluck on each bar. It comes in after the build in, ends with
+        // one last kick as the build out starts, and stays out until the next loop.
+        const B = 0.5, n = rows.length, bars = n + 2, start = 1;
+        const itemRoots = [58.27, 65.41, 55, 49, 65.41]; // Bb C A G C
+        const roots = [73.42, ...Array.from({ length: n }, (x, i) => itemRoots[i % itemRoots.length]), 87.31]; // D ... F
+        const bassSteps = [0, 0, 12, 0, 0, 7, 12, 0];
+        for (let bar = 0; bar < bars; bar++) {
+          for (let beat = 0; beat < 4; beat++) {
+            const t = start + (bar * 4 + beat) * B;
+            add(t, "kick", { v: 1 });
+            if (beat === 1 || beat === 3) add(t, "rim");
+            for (let s = 0; s < 4; s++) add(t + (s * B) / 4, "hat", { v: s === 2 ? 1 : s === 0 ? 0.35 : 0.55 });
+            for (let h = 0; h < 2; h++) add(t + (h * B) / 2, "bass", { f: roots[bar] * Math.pow(2, bassSteps[beat * 2 + h] / 12), len: 0.2 });
+            if (beat === 0) add(t, "pluck", { f: roots[bar] * 4 });
+          }
+        }
+        const end = start + bars * 4 * B;
+        add(end, "kick", { v: 1.1 });
+        add(end, "bass", { f: roots[bars - 1], len: 0.5 });
+        return list;
+      }
+
+      // Called after every build: the clock reads the current timeline, and the plan
+      // is worked out again for the current layout.
+      function attach(c) {
+        const first = !clock;
+        clock = c;
+        loopLen = c.length;
+        events = plan()
+          .map((e) => ({ ...e, t: ((e.t % loopLen) + loopLen) % loopLen }))
+          .sort((a, b) => a.t - b.t);
+        if (!first) return;
+        // Note when GSAP last drew a frame, so the clock can be read between frames.
+        frameAt = performance.now();
+        gsap.ticker.add(() => { frameAt = performance.now(); });
+        reduce.addEventListener("change", update);
+        update();
+      }
+
+      // Audio graph: effects and music buses, a small reverb, a compressor before the speakers.
+      function makeGraph() {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -14;
+        comp.knee.value = 8;
+        comp.ratio.value = 4;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.18;
+        master = ctx.createGain();
+        master.gain.value = LEVEL;
+        master.connect(comp).connect(ctx.destination);
+
+        // Reverb impulse: stereo noise that fades out.
+        const len = Math.floor(ctx.sampleRate * 1.3);
+        impulse = ctx.createBuffer(2, len, ctx.sampleRate);
+        for (let c = 0; c < 2; c++) {
+          const d = impulse.getChannelData(c);
+          for (let s = 0; s < len; s++) d[s] = (Math.random() * 2 - 1) * Math.pow(1 - s / len, 3.2);
+        }
+        noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+        const nd = noiseBuf.getChannelData(0);
+        for (let s = 0; s < nd.length; s++) nd[s] = Math.random() * 2 - 1;
+      }
+
+      // Each time sound is turned on it gets fresh buses, so sounds queued before a
+      // stop can never leak out later.
+      function openSession() {
+        const t = ctx.currentTime;
+        session = ctx.createGain();
+        session.gain.setValueAtTime(0, t);
+        session.gain.linearRampToValueAtTime(1, t + 0.05);
+        session.connect(master);
+        fxBus = ctx.createGain();
+        fxBus.connect(session);
+        const verb = ctx.createConvolver();
+        verb.buffer = impulse;
+        const verbOut = ctx.createGain();
+        verbOut.gain.value = 0.3;
+        verbSend = ctx.createGain();
+        verbSend.connect(verb).connect(verbOut).connect(session);
+        // Music goes through its own gate (so music:false also silences its reverb).
+        musicBus = ctx.createGain();
+        musicBus.gain.value = wantMusic ? MUSIC : 0;
+        musicBus.connect(session);
+        const musicVerb = ctx.createGain();
+        musicVerb.gain.value = 0.25;
+        musicBus.connect(musicVerb).connect(verbSend);
+      }
+      function closeSession() {
+        const old = session, t = ctx.currentTime;
+        session = null;
+        old.gain.cancelScheduledValues(t);
+        old.gain.setValueAtTime(old.gain.value, t);
+        old.gain.linearRampToValueAtTime(0, t + 0.15);
+        setTimeout(() => old.disconnect(), 250);
+      }
+
+      // Small building blocks.
+      function amp(when, peak, attack, decay, out) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, when);
+        g.gain.exponentialRampToValueAtTime(peak, when + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay);
+        g.connect(out);
+        return g;
+      }
+      function osc(type, freq, when, dur) {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.setValueAtTime(freq, when);
+        o.start(when);
+        o.stop(when + dur + 0.05);
+        return o;
+      }
+      function noise(when, dur) {
+        const s = ctx.createBufferSource();
+        s.buffer = noiseBuf;
+        s.loop = true;
+        s.start(when, Math.random() * 0.8);
+        s.stop(when + dur + 0.05);
+        return s;
+      }
+      function filter(type, freq, q = 0.7) {
+        const f = ctx.createBiquadFilter();
+        f.type = type;
+        f.frequency.value = freq;
+        f.Q.value = q;
+        return f;
+      }
+      function pan(value, out) {
+        const p = ctx.createStereoPanner();
+        p.pan.value = value;
+        p.connect(out);
+        return p;
+      }
+      function send(node, amount) {
+        const g = ctx.createGain();
+        g.gain.value = amount;
+        node.connect(g).connect(verbSend);
+      }
+      function kick(when, peak, out, f0 = 160) {
+        const o = osc("sine", f0, when, 0.4);
+        o.frequency.exponentialRampToValueAtTime(46, when + 0.11);
+        o.connect(amp(when, peak, 0.002, 0.36, out));
+        const click = noise(when, 0.02);
+        click.connect(filter("highpass", 2500)).connect(amp(when, peak * 0.25, 0.001, 0.012, out));
+      }
+      // Gain that follows the speed of an eased move, so a slide swells and settles with it.
+      function speedCurve(ease, peak) {
+        const n = 48, c = new Float32Array(n);
+        let max = 0;
+        for (let i = 0; i < n; i++) {
+          const p = i / (n - 1), h = 0.5 / n;
+          c[i] = Math.abs(ease(Math.min(1, p + h)) - ease(Math.max(0, p - h)));
+          max = Math.max(max, c[i]);
+        }
+        for (let i = 0; i < n; i++) c[i] = Math.max(0.0001, (c[i] / max) * peak);
+        c[0] = c[n - 1] = 0.0001;
+        return c;
+      }
+      const eases = {};
+      const easeOf = (name) => (eases[name] ||= gsap.parseEase(name));
+
+      // One function per sound.
+      const voices = {
+        draw(when, e) {
+          // The rule drawing on (or back): a fine, airy slide that follows expo.inOut.
+          const n = noise(when, e.dur);
+          const bp = filter("bandpass", e.dir > 0 ? 900 : 3200, 1.6);
+          bp.frequency.exponentialRampToValueAtTime(e.dir > 0 ? 3200 : 900, when + e.dur);
+          const g = ctx.createGain();
+          g.gain.setValueCurveAtTime(speedCurve(easeOf(e.dir > 0 ? "expo.inOut" : "expo.in"), 0.4), when, e.dur);
+          const p = ctx.createStereoPanner();
+          p.pan.setValueAtTime(-0.4 * e.dir, when);
+          p.pan.linearRampToValueAtTime(0.4 * e.dir, when + e.dur);
+          p.connect(fxBus);
+          n.connect(bp).connect(g).connect(p);
+        },
+        snap(when, e) {
+          // A crisp snap for a shape popping on, a softer lower one as it shrinks away.
+          const f = [1760, 1976, 2349, 2637, 2960, 3520][e.i % 6] * (e.out ? 0.5 : 1);
+          const o = osc("sine", f, when, 0.06);
+          o.frequency.exponentialRampToValueAtTime(f * (e.out ? 0.8 : 1.25), when + 0.03);
+          const g = amp(when, e.out ? 0.25 : 0.4, 0.001, e.out ? 0.05 : 0.04, pan(e.pan, fxBus));
+          o.connect(g);
+          noise(when, 0.01).connect(filter("highpass", 4000)).connect(amp(when, e.out ? 0.06 : 0.12, 0.0005, 0.006, g));
+          send(g, 0.15);
+        },
+        tick(when, e) {
+          // Sharp, dry tick for each headline line.
+          noise(when, 0.012).connect(filter("highpass", 5200)).connect(amp(when, e.out ? 0.4 : 0.65, 0.0005, 0.008, fxBus));
+          const o = osc("square", e.out ? 2100 : 3000 + e.j * 250, when, 0.02);
+          o.connect(filter("bandpass", 3200, 2)).connect(amp(when, e.out ? 0.12 : 0.2, 0.0005, 0.015, fxBus));
+        },
+        slide(when, e) {
+          // Soft slide along the grid: bigger shapes sound lower.
+          const n = noise(when, 0.5);
+          const f = 2200 / Math.sqrt(e.size);
+          const bp = filter("bandpass", f * 0.7, 1.4);
+          bp.frequency.setValueCurveAtTime(new Float32Array([f * 0.7, f * 1.15, f * 0.8]), when, 0.5);
+          const g = ctx.createGain();
+          g.gain.setValueCurveAtTime(speedCurve(easeOf("power4.inOut"), 0.32), when, 0.5);
+          const p = ctx.createStereoPanner();
+          p.pan.setValueAtTime(e.p0, when);
+          p.pan.linearRampToValueAtTime(e.p1, when + 0.5);
+          p.connect(fxBus);
+          n.connect(bp).connect(g).connect(p);
+        },
+        click(when, e) {
+          // One tooth of the quarter turn ratchet.
+          const g = amp(when, 0.28, 0.0005, 0.012, pan(e.pan, fxBus));
+          noise(when, 0.015).connect(filter("bandpass", 3800, 3)).connect(g);
+          osc("triangle", 2400, when, 0.015).connect(amp(when, 0.05, 0.0005, 0.01, g));
+        },
+        thunk(when, e) {
+          // Clean mechanical lock: a short low knock with a tight click on top.
+          const f = 190 / Math.sqrt(e.size);
+          const o = osc("sine", f * 1.6, when, 0.12);
+          o.frequency.exponentialRampToValueAtTime(f, when + 0.02);
+          const g = amp(when, 0.9, 0.001, 0.08, pan(e.pan, fxBus));
+          o.connect(g);
+          noise(when, 0.02).connect(filter("bandpass", 1600, 1.2)).connect(amp(when, 0.14, 0.0005, 0.015, g));
+          send(g, 0.08);
+        },
+        accent(when, e) {
+          // The active row lights up: a soft, bright two-tone ping.
+          const f = [1318.5, 1480, 1568, 1760, 1975.5][e.k % 5];
+          const g = amp(when, 0.09, 0.002, 0.3, pan(-0.2, fxBus));
+          osc("sine", f, when, 0.32).connect(g);
+          osc("sine", f * 2, when, 0.12).connect(amp(when, 0.025, 0.002, 0.08, g));
+          send(g, 0.3);
+        },
+        confirm(when) {
+          // The call to action is pressed: a tight click, then a clean rising two-note tone.
+          noise(when, 0.012).connect(filter("highpass", 4000)).connect(amp(when, 0.35, 0.0005, 0.008, fxBus));
+          const out = ctx.createGain();
+          out.gain.value = 1;
+          out.connect(fxBus);
+          send(out, 0.35);
+          [[880, 0, 0.14], [1318.5, 0.09, 0.4]].forEach(([f, dt, d]) => {
+            const g = amp(when + dt, 0.13, 0.003, d, out);
+            osc("sine", f, when + dt, d + 0.02).connect(g);
+            osc("triangle", f * 2, when + dt, d * 0.4).connect(amp(when + dt, 0.02, 0.002, d * 0.3, g));
+          });
+        },
+
+        // Music.
+        kick(when, e) {
+          kick(when, 0.45 * e.v, musicBus, 140);
+        },
+        hat(when, e) {
+          noise(when, 0.02).connect(filter("highpass", 9000)).connect(amp(when, 0.16 * e.v, 0.0005, 0.014, pan(0.2, musicBus)));
+        },
+        rim(when) {
+          const o = osc("triangle", 1700, when, 0.03);
+          o.connect(amp(when, 0.1, 0.0005, 0.022, pan(-0.15, musicBus)));
+          noise(when, 0.02).connect(filter("bandpass", 2500, 2)).connect(amp(when, 0.12, 0.0005, 0.015, musicBus));
+        },
+        bass(when, e) {
+          const out = amp(when, 0.3, 0.004, e.len, musicBus);
+          const lp = filter("lowpass", 900, 2);
+          lp.frequency.exponentialRampToValueAtTime(220, when + e.len);
+          lp.connect(out);
+          osc("square", e.f, when, e.len).connect(amp(when, 0.5, 0.002, e.len, lp));
+          osc("sine", e.f, when, e.len).connect(out);
+        },
+        pluck(when, e) {
+          // A small clean pluck on each bar line: root, fifth and octave, echoed by the reverb.
+          const out = amp(when, 0.045, 0.002, 0.5, pan(0.25, musicBus));
+          const lp = filter("lowpass", 3000);
+          lp.frequency.exponentialRampToValueAtTime(700, when + 0.4);
+          lp.connect(out);
+          for (const m of [1, 1.5, 2]) osc("triangle", e.f * m, when, 0.55).connect(lp);
+        },
+      };
+
+      // The audio time being heard right now, from the output clock when the browser gives one.
+      function heardNow() {
+        const ts = ctx.getOutputTimestamp ? ctx.getOutputTimestamp() : null;
+        const pnow = performance.now();
+        if (ts && ts.contextTime > 0 && ts.performanceTime > 0 && Math.abs(pnow - ts.performanceTime) < 1000) {
+          return ts.contextTime + (pnow - ts.performanceTime) / 1000;
+        }
+        return ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0);
+      }
+
+      // Look-ahead scheduler: every 25 ms, schedule sounds due in the next 100 ms.
+      // Timeline time is mapped to heard audio time by an anchor that is re-set after any jump.
+      function tick() {
+        if (!playing || !clock || ctx.state !== "running") { anchor = null; return; }
+        if (document.hidden || !clock.running() || reduce.matches) { anchor = null; return; }
+        const now = clock.time() + Math.min(0.1, (performance.now() - frameAt) / 1000);
+        const at = heardNow();
+        if (anchor) {
+          const err = now - (anchor.tl + (at - anchor.audio));
+          if (Math.abs(err) > 0.08) anchor = null; // the animation jumped or stalled
+          else anchor.tl += err * 0.05; // ease out small drift
+        }
+        if (!anchor) {
+          anchor = { tl: now, audio: at };
+          // Start fresh so nothing piles up, but never book the same stretch twice.
+          doneUpTo = now > doneUpTo - 0.5 && now < doneUpTo ? doneUpTo : now;
+        }
+        const from = doneUpTo;
+        const to = anchor.tl + (at - anchor.audio) + 0.1 + Math.max(0, ctx.currentTime - at);
+        if (to <= from) return;
+        for (let k = Math.floor(from / loopLen); k <= Math.floor(to / loopLen); k++) {
+          for (const e of events) {
+            const t = k * loopLen + e.t;
+            if (t < from || t >= to) continue;
+            if (e.music && !wantMusic) continue;
+            voices[e.type](Math.max(ctx.currentTime, anchor.audio + (t - anchor.tl)), e);
+          }
+        }
+        doneUpTo = to;
+      }
+
+      // Turn sound on or off to match what was asked for.
+      function update() {
+        const on = wantOn && clock && !reduce.matches;
+        if (on) {
+          if (!ctx) makeGraph();
+          clearTimeout(sleepTimer);
+          if (ctx.state !== "running") ctx.resume().catch(() => {});
+          if (!playing) {
+            playing = true;
+            anchor = null;
+            openSession();
+            clearInterval(timer);
+            timer = setInterval(tick, 25);
+          }
+          const t = ctx.currentTime;
+          musicBus.gain.cancelScheduledValues(t);
+          musicBus.gain.setTargetAtTime(wantMusic ? MUSIC : 0, t, 0.03);
+        } else if (playing) {
+          playing = false;
+          clearInterval(timer);
+          closeSession();
+          sleepTimer = setTimeout(() => ctx.suspend(), 200);
+        }
+      }
+
+      // Browsers may block audio until the first click or key press.
+      const unlock = () => { if (playing && ctx && ctx.state !== "running") ctx.resume().catch(() => {}); };
+      addEventListener("pointerdown", unlock);
+      addEventListener("keydown", unlock);
+
+      addEventListener("message", (event) => {
+        if (event.origin !== location.origin) return;
+        const data = event.data;
+        if (!data || data.type !== "motionprompt-sound") return;
+        if (typeof data.on === "boolean") wantOn = data.on;
+        if (typeof data.music === "boolean") wantMusic = data.music;
+        update();
+      });
+
+      const fromUrl = params.get("sound");
+      if (fromUrl === "1" || fromUrl === "effects") {
+        wantOn = true;
+        wantMusic = fromUrl === "1";
+      }
+
+      return { attach };
+    })();
+
+    // Wait briefly for the fonts so the text is measured in the right face.
     Promise.race([
-      document.fonts.load("800 1em Archivo"),
+      Promise.all([document.fonts.load("800 1em Archivo"), document.fonts.load("500 1em Archivo")]),
       new Promise((resolve) => setTimeout(resolve, 1500)),
     ]).finally(build);
   </script>
