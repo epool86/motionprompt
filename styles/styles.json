@@ -139,7 +139,8 @@
     "name": "Merdeka",
     "summary": "The Jalur Gemilang waves over KL fireworks for Merdeka and Malaysia Day.",
     "library": "GSAP",
-    "tags": ["malaysia", "festive", "text"]
+    "tags": ["malaysia", "festive", "text"],
+    "hidden": true
   },
   {
     "slug": "product-turntable",
