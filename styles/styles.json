@@ -209,10 +209,10 @@
   },
   {
     "slug": "chinese-new-year",
-    "name": "Chinese New Year",
-    "summary": "Red and gold paper cuts, swaying lanterns and a gold fu for Chinese New Year.",
+    "name": "Chinese heritage",
+    "summary": "Red and gold heritage ad: paper cuts, lanterns, your product and red seal badges.",
     "library": "GSAP",
-    "tags": ["festive", "malaysia", "text"]
+    "tags": ["product", "festive", "promo"]
   },
   {
     "slug": "property-tour",

@@ -1,18 +1,25 @@
-Make my video in this style: Chinese New Year.
+Make my video in this style: Chinese heritage.
 
 Look and motion
-- A festive red and gold greeting card that comes to life, for Chinese New Year.
-- Intricate red paper-cut patterns (flowers, clouds, scrolls) fan open and get cut in, like folded paper opening up.
-- Round red lanterns with gold tassels drop in from the top and sway gently.
-- A gold fu character on a red diamond sits at the centre as an accent. Plum blossom branches grow and bloom, and mandarin oranges and gold coins bounce into place.
-- Soft gold confetti falls and small firecracker sparks bloom and fade. Keep them gentle, with no flashing.
-- Show my greeting and message as the title, rising in word by word with a slow gold shine. Write my text in the language I use. Add a small line under it if I give one.
-- At the end, everything folds away and the lanterns lift out, so the video can loop.
+- A rich red and gold scene in a traditional Chinese heritage style, like a vintage shop poster or a festive card.
+- Red paper-cut patterns (flowers, clouds, scrolls) fan open in the corners and get cut in, like folded paper opening up. A paper-cut medallion unfolds behind the hero.
+- Round red lanterns with gold tassels drop in from the top and sway gently. A plum blossom branch grows and blooms, and a few gold coins bounce into place.
+- If my request is about a product or brand, my product is the hero, with its packaging drawn in a vintage heritage style. It rises into the centre with a slow gold shine, then shows itself in use (for example pouring, opening or serving). My key ingredients or features pop in around it as illustrated props with a paper-cut edge.
+- Two or three round red seal badges stamp in with my key points in a few words each. Keep claims gentle and honest.
+- Then my product or brand name lands in gold, with my call to action underneath and a thin gold rule between them.
+- If my request is a greeting (like Chinese New Year), make the greeting the hero instead, with a gold fu diamond on the medallion, and use the seals for short wishes.
+- Soft gold sparkles and confetti drift, never flashing. At the end, everything folds away and the lanterns lift out, so the video can loop.
+- Write my text in the language I use. Keep every word inside the frame and easy to read.
 
 Type and colour
-- An elegant display serif for the title (like DM Serif Display) in gold. A clean, spaced out sans serif (like Jost) for the small line.
+- An elegant display serif (like DM Serif Display) for the name or greeting, in gold. A clean, spaced out sans serif (like Jost) for the call to action and the seals.
 - If I include Chinese characters, draw them in a brush calligraphy style (like Ma Shan Zheng).
 - Use my brand colours if I give them, with gold as the accent. Otherwise use deep red #8e0c18, paper red #d7262f, gold #f2c14e, cream #fff1d0 and blossom pink #ffd3de.
+
+Sound
+- Effects: paper rustles and small scissor snips as the paper-cuts open, a swish and a wooden knock as each lantern drops in and soft rustles as it sways, a clear clink as the hero lands and a run of little bells with each gold shine, sounds that match how my product is used (for example a cork pop, a slow thick pour and a porcelain spoon clink), a soft paper pop for each prop, a gentle thud as each seal stamps down, coin clinks, and a warm gong with a small chime as the name lands.
+- Music: a festive pentatonic tune at about 120 bpm on a plucked guzheng style sound, with a low plucked bass, a big soft drum, woodblock and small hand cymbals, ending with a quick rising run that leads back to the start. Keep it quieter than the effects and let it loop cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
 
 Output
 - Size: {size}
