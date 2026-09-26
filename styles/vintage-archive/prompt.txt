@@ -15,6 +15,11 @@ Type and colour
 - A classic, high contrast serif (like Playfair Display) for the title, and a typewriter font (like Special Elite) for captions, labels and years.
 - Use my brand colours if I give them, kept muted and aged. Otherwise use aged paper #ecdfc4, sepia ink #3a2718, oxblood stamp red #8e2b22 and faded brass #a8864f.
 
+Sound
+- Effects: a soft film projector whirr with steady sprocket clicks under everything, a typewriter clack for each typed letter (a duller knock for spaces) with a carriage bell and return at the end of each caption, a soft rush and pat as each photo drops onto the page, a dip pen scratch as the timeline draws, a rubber stamp thunk as each year lands, a warm swell of air for each light leak, and a gentle whoosh as the film burns out.
+- Music: an old-time, nostalgic waltz on a warm piano, about 90 bpm, played through a soft gramophone tone with a light vinyl crackle. Keep it quieter than the effects and let it loop cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

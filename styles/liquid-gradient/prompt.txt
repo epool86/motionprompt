@@ -11,6 +11,11 @@ Type and colour
 - A clean modern sans serif font (like Inter Tight), semibold, with tight letter spacing and sentence case.
 - Use my brand colours if I give them: the darkest for the base, the others for the blobs, and a light one for the text. Otherwise use a deep indigo base #120d33, violet #6c4bff, pink #ff5fa2, apricot #ff9a62 and sky blue #3fc8ff blobs, and warm white #fff8f0 text.
 
+Sound
+- Effects: slow soft swells of air and faint high shimmers as the colours drift, a soft reverse swell that rises into each headline and blooms into a gentle bell chord as the words come clear, and a quiet breath out as each line blurs away.
+- Music: a dreamy ambient bed, calm like a product keynote: slow evolving pad chords, a soft low sub note and a few sparse glassy notes with a gentle echo. Keep it quieter than the effects and let it loop cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

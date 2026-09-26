@@ -12,6 +12,11 @@ Type and colour
 - A heavy, condensed font (like Anton), all capitals, with a hard offset shadow on the deal.
 - Use my brand colours if I give them. Otherwise use hot red #ff2e4d, sunny yellow #ffd400, near black #17121c and cream #fff7e6.
 
+Sound
+- Effects: a big drum hit with a short rising whoosh into each countdown number, a quick stripe whoosh on every colour cut, a heavy impact with a crash when the offer slams in, fast whooshes and thuds as the deal slides and drops in, a pop for the pill, a string twang and soft creaks as the price tag swings, a bright register style "ka-ching" for the price, a heartbeat thump on each pulse, confetti pops with a trail of sparkles, and a sweeping whoosh for the wipe.
+- Music: a high energy promo beat at the same tempo as the animation (about 150 bpm). A short build under the countdown (hats, a pulsing bass and a clap roll), then four on the floor kicks, claps, an off-beat bass and short chord stabs from the moment the offer lands. It stops for the wipe and loops cleanly.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

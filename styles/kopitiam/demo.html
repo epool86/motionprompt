@@ -763,6 +763,562 @@
       }, 150);
     });
 
+    // ---- Sound: off until the page asks for it. Every sound is made here with Web Audio, no files. ----
+    // Sounds follow the GSAP timeline clock (tl.totalTime) and are booked a little ahead at the
+    // matching AudioContext time, so they stay locked to the picture.
+    const sound = (() => {
+      const LEVEL = 0.8, MUSIC = 0.36;
+      const BEAT = LOOP / 16; // 80 bpm: four bars of 4/4 fill one 12 s loop exactly
+      let ctx = null, master = null, impulse = null, noiseBuf = null, grainBuf = null, bus = null;
+      let wantOn = false, wantMusic = true, playing = false, musicCatch = false;
+      let timer = 0, sleepTimer = 0, anchor = null, doneUpTo = 0, planned = null, planSize = "", events = [];
+
+      // Seeded random, so every loop sounds the same.
+      let rs = 1;
+      const rnd = () => ((rs = (rs * 16807) % 2147483647) - 1) / 2147483646;
+      const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+      const sineInOut = (p) => -(Math.cos(Math.PI * clamp(p)) - 1) / 2;
+      const panX = (x) => clamp((x / W - 0.5) * 1.2, -0.7, 0.7);
+
+      // The list of sounds for one loop, read from the timeline itself so it follows any rebuild.
+      function plan() {
+        rs = 11;
+        const list = [];
+        const add = (t, type, extra = {}) => list.push({ t: ((t % LOOP) + LOOP) % LOOP, type, ...extra });
+        const kids = tl.getChildren(false, true, false);
+        const of = (target) => kids.filter((c) => c.targets()[0] === target && c.duration() > 0);
+
+        // Breakfast lands (back.out first reaches the table a third of the way in) and is cleared later.
+        S.props.forEach((p, i) => {
+          const [down, up] = of(p);
+          const pan = panX(R.props[i].at[0]);
+          if (down) add(down.startTime() + down.duration() / 3, "land", { i, pan });
+          if (up) add(up.startTime() + 0.03, "lift", { i, pan });
+        });
+
+        // Chalk: one scratchy stroke per line as it writes, plus a few small squeaks.
+        const boardPan = panX(R.ix + R.iw / 2);
+        const chalkLine = (tw, v, squeak) => {
+          const t = tw.startTime(), d = tw.duration();
+          add(t, "chalk", { dur: d, v, pan: boardPan });
+          if (rnd() < squeak) add(t + d * (0.25 + rnd() * 0.5), "squeak", { f: 2900 + rnd() * 700, d: 0.07 + rnd() * 0.07, pan: boardPan });
+        };
+        S.lines.forEach((ln, i) => of(ln).forEach((tw) => { if (tw.vars.p === 1) chalkLine(tw, R.lines[i].menu ? 0.7 : 1, R.lines[i].menu ? 0.25 : 1); }));
+        of(S.under).forEach((tw) => chalkLine(tw, 0.9, 1));
+
+        // Teh tarik: read the pulls from the arm tweens, and when the stream starts and ends.
+        const lifts = of(S.arm).filter((tw) => "lift" in tw.vars);
+        let from = 2.2;
+        const keys = lifts.map((tw) => {
+          const key = { s: tw.startTime(), d: tw.duration(), a: from, b: tw.vars.lift };
+          from = key.b;
+          return key;
+        });
+        const lift = (t) => {
+          let v = keys.length ? keys[0].a : 2.2;
+          for (const key of keys) if (t >= key.s) v = key.a + (key.b - key.a) * sineInOut((t - key.s) / key.d);
+          return v;
+        };
+        const flows = of(S.flow);
+        const fr = of(S.froth)[0];
+        if (flows.length === 2 && fr) {
+          const f0 = flows[0].startTime(), land = f0 + flows[0].duration();
+          const f1 = flows[1].startTime(), gone = f1 + flows[1].duration();
+          const fill = (t) => sineInOut((t - fr.startTime()) / fr.duration());
+          const pan = panX(R.props[0].at[0]);
+          add(f0, "pour", { dur: gone - f0 + 0.15, hold: true, f0, land, f1, gone, lift, fill, pan });
+          add(land, "splash", { pan });
+          // Little bubbles pop in the froth, faster and higher when the pull is long.
+          for (let t = land + 0.02; t < gone - 0.05; ) {
+            const l = lift(t);
+            add(t, "bubble", { f: (420 + 520 * fill(t) + rnd() * 420) * (0.9 + l * 0.05), v: 0.025 + rnd() * 0.03, pan: pan + (rnd() - 0.5) * 0.2 });
+            t += (0.03 + rnd() * 0.07) * (4.6 / (2 + l));
+          }
+          // A few drips from the lip after the pour.
+          [0.08, 0.27, 0.6].forEach((dt, j) => add(gone + dt, "drip", { f: 1250 + j * 180, pan }));
+        }
+
+        // The duster wipes the board: rubbing that follows its speed.
+        of(S.erase).forEach((tw) => { if (tw.vars.p === 1) add(tw.startTime(), "wipe", { dur: tw.duration(), pan: boardPan, ratio: R.ih / R.iw }); });
+
+        // Ceiling fan: a soft whirr in overlapping 3 s pieces, pulsing as each blade passes.
+        for (let t = 0; t < LOOP - 0.01; t += 3) add(t, "fan", { dur: 3.4, hold: true, pan: panX(L.fan.x) });
+
+        // Music: a relaxed fingerpicked guitar, soft old radio keys and brushes. Fmaj7, Dm7, Gm7, C7.
+        const bars = [
+          [41, 48, [57, 60, 64]],
+          [38, 45, [57, 60, 65]],
+          [43, 50, [58, 62, 65]],
+          [48, 43, [58, 64, 67]],
+        ];
+        const tune = [
+          [0, 72, 1.5], [1.5, 69, 0.5], [2, 67, 1], [3, 69, 1],
+          [4, 65, 2], [6.5, 69, 0.5], [7, 72, 1],
+          [8, 74, 1.5], [9.5, 72, 0.5], [10, 70, 1], [11, 69, 1],
+          [12, 67, 2], [14, 64, 1], [15, 67, 1],
+        ];
+        bars.forEach(([root, alt, top], b) => {
+          const t0 = b * 4 * BEAT;
+          // Thumb on the beat (root, then the fifth), fingers on the off-beats.
+          [root, alt, root, alt].forEach((m, j) => add(t0 + j * BEAT, "guitar", { f: hz(m), v: j ? 0.75 : 1, music: true, bass: true }));
+          add(t0, "guitar", { f: hz(top[2]), v: 0.55, music: true });
+          [top[0], top[1], top[2], top[1]].forEach((m, j) => add(t0 + (j + 0.5) * BEAT, "guitar", { f: hz(m), v: 0.45, music: true }));
+          [1, 3].forEach((j) => add(t0 + j * BEAT, "brush", { music: true }));
+          add(t0, "pad", { dur: 4 * BEAT, notes: top.map(hz), music: true, hold: true });
+        });
+        tune.forEach(([beat, m, len]) => add(beat * BEAT, "keys", { f: hz(m), dur: len * BEAT, music: true }));
+        return list.sort((a, b) => a.t - b.t);
+      }
+
+      // Audio graph: one compressor before the speakers so nothing clips.
+      function makeGraph() {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const sr = ctx.sampleRate;
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -14;
+        comp.knee.value = 8;
+        comp.ratio.value = 4;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.2;
+        master = ctx.createGain();
+        master.gain.value = LEVEL;
+        master.connect(comp).connect(ctx.destination);
+        // A small warm room: stereo noise that fades out, used as the reverb impulse.
+        const len = Math.floor(sr * 1.1);
+        impulse = ctx.createBuffer(2, len, sr);
+        for (let c = 0; c < 2; c++) {
+          const d = impulse.getChannelData(c);
+          for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.5);
+        }
+        noiseBuf = ctx.createBuffer(1, sr * 2, sr);
+        const nd = noiseBuf.getChannelData(0);
+        for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+        // Sparse random clicks: the gritty grain of chalk on a board.
+        grainBuf = ctx.createBuffer(1, sr * 2, sr);
+        const gd = grainBuf.getChannelData(0);
+        for (let i = 0; i < gd.length; i++) if (Math.random() < 420 / sr) gd[i] = (Math.random() * 2 - 1) * (0.4 + Math.random() * 0.6);
+      }
+
+      // Fresh buses every time sound is switched on, so nothing booked before a stop can leak out later.
+      function openBus() {
+        const t = ctx.currentTime;
+        const out = ctx.createGain();
+        out.gain.setValueAtTime(0, t);
+        out.gain.linearRampToValueAtTime(1, t + 0.08);
+        out.connect(master);
+        const fx = ctx.createGain();
+        fx.connect(out);
+        const mus = ctx.createGain();
+        mus.gain.value = wantMusic ? MUSIC : 0;
+        mus.connect(out);
+        const verb = ctx.createConvolver();
+        verb.buffer = impulse;
+        const verbOut = ctx.createGain();
+        verbOut.gain.value = 0.35;
+        verb.connect(verbOut).connect(out);
+        const musVerb = ctx.createGain();
+        musVerb.gain.value = 0.5;
+        musVerb.connect(verb);
+        return { out, fx, mus, verb, musVerb };
+      }
+      function closeBus() {
+        if (!bus) return;
+        const old = bus, t = ctx.currentTime;
+        bus = null;
+        old.out.gain.cancelScheduledValues(t);
+        old.out.gain.setValueAtTime(old.out.gain.value, t);
+        old.out.gain.linearRampToValueAtTime(0, t + 0.15);
+        setTimeout(() => old.out.disconnect(), 300);
+      }
+
+      // Small building blocks.
+      function env(when, peak, attack, decay) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, when);
+        g.gain.exponentialRampToValueAtTime(peak, when + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay);
+        return g;
+      }
+      function osc(type, f, when, dur) {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.setValueAtTime(f, when);
+        o.start(when);
+        o.stop(when + dur + 0.05);
+        return o;
+      }
+      function noise(when, dur, buf = noiseBuf) {
+        const s = ctx.createBufferSource();
+        s.buffer = buf;
+        s.loop = true;
+        s.start(when, Math.random() * 1.5);
+        s.stop(when + dur + 0.05);
+        return s;
+      }
+      function filter(type, f, q = 0.7) {
+        const b = ctx.createBiquadFilter();
+        b.type = type;
+        b.frequency.value = f;
+        b.Q.value = q;
+        return b;
+      }
+      // Send a sound to the effects bus, panned, with some room.
+      function out(node, pan, room, dest = bus.fx) {
+        const p = ctx.createStereoPanner();
+        p.pan.value = pan;
+        node.connect(p).connect(dest);
+        if (room > 0) {
+          const s = ctx.createGain();
+          s.gain.value = room;
+          p.connect(s).connect(bus.verb);
+        }
+        return p;
+      }
+      // Apply a value curve, never starting in the past (the browser refuses overlapping automation).
+      function setCurve(param, curve, when, len) {
+        const start = Math.max(when, ctx.currentTime + 0.005);
+        param.setValueCurveAtTime(curve, start, Math.max(0.01, len - (start - when)));
+      }
+      // A gain that follows fn(timeline time) from skip to the end of the event, with soft ends.
+      function follow(when, e, skip, fn, edge = 0.4) {
+        const len = e.dur - skip, steps = Math.max(2, Math.ceil(len * 60));
+        const curve = new Float32Array(steps + 1);
+        for (let i = 0; i <= steps; i++) {
+          const tau = skip + (len * i) / steps;
+          const w = Math.min(1, tau / edge, (e.dur - tau) / edge);
+          curve[i] = Math.max(0, fn(e.t + tau, tau)) * Math.sin((Math.PI / 2) * clamp(w));
+        }
+        const g = ctx.createGain();
+        g.gain.value = 0;
+        setCurve(g.gain, curve, when, len);
+        return g;
+      }
+      function paramCurve(param, when, e, skip, fn) {
+        const len = e.dur - skip, steps = Math.max(2, Math.ceil(len * 30));
+        const curve = new Float32Array(steps + 1);
+        for (let i = 0; i <= steps; i++) curve[i] = fn(e.t + skip + (len * i) / steps);
+        setCurve(param, curve, when, len);
+      }
+      // A struck ceramic or metal: a few quickly fading partials and a tiny click.
+      function ring(when, partials, v, pan, room) {
+        partials.forEach(([f, a, d]) => {
+          const g = env(when, v * a, 0.001, d);
+          osc("sine", f, when, d + 0.05).connect(g);
+          out(g, pan, room);
+        });
+        const c = env(when, v * 0.5, 0.0005, 0.008);
+        noise(when, 0.02).connect(filter("highpass", 4500)).connect(c);
+        out(c, pan, 0);
+      }
+      function thud(when, f, v, pan) {
+        const g = env(when, v, 0.002, 0.12);
+        const o = osc("sine", f, when, 0.16);
+        o.frequency.exponentialRampToValueAtTime(f * 0.6, when + 0.08);
+        o.connect(g);
+        out(g, pan, 0.1);
+      }
+
+      const RINGS = [
+        // Steel mug, cup and saucer, egg bowl, toast plate.
+        [[620, 0.5, 0.32], [1530, 0.4, 0.22], [2710, 0.3, 0.16], [4150, 0.2, 0.1]],
+        [[1850, 0.5, 0.26], [3120, 0.35, 0.18], [4870, 0.2, 0.1]],
+        [[1480, 0.5, 0.24], [2640, 0.35, 0.16], [4180, 0.2, 0.1]],
+        [[1120, 0.5, 0.26], [2330, 0.35, 0.16], [3560, 0.2, 0.1]],
+      ];
+
+      const voices = {
+        land(when, e) {
+          thud(when, [140, 175, 200, 150][e.i], 0.4, e.pan);
+          ring(when, RINGS[e.i], 0.16, e.pan, 0.25);
+          // The cup settles in its saucer, the plate rattles once.
+          if (e.i === 1) {
+            ring(when + 0.05, [[2350, 0.5, 0.16], [3950, 0.3, 0.1], [5900, 0.15, 0.06]], 0.11, e.pan, 0.25);
+            ring(when + 0.11, [[2350, 0.5, 0.1], [3950, 0.3, 0.06]], 0.045, e.pan, 0.2);
+          }
+          if (e.i === 3) ring(when + 0.06, RINGS[3], 0.05, e.pan, 0.2);
+        },
+        lift(when, e) {
+          ring(when, RINGS[e.i], 0.06, e.pan, 0.25);
+          const g = env(when, 0.05, 0.02, 0.12);
+          noise(when, 0.16).connect(filter("bandpass", 1300, 0.9)).connect(g);
+          out(g, e.pan, 0.1);
+        },
+        chalk(when, e, skip = 0) {
+          // Gritty clicks and a thin hiss, pressing harder on each down stroke.
+          const shape = (t, tau) => 0.45 + 0.55 * Math.abs(Math.sin((tau / e.dur) * 40));
+          const g = follow(when, e, skip, shape, 0.02);
+          const grit = noise(when, e.dur, grainBuf);
+          const bp = filter("bandpass", 2600, 0.8);
+          const gg = ctx.createGain();
+          gg.gain.value = 0.55 * e.v;
+          grit.connect(bp).connect(gg).connect(g);
+          const hiss = noise(when, e.dur);
+          const hb = filter("bandpass", 3800, 1.4);
+          const hg = ctx.createGain();
+          hg.gain.value = 0.08 * e.v;
+          hiss.connect(hb).connect(hg).connect(g);
+          out(g, e.pan, 0.15);
+        },
+        squeak(when, e) {
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.0001, when);
+          g.gain.exponentialRampToValueAtTime(0.022, when + 0.015);
+          g.gain.setValueAtTime(0.022, when + e.d - 0.02);
+          g.gain.exponentialRampToValueAtTime(0.0001, when + e.d);
+          const o = osc("sine", e.f, when, e.d);
+          o.frequency.linearRampToValueAtTime(e.f * 1.06, when + e.d);
+          const vib = osc("sine", 38, when, e.d);
+          const depth = ctx.createGain();
+          depth.gain.value = e.f * 0.012;
+          vib.connect(depth).connect(o.frequency);
+          o.connect(g);
+          out(g, e.pan, 0.2);
+        },
+        pour(when, e, skip = 0) {
+          // The falling stream: brighter and louder the higher the mug is pulled.
+          const on = (t) => clamp((t - e.f0) / 0.12) * (1 - clamp((t - e.f1 - 0.1) / (e.gone - e.f1)));
+          const lands = (t) => clamp((t - e.land) / 0.05) * (1 - clamp((t - e.gone + 0.05) / 0.12));
+          const stream = follow(when, e, skip, (t) => on(t) * (0.05 + 0.02 * e.lift(t)), 0.05);
+          const sb = filter("bandpass", 1200, 0.9);
+          paramCurve(sb.frequency, when, e, skip, (t) => 700 + 330 * e.lift(t));
+          noise(when, e.dur).connect(sb).connect(stream);
+          out(stream, e.pan, 0.12);
+          // Frothy splash in the low mug, fluttering like real foam.
+          const froth = follow(when, e, skip, (t) => lands(t) * (0.05 + 0.022 * e.lift(t)) * (0.55 + 0.45 * Math.random()), 0.05);
+          noise(when, e.dur).connect(filter("highpass", 2600, 0.5)).connect(filter("lowpass", 7000, 0.5)).connect(froth);
+          out(froth, e.pan, 0.15);
+          // The mug fills: a hollow tone that rises as the froth builds.
+          const body = follow(when, e, skip, (t) => lands(t) * (0.14 + 0.035 * e.lift(t)), 0.05);
+          const rb = filter("bandpass", 500, 6);
+          paramCurve(rb.frequency, when, e, skip, (t) => 460 + 520 * e.fill(t));
+          noise(when, e.dur).connect(rb).connect(body);
+          out(body, e.pan, 0.15);
+        },
+        splash(when, e) {
+          const g = env(when, 0.22, 0.004, 0.16);
+          noise(when, 0.2).connect(filter("bandpass", 1500, 0.8)).connect(g);
+          out(g, e.pan, 0.25);
+          const p = env(when, 0.18, 0.003, 0.09);
+          const o = osc("sine", 260, when, 0.12);
+          o.frequency.exponentialRampToValueAtTime(520, when + 0.06);
+          o.connect(p);
+          out(p, e.pan, 0.2);
+        },
+        bubble(when, e) {
+          const g = env(when, e.v, 0.003, 0.035);
+          const o = osc("sine", e.f, when, 0.05);
+          o.frequency.exponentialRampToValueAtTime(e.f * 1.6, when + 0.035);
+          o.connect(g);
+          out(g, e.pan, 0.15);
+        },
+        drip(when, e) {
+          const g = env(when, 0.07, 0.002, 0.07);
+          const o = osc("sine", e.f * 0.7, when, 0.09);
+          o.frequency.exponentialRampToValueAtTime(e.f * 1.4, when + 0.05);
+          o.connect(g);
+          out(g, e.pan, 0.3);
+        },
+        wipe(when, e, skip = 0) {
+          // Felt rubbing on the board, loudest where the duster moves fastest.
+          const speed = (tau) => {
+            const p = clamp(tau / e.dur), de = p < 0.5 ? 4 * p : 4 * (1 - p);
+            const ease = p < 0.5 ? 2 * p * p : 1 - 2 * (1 - p) * (1 - p);
+            return de * Math.hypot(1, 0.3 * 6 * Math.PI * Math.cos(6 * Math.PI * ease) * e.ratio) / 3.5;
+          };
+          const g = follow(when, e, skip, (t, tau) => 0.3 * Math.min(1, speed(tau)), 0.06);
+          noise(when, e.dur).connect(filter("lowpass", 1800, 0.5)).connect(filter("bandpass", 700, 0.6)).connect(g);
+          const hi = ctx.createGain();
+          hi.gain.value = 0.3;
+          noise(when, e.dur, grainBuf).connect(filter("bandpass", 2200, 0.8)).connect(hi).connect(g);
+          out(g, e.pan, 0.15);
+        },
+        fan(when, e, skip = 0) {
+          // Low air and motor rumble, with a soft swish each time a blade passes (9 per loop).
+          const pass = (t) => 0.5 + 0.5 * Math.sin((2 * Math.PI * 9 * t) / LOOP);
+          const lowG = follow(when, e, skip, (t) => 0.1 * (0.8 + 0.2 * pass(t)));
+          noise(when, e.dur).connect(filter("lowpass", 420, 0.5)).connect(lowG);
+          const humG = follow(when, e, skip, () => 0.12);
+          noise(when, e.dur).connect(filter("bandpass", 118, 5)).connect(humG);
+          const swG = follow(when, e, skip, (t) => 0.03 * (0.25 + 0.75 * pass(t) * pass(t)));
+          noise(when, e.dur).connect(filter("bandpass", 950, 0.7)).connect(swG);
+          [lowG, humG, swG].forEach((g) => out(g, e.pan, 0));
+        },
+        guitar(when, e) {
+          // A soft nylon pluck: a bright string that quickly mellows.
+          const g = env(when, 0.22 * e.v, 0.003, e.bass ? 1.1 : 1.4);
+          const lp = filter("lowpass", Math.min(7000, e.f * 9), 0.6);
+          lp.frequency.setValueAtTime(Math.min(7000, e.f * 9), when);
+          lp.frequency.exponentialRampToValueAtTime(e.f * 1.8, when + 0.35);
+          osc("sawtooth", e.f, when, 1.5).connect(lp);
+          osc("triangle", e.f * 1.003, when, 1.5).connect(lp);
+          lp.connect(g);
+          if (e.bass) {
+            const s = env(when, 0.07 * e.v, 0.005, 0.6);
+            osc("sine", e.f, when, 0.8).connect(s);
+            s.connect(bus.mus);
+          }
+          out(g, e.bass ? -0.1 : 0.15, 0, bus.mus).connect(bus.musVerb);
+        },
+        keys(when, e) {
+          // Old radio electric piano: a soft sine with a small bell tine, through a narrow speaker.
+          const g = env(when, 0.13, 0.006, Math.max(0.5, e.dur * 1.1));
+          osc("sine", e.f, when, e.dur * 1.2).connect(g);
+          const t = env(when, 0.035, 0.002, 0.25);
+          osc("sine", e.f * 4, when, 0.3).connect(t);
+          t.connect(g);
+          const radio = filter("bandpass", 1300, 0.6);
+          g.connect(radio);
+          const trem = osc("sine", 4.5, when, e.dur * 1.2);
+          const tg = ctx.createGain();
+          tg.gain.value = 1;
+          const td = ctx.createGain();
+          td.gain.value = 0.15;
+          trem.connect(td).connect(tg.gain);
+          radio.connect(tg);
+          out(tg, -0.2, 0, bus.mus).connect(bus.musVerb);
+        },
+        pad(when, e, skip = 0) {
+          // A very soft warm chord under the guitar.
+          const g = follow(when, e, skip, () => 0.018, 0.5);
+          const lp = filter("lowpass", 900, 0.3);
+          e.notes.forEach((f) => [-6, 6].forEach((c) => {
+            const o = ctx.createOscillator();
+            o.type = "sawtooth";
+            o.frequency.value = f / 2;
+            o.detune.value = c;
+            o.connect(lp);
+            o.start(when);
+            o.stop(when + e.dur - skip + 0.05);
+          }));
+          lp.connect(g);
+          g.connect(bus.mus);
+        },
+        brush(when) {
+          const g = env(when, 0.045, 0.025, 0.14);
+          noise(when, 0.2).connect(filter("bandpass", 4200, 0.5)).connect(g);
+          out(g, 0.25, 0, bus.mus);
+        },
+      };
+
+      let lastTick = performance.now(), lastAudio = 0, hard = true;
+      gsap.ticker.add(() => { lastTick = performance.now(); });
+
+      // Look-ahead scheduler: every 25 ms, book the sounds due in the next 100 ms of timeline time.
+      // Timeline time maps to audio time through an anchor that is reset after any jump or pause.
+      function tick() {
+        if (!playing || !tl || ctx.state !== "running") { anchor = null; return; }
+        if (document.hidden || tl.paused() || reduce.matches) { anchor = null; return; }
+        if (planned !== tl) {
+          // A rebuilt timeline (after a resize): swap to fresh buses so nothing from the old plan lingers.
+          if (planned) {
+            closeBus();
+            bus = openBus();
+          }
+          planned = tl;
+          planSize = `${W}x${H}`;
+          events = plan();
+          anchor = null;
+          hard = true;
+        }
+        if (planSize !== `${W}x${H}`) {
+          // Same timeline, new window size: re-read positions and counts, and carry on.
+          planSize = `${W}x${H}`;
+          events = plan();
+        }
+        const len = tl.duration();
+        // Timeline time right now: its last rendered time plus the time since that GSAP tick.
+        const now = tl.totalTime() + Math.min(0.5, (performance.now() - lastTick) / 1000), at = ctx.currentTime;
+        if (anchor) {
+          const err = now - (anchor.tl + (at - anchor.audio));
+          if (Math.abs(err) > 0.08) anchor = null; // the animation jumped or stalled
+          else anchor.tl += err * 0.05; // ease out small drift
+        }
+        let fresh = false;
+        if (!anchor) {
+          anchor = { tl: now, audio: at };
+          // A small slip in a running clock keeps going from where booking stopped, so nothing plays twice.
+          // After a pause, a seek or a switch on, start from now: nothing missed piles up.
+          const slip = !hard && at - lastAudio < 0.6 && Math.abs(doneUpTo - now) < 0.5;
+          doneUpTo = slip ? Math.max(now, doneUpTo) : now;
+          fresh = !slip;
+          hard = false;
+        }
+        lastAudio = at;
+        // Long sounds already under way (fan, pour, pads) are picked up part way through.
+        if (fresh || musicCatch) {
+          const k0 = Math.floor(now / len);
+          for (let k = k0 - 1; k <= k0; k++) {
+            for (const e of events) {
+              if (!e.hold || (e.music && !wantMusic) || (!fresh && !e.music)) continue;
+              const t = k * len + e.t;
+              if (t < now && t + e.dur > now + 0.2) voices[e.type](at + 0.03, e, now - t + 0.03);
+            }
+          }
+          musicCatch = false;
+        }
+        const from = doneUpTo, to = anchor.tl + (at - anchor.audio) + 0.1;
+        if (to <= from) return;
+        for (let k = Math.floor(from / len); k <= Math.floor(to / len); k++) {
+          for (const e of events) {
+            const t = k * len + e.t;
+            if (t < from || t >= to) continue;
+            if (e.music && !wantMusic) continue;
+            voices[e.type](Math.max(at, anchor.audio + (t - anchor.tl)), e, 0);
+          }
+        }
+        doneUpTo = to;
+      }
+
+      // Turn sound on or off to match what was asked for.
+      function update() {
+        const on = wantOn && !reduce.matches;
+        if (on) {
+          if (!ctx) makeGraph();
+          clearTimeout(sleepTimer);
+          if (ctx.state !== "running") ctx.resume().catch(() => {});
+          if (!playing) {
+            playing = true;
+            anchor = null;
+            hard = true;
+            bus = openBus();
+            clearInterval(timer);
+            timer = setInterval(tick, 25);
+          }
+          const t = ctx.currentTime, g = bus.mus.gain;
+          g.cancelScheduledValues(t);
+          g.setValueAtTime(g.value, t);
+          g.linearRampToValueAtTime(wantMusic ? MUSIC : 0, t + 0.12);
+        } else if (playing) {
+          playing = false;
+          clearInterval(timer);
+          closeBus();
+          sleepTimer = setTimeout(() => { if (!playing) ctx.suspend().catch(() => {}); }, 220);
+        }
+      }
+
+      function set(on, music) {
+        if (music && !wantMusic) musicCatch = true;
+        wantOn = on;
+        wantMusic = music;
+        update();
+      }
+
+      // Browsers may block audio until the first click or key press.
+      const unlock = () => { if (playing && ctx && ctx.state !== "running") ctx.resume().catch(() => {}); };
+      addEventListener("pointerdown", unlock);
+      addEventListener("keydown", unlock);
+      reduce.addEventListener("change", update);
+      return { set };
+    })();
+
+    addEventListener("message", (event) => {
+      const d = event.data;
+      if (event.origin !== location.origin || !d || d.type !== "motionprompt-sound") return;
+      sound.set(!!d.on, d.music !== false);
+    });
+    const soundParam = params.get("sound");
+    if (soundParam === "1" || soundParam === "effects") sound.set(true, soundParam === "1");
+
     // Wait briefly for the fonts so the chalk text is measured in the right face.
     Promise.race([
       Promise.all([document.fonts.load("700 1em 'Cabin Sketch'"), document.fonts.load("700 1em Caveat")]),

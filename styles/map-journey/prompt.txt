@@ -14,6 +14,11 @@ Type and colour
 - A short title at the top in a clean, bold font (like Outfit), with a small line under it, such as the number of days and stops. Use a friendly rounded sans serif (like Nunito) for the cards and labels.
 - Use my brand colours if I give them. Otherwise use light sea blue #cfe7ee, warm cream land #f5f1e8, mint green #2fae86 for the trip country, coral #ff5a4e for the pins and deep navy #1d2b44 for the route and text.
 
+Sound
+- Effects: each pin lands with a soft thud (and a smaller one on its bounce) plus a gentle ping as the ripple spreads, a bubbly pop as each day card appears, and a soft pen scratch as the route draws, following its speed. Road stretches get a light car engine hum, sea crossings a short boat horn toot and lapping water, and flights a plane whoosh with a gentle engine drone. Add a soft whoosh when the camera pulls out to show the whole trip.
+- Music: an upbeat travel vlog bed, about 135 bpm in a bright major key: strummed acoustic guitar, a soft bass, a light kick, finger snaps and a shaker. Keep it well under the effects and let it loop cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

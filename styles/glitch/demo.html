@@ -233,10 +233,11 @@
     }
 
     // ---- Run ----
-    let frame = 0, start = 0;
+    let frame = 0, start = 0, last = 0;
     function loop(now) {
       if (!start) start = now;
       render(((now - start) / 1000) % LOOP, false);
+      last = now; // the sound reads this frame time
       frame = requestAnimationFrame(loop);
     }
 
@@ -263,6 +264,462 @@
     });
     reduce.addEventListener("change", apply);
 
+    // ---- Sound: off until the page asks for it. Every sound is made here with Web Audio, no files. ----
+    // o.clock() gives { t, p }: animation seconds t (not wrapped) that were true at performance time p (ms),
+    // or null while the animation is stopped. o.plan() lists one loop of { t, type, music, dur, long }.
+    // o.voices[type](when, e, A, skip) makes one sound. o.setup(A) can add extra nodes to each session
+    // and set A.stop to end them.
+    function makeSound(o) {
+      const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+      const LOOK = 0.1;
+      let ctx = null, A = null, impulse = null, noiseBuf = null, master = null;
+      let events = [], loopLen = 1;
+      let wantOn = false, wantMusic = true, timer = 0, sleepTimer = 0;
+      let animOff = null, outOff = null, done = null, longs = [];
+
+      function build() {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const sr = ctx.sampleRate;
+        // Compressor last, so nothing clips.
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -14;
+        comp.knee.value = 8;
+        comp.ratio.value = 4;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.2;
+        master = ctx.createGain();
+        master.gain.value = o.level;
+        master.connect(comp).connect(ctx.destination);
+        // White noise, and a reverb impulse made of stereo noise that fades away.
+        noiseBuf = ctx.createBuffer(1, sr * 2, sr);
+        const n = noiseBuf.getChannelData(0);
+        for (let i = 0; i < n.length; i++) n[i] = Math.random() * 2 - 1;
+        const len = Math.floor(sr * (o.verbTime || 1.6));
+        impulse = ctx.createBuffer(2, len, sr);
+        for (let c = 0; c < 2; c++) {
+          const d = impulse.getChannelData(c);
+          for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.5);
+        }
+      }
+
+      // Small building blocks.
+      function amp(when, peak, attack, decay, out) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, when);
+        g.gain.exponentialRampToValueAtTime(peak, when + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay);
+        if (out) g.connect(out);
+        return g;
+      }
+      function osc(type, freq, when, dur) {
+        const s = ctx.createOscillator();
+        s.type = type;
+        s.frequency.setValueAtTime(freq, when);
+        s.start(when);
+        s.stop(when + dur + 0.05);
+        return s;
+      }
+      function noise(when, dur) {
+        const s = ctx.createBufferSource();
+        s.buffer = noiseBuf;
+        s.loop = true;
+        s.start(when, Math.random() * 1.5);
+        s.stop(when + dur + 0.05);
+        return s;
+      }
+      function filter(type, freq, q = 0.7) {
+        const f = ctx.createBiquadFilter();
+        f.type = type;
+        f.frequency.value = freq;
+        f.Q.value = q;
+        return f;
+      }
+      function pan(value, out) {
+        const p = ctx.createStereoPanner();
+        p.pan.value = value;
+        p.connect(out);
+        return p;
+      }
+      const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+
+      // Each switch on gets fresh buses, so sounds booked before a switch off never leak out later.
+      function openSession() {
+        const t = ctx.currentTime;
+        const out = ctx.createGain();
+        out.gain.setValueAtTime(0, t);
+        out.gain.linearRampToValueAtTime(1, t + 0.05);
+        out.connect(master);
+        const fx = ctx.createGain();
+        fx.connect(out);
+        // Music gate: music:false fades this to zero, with the music's own reverb.
+        const gate = ctx.createGain();
+        gate.gain.value = wantMusic ? o.music : 0;
+        gate.connect(out);
+        const mus = ctx.createGain();
+        mus.connect(gate);
+        const verb = (dest) => {
+          const c = ctx.createConvolver();
+          c.buffer = impulse;
+          const tone = filter("lowpass", 4000);
+          const input = ctx.createGain();
+          input.connect(c).connect(tone).connect(dest);
+          return input;
+        };
+        const fxVerb = verb(fx), musVerb = verb(mus);
+        longs = [];
+        A = {
+          ctx, out, fx, mus, gate, fxVerb, musVerb, amp, osc, noise, filter, pan, hz,
+          // Reverb sends, one for effects and one for music.
+          send(node, amount) { const g = ctx.createGain(); g.gain.value = amount; node.connect(g).connect(fxVerb); },
+          msend(node, amount) { const g = ctx.createGain(); g.gain.value = amount; node.connect(g).connect(musVerb); },
+        };
+        if (o.setup) o.setup(A);
+      }
+      function closeSession() {
+        const S = A, old = A.out, t = ctx.currentTime;
+        A = null;
+        old.gain.cancelScheduledValues(t);
+        old.gain.setValueAtTime(old.gain.value, t);
+        old.gain.linearRampToValueAtTime(0, t + 0.15);
+        setTimeout(() => {
+          old.disconnect();
+          if (S.stop) S.stop(); // stop any steady sources the session started (like an LFO)
+        }, 300);
+      }
+
+      // AudioContext time for a performance time (seconds), using the output clock when there is one.
+      function outputOffset() {
+        const pnow = performance.now();
+        const ts = ctx.getOutputTimestamp ? ctx.getOutputTimestamp() : null;
+        let raw;
+        if (ts && ts.contextTime > 0 && ts.performanceTime > 0 && Math.abs(pnow - ts.performanceTime) < 1000) {
+          raw = ts.contextTime - ts.performanceTime / 1000;
+        } else {
+          raw = ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0) - pnow / 1000;
+        }
+        if (outOff === null || Math.abs(raw - outOff) > 0.04) outOff = raw;
+        else outOff += (raw - outOff) * 0.1;
+        return outOff;
+      }
+
+      function play(e, when, skip = 0) {
+        if (e.music && !wantMusic) return;
+        if (!e.long) return o.voices[e.type](when, e, A, skip);
+        // Long sounds get their own faders, so a resync can fade them out before starting them again.
+        const f = ctx.createGain(), fs = ctx.createGain();
+        f.connect(e.music ? A.mus : A.fx);
+        fs.connect(e.music ? A.musVerb : A.fxVerb);
+        const view = Object.create(A);
+        view.fx = view.mus = f;
+        view.send = view.msend = (node, amount) => { const g = ctx.createGain(); g.gain.value = amount; node.connect(g).connect(fs); };
+        o.voices[e.type](when, e, view, skip);
+        longs = longs.filter((x) => x.end > ctx.currentTime);
+        longs.push({ faders: [f, fs], end: when + e.dur - skip + 1, music: !!e.music });
+      }
+      function fadeLongs(musicOnly) {
+        const t = ctx.currentTime;
+        for (const x of longs) {
+          if (musicOnly && !x.music) continue;
+          for (const g of x.faders) {
+            g.gain.setValueAtTime(1, t);
+            g.gain.linearRampToValueAtTime(0, t + 0.08);
+          }
+        }
+        longs = longs.filter((x) => musicOnly && !x.music);
+      }
+
+      // Long sounds already under way (a hum, a pad) start part way through, so they do not wait a loop.
+      function catchUp(now, musicOnly) {
+        const lt = ((now % loopLen) + loopLen) % loopLen;
+        for (const e of events) {
+          if (!e.long || (musicOnly && !e.music)) continue;
+          if (lt > e.t + 0.02 && lt < e.t + e.dur - 0.15) play(e, ctx.currentTime + 0.02, lt - e.t);
+        }
+      }
+
+      // Look-ahead scheduler: every 25 ms, book the sounds due in the next 100 ms of animation time.
+      function tick() {
+        const c = A && ctx.state === "running" && !document.hidden && !reduce.matches ? o.clock() : null;
+        if (!c) { done = null; return; }
+        const raw = c.p / 1000 - c.t;
+        if (animOff === null || Math.abs(raw - animOff) > 0.08) { animOff = raw; done = null; }
+        else animOff += (raw - animOff) * 0.05;
+        const off = outputOffset();
+        const now = performance.now() / 1000 - animOff;
+        if (done === null) {
+          // Start or resume: pick up from now, skip anything missed (no burst).
+          done = now;
+          fadeLongs(false);
+          catchUp(now, false);
+        }
+        const to = now + LOOK;
+        if (to <= done) return;
+        for (let k = Math.floor(done / loopLen); k * loopLen < to; k++) {
+          for (const e of events) {
+            const at = k * loopLen + e.t;
+            if (at >= done && at < to) play(e, Math.max(ctx.currentTime, at + animOff + off));
+          }
+        }
+        done = to;
+      }
+
+      function update() {
+        const on = wantOn && !reduce.matches;
+        if (on) {
+          if (!ctx) build();
+          clearTimeout(sleepTimer);
+          if (ctx.state !== "running") ctx.resume().catch(() => {});
+          if (!A) {
+            openSession();
+            done = null;
+            animOff = null;
+            outOff = null;
+          }
+          if (!timer) timer = setInterval(tick, 25);
+          tick();
+        } else if (ctx) {
+          clearInterval(timer);
+          timer = 0;
+          done = null;
+          if (A) closeSession();
+          clearTimeout(sleepTimer);
+          sleepTimer = setTimeout(() => {
+            if (!(wantOn && !reduce.matches)) ctx.suspend().catch(() => {});
+          }, 220);
+        }
+      }
+
+      function setMusic(on) {
+        if (on === wantMusic) return;
+        wantMusic = on;
+        if (!A) return;
+        const g = A.gate.gain, t = ctx.currentTime;
+        g.cancelScheduledValues(t);
+        g.setValueAtTime(g.value, t);
+        g.linearRampToValueAtTime(on ? o.music : 0, t + 0.12);
+        if (on && done !== null) {
+          fadeLongs(true);
+          catchUp(done - LOOK, true);
+        }
+      }
+
+      // Call again whenever the animation is rebuilt (new size, new text).
+      function replan() {
+        loopLen = o.loopLen();
+        events = o.plan().sort((a, b) => a.t - b.t);
+        done = null;
+      }
+
+      // Browsers may block audio until a click or key press: resume then.
+      const unlock = () => {
+        if (ctx && wantOn && !reduce.matches && ctx.state !== "running") ctx.resume().catch(() => {});
+      };
+      addEventListener("pointerdown", unlock);
+      addEventListener("keydown", unlock);
+      reduce.addEventListener("change", update);
+      addEventListener("message", (event) => {
+        const d = event.data;
+        if (event.origin !== location.origin || !d || d.type !== "motionprompt-sound") return;
+        if (typeof d.music === "boolean") setMusic(d.music);
+        if (typeof d.on === "boolean") wantOn = d.on;
+        update();
+      });
+      const fromUrl = new URLSearchParams(location.search).get("sound");
+      if (fromUrl === "1" || fromUrl === "effects") {
+        wantOn = true;
+        wantMusic = fromUrl === "1";
+      }
+
+      return { replan, start: update };
+    }
+
+    // The sound follows the same clock as the picture: loop time = (frame time - start) / 1000.
+    // 120 bpm: 20 beats (5 bars) fill one 10 s loop. The beat drops out for the standby moment.
+    const BEAT = LOOP / 20;
+    const sound = makeSound({
+      level: 0.45,
+      music: 0.3,
+      clock: () => (frame && last && performance.now() - last < 250 ? { t: (last - start) / 1000, p: last } : null),
+      loopLen: () => LOOP,
+      setup(A) {
+        const { ctx } = A;
+        // A chopper on the music, so the big burst can stutter the beat too.
+        A.chop = ctx.createGain();
+        A.mus.disconnect();
+        A.mus.connect(A.chop).connect(A.gate);
+        // Bit crusher: a staircase curve that keeps only a few loudness steps.
+        A.crush = ctx.createWaveShaper();
+        const curve = new Float32Array(1024);
+        for (let i = 0; i < curve.length; i++) curve[i] = Math.round((i / 511.5 - 1) * 6) / 6;
+        A.crush.curve = curve;
+        A.crush.connect(A.filter("lowpass", 6500)).connect(A.fx);
+        // Short echo for the music blips.
+        A.echo = ctx.createGain();
+        const d = ctx.createDelay(1);
+        d.delayTime.value = BEAT * 0.75;
+        const fb = ctx.createGain();
+        fb.gain.value = 0.3;
+        const tone = A.filter("bandpass", 1500, 0.8);
+        A.echo.connect(d).connect(tone).connect(fb).connect(d);
+        tone.connect(A.pan(0.4, A.mus));
+      },
+      plan() {
+        const list = [];
+        // Glitch bursts, cut into the same 1/20 s steps the picture uses for its noise.
+        bursts.forEach(([at, len, power]) => {
+          const segs = [];
+          for (let s = at; s < at + len - 0.005;) {
+            const next = Math.min(at + len, (Math.floor(s * 20 + 1e-6) + 1) / 20);
+            segs.push([s - at, next - s, Math.floor(s * 20) + 7]);
+            s = next;
+          }
+          list.push({ t: at, type: "burst", len, power, segs });
+        });
+        // A hard digital click on every cut.
+        shots.forEach((s) => list.push({ t: s.from, type: "cut" }));
+        // Typing ticks: one per character as the status line types out (28 a second).
+        shots.forEach((s) => {
+          const line = `> ${s.label}`;
+          for (let k = 1; k <= line.length - 2; k++) {
+            const t = s.from + k / 28;
+            if (t < s.to) list.push({ t, type: "type", space: line[k + 1] === " ", k });
+          }
+        });
+        // Cursor blip each time the block cursor switches on (every whole second).
+        for (let k = 0; k < LOOP; k++) list.push({ t: k, type: "cursor" });
+
+        // Music: cold minimal techno in F minor. Kick, tight hats, a rolling bass and a low drone.
+        const roots = [29, 29, 25, 27, 29];
+        for (let b = 0; b < 20; b++) {
+          const tb = b * BEAT;
+          const standby = tb >= 8.9 - 0.01;
+          const root = roots[Math.floor(b / 4)];
+          if (!standby) {
+            list.push({ t: tb, type: "kick", music: true });
+            list.push({ t: tb + BEAT / 2, type: "hat", v: 1, music: true });
+            list.push({ t: tb + BEAT * 0.75, type: "hat", v: 0.4, music: true });
+            if (b % 4 === 1 || b % 4 === 3) list.push({ t: tb + BEAT * (b % 8 === 7 ? 0.75 : 0), type: "rim", music: true });
+            [0.25, 0.5, 0.75].forEach((q, j) => list.push({ t: tb + BEAT * q, type: "bass", m: root + (j === 2 && b % 2 ? 12 : 0), music: true }));
+          }
+          if (b % 4 === 2) list.push({ t: tb + BEAT * 0.25, type: "blip", m: 77 + (b % 8 === 2 ? 0 : 3), music: true });
+        }
+        list.push({ t: 0, type: "drone", dur: LOOP, long: true, music: true });
+        return list;
+      },
+      voices: {
+        // Corrupted data: a crunchy square tone and static that jump every step, stuttering on and off.
+        burst(when, e, A) {
+          const { ctx } = A;
+          const end = when + e.len;
+          const tone = A.osc("square", 400, when, e.len);
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0, when);
+          const st = ctx.createGain();
+          st.gain.setValueAtTime(0, when);
+          const p = ctx.createStereoPanner();
+          const size = 0.2 + 0.25 * e.power;
+          let lastG = 0, lastS = 0;
+          for (const [off, dur, seed] of e.segs) {
+            const r = rand(seed);
+            const at = when + off;
+            tone.frequency.setValueAtTime(120 + Math.floor(r() * 12) * 160, at);
+            const on = r() < 0.8 ? 1 : 0;
+            g.gain.setValueAtTime(0, at);
+            lastG = on * size * (0.5 + r() * 0.5);
+            lastS = size * (0.4 + r() * 0.6);
+            g.gain.linearRampToValueAtTime(lastG, at + 0.002);
+            st.gain.setValueAtTime(0, at);
+            st.gain.linearRampToValueAtTime(lastS, at + 0.002);
+            p.pan.setValueAtTime((r() - 0.5) * 1.2, at);
+          }
+          g.gain.setValueAtTime(lastG, end - 0.004);
+          g.gain.linearRampToValueAtTime(0, end);
+          st.gain.setValueAtTime(lastS, end - 0.004);
+          st.gain.linearRampToValueAtTime(0, end);
+          tone.connect(g).connect(p);
+          A.noise(when, e.len).connect(A.filter("bandpass", 3500, 0.6)).connect(st).connect(p);
+          p.connect(A.crush);
+          if (e.power >= 1) {
+            // The big one: the tone dives like a stalled tape, a low thud, and the beat stutters.
+            tone.frequency.cancelScheduledValues(when + e.len * 0.5);
+            tone.frequency.setValueAtTime(900, when + e.len * 0.5);
+            tone.frequency.exponentialRampToValueAtTime(50, end);
+            const th = A.osc("sine", 90, when, 0.4);
+            th.frequency.exponentialRampToValueAtTime(38, when + 0.3);
+            th.connect(A.amp(when, 0.5, 0.004, 0.32, A.fx));
+            const c = A.chop.gain;
+            for (let x = 0; x < e.len; x += 0.05) {
+              c.setValueAtTime(1, when + x);
+              c.setValueAtTime(0.15, when + x + 0.025);
+            }
+            c.setValueAtTime(1, end);
+          }
+        },
+        cut(when, e, A) {
+          A.noise(when, 0.006).connect(A.amp(when, 0.35, 0.0005, 0.004, A.fx));
+          const s = A.osc("sine", 110, when, 0.05);
+          s.connect(A.amp(when, 0.3, 0.001, 0.04, A.fx));
+        },
+        type(when, e, A) {
+          const f = 3800 + ((e.k * 37) % 7) * 180;
+          A.noise(when, 0.012).connect(A.filter("bandpass", f, 3)).connect(A.amp(when, e.space ? 0.1 : 0.22, 0.0005, 0.008, A.pan(-0.3, A.fx)));
+        },
+        cursor(when, e, A) {
+          const s = A.osc("sine", 1320, when, 0.05);
+          s.connect(A.amp(when, 0.06, 0.002, 0.035, A.pan(-0.3, A.fx)));
+        },
+        kick(when, e, A) {
+          const s = A.osc("sine", 130, when, 0.22);
+          s.frequency.exponentialRampToValueAtTime(45, when + 0.06);
+          s.connect(A.amp(when, 0.8, 0.001, 0.2, A.mus));
+          A.noise(when, 0.01).connect(A.filter("highpass", 4000)).connect(A.amp(when, 0.1, 0.0005, 0.005, A.mus));
+        },
+        hat(when, e, A) {
+          A.noise(when, 0.03).connect(A.filter("highpass", 9000)).connect(A.amp(when, 0.12 * e.v, 0.0005, 0.02, A.pan(0.2, A.mus)));
+        },
+        rim(when, e, A) {
+          const g = A.amp(when, 0.16, 0.0005, 0.03, A.pan(-0.15, A.mus));
+          A.noise(when, 0.03).connect(A.filter("bandpass", 2800, 2)).connect(g);
+          A.osc("triangle", 820, when, 0.03).connect(g);
+          A.msend(g, 0.3);
+        },
+        bass(when, e, A) {
+          const lp = A.filter("lowpass", 700, 6);
+          lp.frequency.setValueAtTime(700, when);
+          lp.frequency.exponentialRampToValueAtTime(120, when + 0.08);
+          lp.connect(A.amp(when, 0.34, 0.002, 0.09, A.mus));
+          A.osc("sawtooth", A.hz(e.m), when, 0.1).connect(lp);
+        },
+        blip(when, e, A) {
+          const g = A.amp(when, 0.07, 0.002, 0.08, A.mus);
+          A.osc("sine", A.hz(e.m), when, 0.1).connect(g);
+          g.connect(A.echo);
+        },
+        // Cold low drone under everything, slowly opening and closing.
+        drone(when, e, A, skip = 0) {
+          const { ctx } = A;
+          const dur = e.dur - skip;
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.0001, when);
+          g.gain.linearRampToValueAtTime(0.1, when + 0.05);
+          g.gain.setValueAtTime(0.1, when + dur - 0.05);
+          g.gain.linearRampToValueAtTime(0.0001, when + dur + 0.02);
+          const lp = A.filter("lowpass", 300, 1);
+          // Filter sweeps up to the middle of the loop and back, so the ends match.
+          const f = (x) => 300 + 500 * Math.sin((Math.PI * x) / e.dur);
+          lp.frequency.setValueAtTime(f(skip), when);
+          for (let x = Math.ceil(skip * 4) / 4; x <= e.dur; x += 0.25) lp.frequency.linearRampToValueAtTime(f(x), when + x - skip);
+          lp.connect(g).connect(A.mus);
+          for (const [m, det] of [[41, -8], [41, 8], [48, 0]]) {
+            const s = A.osc("sawtooth", A.hz(m), when, dur + 0.05);
+            s.detune.value = det;
+            s.connect(lp);
+          }
+          A.msend(g, 0.4);
+        },
+      },
+    });
+
     // Wait briefly for the fonts so the text is measured in the right face.
     Promise.race([
       Promise.all([document.fonts.load(HEAD(100)), document.fonts.load(MONO(20))]),
@@ -270,6 +727,8 @@
     ]).finally(() => {
       build();
       apply();
+      sound.replan();
+      sound.start();
     });
   </script>
 </body>

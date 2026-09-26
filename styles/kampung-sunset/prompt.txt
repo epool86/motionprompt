@@ -13,6 +13,11 @@ Type and colour
 - A rounded, friendly bold font (like Baloo 2) in warm cream, with a soft glow so it reads on the sky.
 - Use my brand colours if I give them. Otherwise use golden orange #f7a23b, sunset coral #f08a6a, paddy gold #e3a638, palm green #3f6a3c, lavender sky #7d6aa8 and dusk purple #4a2f6b.
 
+Sound
+- Effects: a warm evening nature ambience timed to the motion. Cicadas buzzing in the trees through golden hour, easing off as crickets start chirping at dusk. Palm leaves rustling as the breeze sways them, a dove cooing in the distance, and soft chirps from the birds flying home as they cross the sky. A soft chain whirr as the child cycles along the path, louder as they pass, with a friendly ring of the bicycle bell. Gentle clucks as the chickens peck, soft twinkles as the fireflies glow, and light plucks as the title letters rise.
+- Music: a nostalgic, heartfelt bed, slow and gentle in 3/4: a fingerpicked acoustic guitar with a simple soft piano tune and a warm pad. Keep it quieter than the effects and let it loop smoothly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

@@ -15,6 +15,11 @@ Type and colour
 - A chunky, friendly display font (like Lilita One) for the banner and a marker pen font (like Permanent Marker) for the price cards.
 - Use my brand colours if I give them. Otherwise use night blue #141a3c, dusk orange #f39a62, banner red #d8392f, warm bulb yellow #ffcf6e, and canopy stripes in red, blue, yellow and green with white.
 
+Sound
+- Effects: a busy night market feel timed to the motion. The murmur of a crowd all the way through, growing a little fuller as it gets dark. A steady sizzle from the satay grill with small ember crackles as sparks fly up. A little click as each bulb switches on, one by one from near to far, and softer clicks as they switch off. A springy pop as each price card bounces up, a cloth flap as the banner drops and snaps straight, and a quick flutter as it rolls away.
+- Music: a lively but light street market bed in a bouncy 12/8 joget feel: plucked gambus style melody, a soft bass, frame drums and a shaker. Keep it cheerful, quieter than the effects, and let it loop smoothly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

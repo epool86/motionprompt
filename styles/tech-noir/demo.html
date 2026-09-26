@@ -1023,8 +1023,9 @@
       buildText();
     }
 
-    let frame = 0;
+    let frame = 0, lastFrame = -Infinity; // lastFrame is read by the sound clock
     function loop(ms) {
+      lastFrame = performance.now();
       render((ms / 1000) % LOOP, false);
       frame = requestAnimationFrame(loop);
     }
@@ -1050,6 +1051,542 @@
       }, 150);
     });
     reduce.addEventListener("change", apply);
+
+    // ---------- Sound ----------
+    // Every sound is made here with the Web Audio API, no audio files. It stays off until the parent
+    // page (or ?sound=1 / ?sound=effects) turns it on. It reads the same clock as the animation
+    // (the frame time in seconds, looped every LOOP) and books each sound a little ahead at the matching audio time.
+    (() => {
+      const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+      const LEVEL = 1.5, MUSIC_LEVEL = 0.3, LOOK_AHEAD = 0.2;
+      const BEAT = LOOP / 24; // 120 bpm: 6 bars of 4 beats fill one 12 s loop exactly
+
+      // Animation time in seconds, or null while the animation is not running.
+      const clock = () => (frame && !document.hidden && performance.now() - lastFrame < 250 ? performance.now() / 1000 : null);
+
+      // One loop of sounds, worked out from the same numbers as the scenes.
+      const events = [];
+      const at = (s, l) => (s.start + l) % LOOP; // scene time to loop time
+      const fx = (t, kind, o = {}) => events.push({ t, kind, ...o });
+      const mu = (t, kind, o = {}) => events.push({ t, kind, music: true, ...o });
+      const [globe, hardware, board, words] = SCENES;
+      // A low drone under each scene, fading with the crossfades.
+      const drones = [[33, 40], [29, 36], [38, 45], [33, 40, 45]];
+      SCENES.forEach((s, i) => fx(s.start, "drone", { dur: s.len, fin: s.fadeIn ?? 0.7, notes: drones[i].map(hz) }));
+      // Globe: a data blip as each arc leaves "you", a ping as it lands (1.15 s later).
+      const pings = [81, 84, 86, 88, 91];
+      ARCS.forEach((arc, i) => {
+        fx(at(globe, arc.start), "launch", { i });
+        fx(at(globe, arc.start + 1.15), "ping", { f: hz(pings[i]), pan: [-0.3, 0.35, -0.15, 0.2, 0][i] });
+      });
+      // Hardware: fans whirr, rows of text tick in, a servo whine follows the progress bar, pulses leave on the cable.
+      fx(hardware.start, "fans", { dur: hardware.len });
+      SCREEN_ROWS.forEach((_, k) => fx(at(hardware, 0.35 + k * 0.22), "type", { k }));
+      fx(at(hardware, 1.0), "servo", { dur: 2.4 });
+      for (let n = 1; n * (1 / 0.36 / 4) < hardware.len - 0.2; n++) {
+        const l = n * (1 / 0.36 / 4); // a new pulse sets off every quarter of its 2.78 s trip
+        fx(at(hardware, l), "cable", { v: 1 - smooth(hardware.len - 0.7, hardware.len, l) });
+      }
+      // Board: each chip cell clicks as it lights (same "on" time as drawBoard), a hum builds, code words blip.
+      for (let i = 0; i < CELLS; i++) {
+        for (let j = 0; j < CELLS; j++) {
+          const k = i * CELLS + j;
+          const on = 0.35 + (Math.hypot(i - 2.5, j - 2.5) / 3.5) * 1.0 + hash(k) * 0.8;
+          fx(at(board, on), "cell", { f: 2400 + Math.floor(hash(k * 3) * 5) * 400, pan: (i - 2.5) * 0.12 });
+        }
+      }
+      fx(at(board, 0.35), "chipHum", { dur: 2.6 });
+      for (const [, x, , t0, hot] of WORDS) fx(at(board, t0), "word", { hot: !!hot, pan: Math.max(-0.6, Math.min(0.6, x * 0.4)) });
+      // Headline: particles gather into the words, glow, then dissolve into dust.
+      fx(at(words, 0.05), "gather", { dur: 1.3 });
+      fx(at(words, 1.1), "form");
+      fx(at(words, 2.0), "dissolve", { dur: 1.7 });
+
+      // Music: a minimal dark pulse in A minor. Sub bass on every beat, soft clicks and a faint pad.
+      const roots = [[0, 33, [57, 60, 64]], [8, 29, [57, 60, 65]], [16, 31, [55, 59, 62]], [20, 28, [55, 59, 64]]];
+      roots.forEach(([b0, root, pad], i) => {
+        const len = (roots[i + 1]?.[0] ?? 24) - b0;
+        mu(b0 * BEAT, "pad", { dur: len * BEAT, notes: pad.map(hz) });
+        for (let b = b0; b < b0 + len; b++) mu(b * BEAT, "sub", { f: hz(root), v: b % 4 === 0 ? 1 : 0.65 });
+      });
+      for (let s = 0; s < 96; s++) {
+        const r = hash(s * 7 + 1);
+        if (s % 4 === 2 || r > 0.8) mu((s * BEAT) / 4, "click", { v: s % 4 === 2 ? 1 : 0.55, f: 3000 + Math.floor(hash(s) * 4) * 900, pan: s % 2 ? 0.3 : -0.3 });
+      }
+      events.sort((a, b) => a.t - b.t);
+
+      let actx = null, master = null, noiseBuf = null, impulse = null, bus = null;
+      let wanted = false, musicOn = true, catchUp = false;
+      let timer = 0, sleepTimer = 0, cursor = null, offset = null;
+
+      function build() {
+        actx = new (window.AudioContext || window.webkitAudioContext)();
+        const sr = actx.sampleRate;
+        // Compressor last, so nothing clips.
+        const comp = actx.createDynamicsCompressor();
+        comp.threshold.value = -14;
+        comp.knee.value = 8;
+        comp.ratio.value = 4;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.2;
+        master = actx.createGain();
+        master.gain.value = LEVEL;
+        master.connect(comp);
+        comp.connect(actx.destination);
+        noiseBuf = actx.createBuffer(1, sr * 2, sr);
+        const n = noiseBuf.getChannelData(0);
+        for (let i = 0; i < n.length; i++) n[i] = Math.random() * 2 - 1;
+        // A dark, wide space: stereo noise that fades away slowly, used as the reverb impulse.
+        const len = Math.floor(sr * 2.8);
+        impulse = actx.createBuffer(2, len, sr);
+        for (let c = 0; c < 2; c++) {
+          const d = impulse.getChannelData(c);
+          for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+        }
+      }
+
+      // A fresh set of nodes each time sound is turned on, so nothing booked before a stop leaks out later.
+      function openBus() {
+        const t = actx.currentTime;
+        const out = actx.createGain();
+        out.gain.setValueAtTime(0, t);
+        out.gain.linearRampToValueAtTime(1, t + 0.08);
+        out.connect(master);
+        const fxIn = actx.createGain();
+        fxIn.connect(out);
+        const verb = actx.createConvolver();
+        verb.buffer = impulse;
+        const verbTone = filter("lowpass", 4000);
+        verb.connect(verbTone);
+        verbTone.connect(out);
+        // A dark echo for the pings and blips.
+        const echoIn = actx.createGain();
+        const echo = actx.createDelay(1);
+        echo.delayTime.value = BEAT * 0.75;
+        const feedback = actx.createGain();
+        feedback.gain.value = 0.35;
+        const echoTone = filter("lowpass", 2600);
+        echoIn.connect(echo);
+        echo.connect(echoTone);
+        echoTone.connect(feedback);
+        feedback.connect(echo);
+        echoTone.connect(fxIn);
+        // Music gate: music:false fades this to zero, with its reverb.
+        const mus = actx.createGain();
+        mus.gain.value = musicOn ? MUSIC_LEVEL : 0;
+        mus.connect(out);
+        const musVerb = actx.createGain();
+        musVerb.gain.value = 0.3;
+        mus.connect(musVerb);
+        musVerb.connect(verb);
+        return { out, fx: fxIn, verb, echo: echoIn, mus };
+      }
+
+      function closeBus() {
+        if (!bus) return;
+        const old = bus, t = actx.currentTime;
+        bus = null;
+        old.out.gain.cancelScheduledValues(t);
+        old.out.gain.setValueAtTime(old.out.gain.value, t);
+        old.out.gain.linearRampToValueAtTime(0, t + 0.15);
+        setTimeout(() => old.out.disconnect(), 300);
+      }
+
+      // Small building blocks
+      function filter(type, f, q = 0.7) {
+        const b = actx.createBiquadFilter();
+        b.type = type;
+        b.frequency.value = f;
+        b.Q.value = q;
+        return b;
+      }
+      function env(t, attack, peak, decay) {
+        const g = actx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(peak, t + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
+        return g;
+      }
+      function tone(type, f, t, out, stopAt) {
+        const o = actx.createOscillator();
+        o.type = type;
+        o.frequency.setValueAtTime(f, t);
+        o.connect(out);
+        o.start(t);
+        o.stop(stopAt);
+        return o;
+      }
+      function noiseAt(t, dur, out) {
+        const s = actx.createBufferSource();
+        s.buffer = noiseBuf;
+        s.loop = true;
+        s.connect(out);
+        s.start(t, Math.random() * 1.5);
+        s.stop(t + dur);
+        return s;
+      }
+      // Send an effect to the mix, panned, with some reverb and echo.
+      function toFx(node, pan, send, echo = 0) {
+        const p = actx.createStereoPanner();
+        p.pan.value = pan;
+        node.connect(p);
+        p.connect(bus.fx);
+        for (const [amount, dest] of [[send, bus.verb], [echo, bus.echo]]) {
+          if (amount <= 0) continue;
+          const s = actx.createGain();
+          s.gain.value = amount;
+          p.connect(s);
+          s.connect(dest);
+        }
+        return p;
+      }
+      // An audio param that follows a smooth curve over [t, t + dur].
+      const curve = (param, t, dur, shape, n = 97) => param.setValueCurveAtTime(Float32Array.from({ length: n }, (_, i) => shape(i / (n - 1))), t, dur);
+
+      // Effects
+      function drone(t, e) {
+        // A dark low drone that fades in and out with its scene.
+        const d = e.dur;
+        const lp = filter("lowpass", 180, 1.2);
+        curve(lp.frequency, t, d, (x) => 160 + 180 * Math.sin(Math.PI * x));
+        const g = actx.createGain();
+        g.gain.value = 0;
+        curve(g.gain, t, d, (x) => 0.022 * smooth(0, e.fin / d, x) * (1 - smooth(1 - 0.7 / d, 1, x)));
+        const body = actx.createGain();
+        body.gain.value = 0.6;
+        body.connect(g);
+        for (const f of e.notes) {
+          for (const cents of [-6, 6]) tone("sawtooth", f, t, lp, t + d + 0.05).detune.value = cents;
+          tone("sine", f, t, body, t + d + 0.05);
+        }
+        lp.connect(g);
+        toFx(g, 0, 0.3);
+      }
+      function launch(t, e) {
+        // A short data blip as an arc leaves the "you" dot.
+        const g = env(t, 0.002, 0.07, 0.07);
+        tone("sine", 1250 + e.i * 90, t, g, t + 0.1).frequency.exponentialRampToValueAtTime(1900 + e.i * 90, t + 0.05);
+        toFx(g, 0.05, 0.2, 0.25);
+        const c = env(t, 0.0005, 0.04, 0.008);
+        const hp = filter("highpass", 5000);
+        noiseAt(t, 0.02, hp);
+        hp.connect(c);
+        toFx(c, 0.05, 0);
+      }
+      function ping(t, e) {
+        // A soft sonar ping as an arc lands, with a dark echo.
+        for (const [m, a, d] of [[1, 1, 0.8], [2, 0.18, 0.3], [0.5, 0.25, 0.4]]) {
+          const g = env(t, 0.003, 0.07 * a, d);
+          tone("sine", e.f * m, t, g, t + d + 0.05);
+          toFx(g, e.pan, 0.45, 0.35);
+        }
+      }
+      function fans(t, e) {
+        // Two small fans whirring: soft air with a faint blade tone, fading with the scene.
+        const d = e.dur;
+        const shape = (x) => smooth(0, 0.7 / d, x) * (1 - smooth(1 - 0.7 / d, 1, x));
+        const bp = filter("bandpass", 900, 0.6);
+        const g = actx.createGain();
+        g.gain.value = 0;
+        curve(g.gain, t, d, (x) => 0.1 * shape(x));
+        noiseAt(t, d + 0.05, bp);
+        bp.connect(g);
+        const lp = filter("lowpass", 1800);
+        g.connect(lp);
+        toFx(lp, 0.25, 0.15);
+        const hum = actx.createGain();
+        hum.gain.value = 0;
+        curve(hum.gain, t, d, (x) => 0.018 * shape(x));
+        const o = tone("triangle", 240, t, hum, t + d + 0.05);
+        const wob = actx.createOscillator();
+        wob.frequency.value = 7;
+        const depth = actx.createGain();
+        depth.gain.value = 6;
+        wob.connect(depth);
+        depth.connect(o.frequency);
+        wob.start(t);
+        wob.stop(t + d + 0.05);
+        toFx(hum, 0.25, 0.1);
+      }
+      function type(t, e) {
+        // Tiny key ticks as a row of text types in.
+        for (let n = 0; n < 3; n++) {
+          const tt = t + n * 0.09 + (e.k % 2) * 0.02;
+          const c = env(tt, 0.0005, 0.05, 0.012);
+          const bp = filter("bandpass", 4200 + n * 300, 2);
+          noiseAt(tt, 0.02, bp);
+          bp.connect(c);
+          toFx(c, -0.3, 0.1);
+        }
+      }
+      function servo(t, e) {
+        // A soft servo whine that follows the progress bar: it speeds up, then eases to a stop.
+        const d = e.dur;
+        const speed = (x) => (x < 0.5 ? 12 * x * x : 12 * (1 - x) * (1 - x)) / 3;
+        const g = actx.createGain();
+        g.gain.value = 0;
+        curve(g.gain, t, d, (x) => 0.035 * Math.pow(speed(x), 0.8));
+        const lp = filter("lowpass", 1400, 2);
+        const o = tone("sawtooth", 180, t, lp, t + d + 0.05);
+        curve(o.frequency, t, d, (x) => 160 + 260 * speed(x));
+        const o2 = tone("sine", 360, t, g, t + d + 0.05);
+        curve(o2.frequency, t, d, (x) => 320 + 520 * speed(x));
+        lp.connect(g);
+        toFx(g, -0.3, 0.2);
+      }
+      function cable(t, e) {
+        // A soft tick as a pulse of light leaves along the cable.
+        const g = env(t, 0.001, 0.09 * e.v, 0.04);
+        tone("sine", 2200, t, g, t + 0.06);
+        toFx(g, -0.15, 0.15, 0.3);
+        const c = env(t, 0.0005, 0.05 * e.v, 0.008);
+        const hp = filter("highpass", 6000);
+        noiseAt(t, 0.02, hp);
+        hp.connect(c);
+        toFx(c, -0.15, 0);
+      }
+      function cell(t, e) {
+        // A tiny digital click as a chip cell lights.
+        const g = env(t, 0.0005, 0.035, 0.02);
+        tone("square", e.f, t, g, t + 0.03);
+        const lp = filter("lowpass", 6000);
+        g.connect(lp);
+        toFx(lp, e.pan, 0.12);
+      }
+      function chipHum(t, e) {
+        // A low electric hum that builds as the chip powers up.
+        const d = e.dur;
+        const lp = filter("lowpass", 300, 3);
+        curve(lp.frequency, t, d, (x) => 200 + 900 * x * x);
+        const g = actx.createGain();
+        g.gain.value = 0;
+        curve(g.gain, t, d, (x) => 0.05 * Math.min(1, x * 1.6) * (1 - smooth(0.7, 1, x)));
+        tone("sawtooth", 110, t, lp, t + d + 0.05);
+        tone("sawtooth", 165.5, t, lp, t + d + 0.05);
+        lp.connect(g);
+        toFx(g, 0, 0.2);
+      }
+      function word(t, e) {
+        // A soft, low blip as a code word drifts up.
+        const f = e.hot ? hz(76) : hz(69);
+        const g = env(t, 0.004, e.hot ? 0.06 : 0.035, 0.18);
+        tone("triangle", f, t, g, t + 0.25);
+        const lp = filter("lowpass", 1500);
+        g.connect(lp);
+        toFx(lp, e.pan, 0.3, 0.3);
+      }
+      function gather(t, e) {
+        // Particles gather into the words: a rising swell of tiny grains, left to right like the words fill in.
+        const d = e.dur;
+        const bp = filter("bandpass", 1200, 2);
+        curve(bp.frequency, t, d, (x) => 1200 + 4800 * x);
+        const g = actx.createGain();
+        g.gain.value = 0;
+        curve(g.gain, t, d, (x) => 0.12 * Math.pow(x, 1.6) * (1 - smooth(0.85, 1, x)));
+        const p = actx.createStereoPanner();
+        curve(p.pan, t, d, (x) => -0.5 + x);
+        noiseAt(t, d + 0.05, bp);
+        bp.connect(g);
+        g.connect(p);
+        p.connect(bus.fx);
+        const s = actx.createGain();
+        s.gain.value = 0.4;
+        p.connect(s);
+        s.connect(bus.verb);
+        for (let i = 0; i < 18; i++) {
+          const x = Math.pow(i / 18, 0.7), tt = t + x * d * 0.95;
+          const gr = env(tt, 0.001, 0.012 + 0.02 * x, 0.05);
+          tone("sine", 1800 + hash(i + 40) * 2600 * (0.5 + x), tt, gr, tt + 0.07);
+          toFx(gr, -0.5 + x, 0.4);
+        }
+      }
+      function form(t) {
+        // The words are formed: a warm, dark chord blooms and fades.
+        const lp = filter("lowpass", 1500, 0.5);
+        const g = env(t, 0.25, 0.05, 1.6);
+        for (const m of [57, 64, 69, 72]) tone("triangle", hz(m), t, lp, t + 2);
+        lp.connect(g);
+        toFx(g, 0, 0.6);
+      }
+      function dissolve(t, e) {
+        // The words dissolve into drifting dust: grains that thin out and fall, left to right.
+        const d = e.dur;
+        const bp = filter("bandpass", 5000, 1.5);
+        curve(bp.frequency, t, d, (x) => 5000 - 3400 * x);
+        const g = actx.createGain();
+        g.gain.value = 0;
+        curve(g.gain, t, d, (x) => 0.1 * Math.sin(Math.PI * Math.pow(x, 0.6)));
+        const p = actx.createStereoPanner();
+        curve(p.pan, t, d, (x) => -0.4 + 0.9 * x);
+        noiseAt(t, d + 0.05, bp);
+        bp.connect(g);
+        g.connect(p);
+        p.connect(bus.fx);
+        const s = actx.createGain();
+        s.gain.value = 0.5;
+        p.connect(s);
+        s.connect(bus.verb);
+        for (let i = 0; i < 16; i++) {
+          const x = i / 16, tt = t + x * d * 0.9;
+          const gr = env(tt, 0.001, 0.02 * (1 - x * 0.7), 0.08);
+          const f = 4200 - x * 2600 + hash(i + 90) * 900;
+          tone("sine", f, tt, gr, tt + 0.1).frequency.exponentialRampToValueAtTime(f * 0.8, tt + 0.08);
+          toFx(gr, -0.4 + 0.9 * x, 0.5);
+        }
+      }
+
+      // Music
+      function sub(t, e) {
+        // A round sub bass pulse, with a touch of second harmonic so small speakers can hear it.
+        const g = actx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(0.25 * e.v, t + 0.04);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + BEAT * 0.95);
+        tone("sine", e.f, t, g, t + BEAT);
+        const h = env(t, 0.04, 0.05 * e.v, BEAT * 0.6);
+        tone("sine", e.f * 2, t, h, t + BEAT);
+        g.connect(bus.mus);
+        h.connect(bus.mus);
+      }
+      function click(t, e) {
+        const g = env(t, 0.0005, 0.03 * e.v, 0.01);
+        const hp = filter("bandpass", e.f, 3);
+        noiseAt(t, 0.02, hp);
+        hp.connect(g);
+        const p = actx.createStereoPanner();
+        p.pan.value = e.pan;
+        g.connect(p);
+        p.connect(bus.mus);
+      }
+      function pad(t, e) {
+        // A faint, dark pad: soft triangles through a low-pass.
+        const lp = filter("lowpass", 800, 0.5);
+        const g = actx.createGain();
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(0.016, t + 0.8);
+        g.gain.setValueAtTime(0.016, t + e.dur);
+        g.gain.linearRampToValueAtTime(0, t + e.dur + 0.8);
+        for (const f of e.notes) tone("triangle", f, t, lp, t + e.dur + 0.85);
+        lp.connect(g);
+        g.connect(bus.mus);
+      }
+      const voices = { drone, launch, ping, fans, type, servo, cable, cell, chipHum, word, gather, form, dissolve, sub, click, pad };
+
+      function play(e, t, when) {
+        if (window.__soundLog) window.__soundLog.push({ kind: e.kind, t: when, when: t }); // test hook
+        voices[e.kind](t, e);
+      }
+
+      // Audio time being heard right now. Uses the output clock when the browser gives one.
+      function heardNow() {
+        const ts = actx.getOutputTimestamp ? actx.getOutputTimestamp() : null;
+        const p = performance.now();
+        if (ts && ts.contextTime > 0 && ts.performanceTime > 0 && Math.abs(p - ts.performanceTime) < 1000) {
+          return ts.contextTime + (p - ts.performanceTime) / 1000;
+        }
+        return actx.currentTime - (actx.outputLatency || actx.baseLatency || 0);
+      }
+
+      // Look-ahead scheduler: every 25 ms, book the sounds that fall in the next 200 ms of animation time
+      // (enough to ride out a slow frame on a busy page).
+      function pump() {
+        const now = bus && actx.state === "running" ? clock() : null;
+        // Paused or hidden: book nothing. The cursor stays, so a short stall does not book anything twice.
+        if (now === null) return;
+        // Audio time = animation time + offset, smoothed so small jitter does not move sounds.
+        const raw = heardNow() - now;
+        if (offset === null || Math.abs(raw - offset) > 0.05) offset = raw;
+        else offset += (raw - offset) * 0.1;
+        if (cursor === null || now - cursor > 0.3 || cursor - now > LOOK_AHEAD + 0.3) {
+          // Start, a long pause or a jump: pick up from now and skip anything missed, so nothing piles up.
+          cursor = now;
+          catchUp = true;
+        }
+        if (catchUp) {
+          // Bring in the drone (and pad) already under way, so the sound bed does not wait for the next scene.
+          const lt = ((now % LOOP) + LOOP) % LOOP;
+          for (const e of events) {
+            if (e.kind !== "drone" && !(e.kind === "pad" && musicOn)) continue;
+            const into = (((lt - e.t) % LOOP) + LOOP) % LOOP;
+            if (into > 0.05 && into < e.dur - 0.3) {
+              const rest = e.dur - into;
+              if (e.kind === "pad") pad(actx.currentTime + 0.02, { ...e, dur: rest });
+              else drone(actx.currentTime + 0.02, { ...e, dur: rest, fin: 0.3 });
+            }
+          }
+        }
+        catchUp = false;
+        const end = now + LOOK_AHEAD;
+        for (let k = Math.floor(cursor / LOOP); k * LOOP < end; k++) {
+          for (const e of events) {
+            const when = k * LOOP + e.t;
+            // Each sound plays once: its time must fall in [cursor, end). Ones more than 80 ms late are skipped.
+            if (when < cursor || when >= end || when < now - 0.08 || (e.music && !musicOn)) continue;
+            play(e, Math.max(actx.currentTime, when + offset), when);
+          }
+        }
+        cursor = end;
+      }
+
+      function update() {
+        const on = wanted && !reduce.matches;
+        if (on) {
+          if (!actx) build();
+          clearTimeout(sleepTimer);
+          if (actx.state !== "running") actx.resume().catch(() => {});
+          if (!bus) {
+            bus = openBus();
+            cursor = null;
+            offset = null;
+          }
+          if (!timer) timer = setInterval(pump, 25);
+          pump();
+        } else if (actx) {
+          clearInterval(timer);
+          timer = 0;
+          cursor = null;
+          closeBus();
+          clearTimeout(sleepTimer);
+          sleepTimer = setTimeout(() => {
+            if (!(wanted && !reduce.matches)) actx.suspend().catch(() => {});
+          }, 220);
+        }
+      }
+
+      function setMusic(on) {
+        if (on === musicOn) return;
+        musicOn = on;
+        if (on) catchUp = true;
+        if (bus) {
+          const g = bus.mus.gain, t = actx.currentTime;
+          g.cancelScheduledValues(t);
+          g.setValueAtTime(g.value, t);
+          g.linearRampToValueAtTime(on ? MUSIC_LEVEL : 0, t + 0.12);
+        }
+      }
+
+      // Browsers may block audio until a click or key press: resume then.
+      const unlock = () => {
+        if (actx && wanted && !reduce.matches && actx.state !== "running") actx.resume().catch(() => {});
+      };
+      window.addEventListener("pointerdown", unlock);
+      window.addEventListener("keydown", unlock);
+      reduce.addEventListener("change", update);
+
+      window.addEventListener("message", (event) => {
+        const d = event.data;
+        if (event.origin !== location.origin || !d || d.type !== "motionprompt-sound") return;
+        if (typeof d.music === "boolean") setMusic(d.music);
+        if (typeof d.on === "boolean") wanted = d.on;
+        update();
+      });
+      const fromUrl = params.get("sound");
+      if (fromUrl === "1" || fromUrl === "effects") {
+        wanted = true;
+        setMusic(fromUrl === "1");
+        update();
+      }
+    })();
 
     resize();
     apply();

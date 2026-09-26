@@ -12,6 +12,11 @@ Type and colour
 - A flowing script font that looks like bent glass tubing (like Yellowtail), on one to three lines.
 - Use my brand colours if I give them. Otherwise use hot pink #ff4f9a for the words, warm amber #ffb13b for the icon, a near white core #fff4f8 and a dark red brick wall #2a1512.
 
+Sound
+- Effects: an electric crackle and buzz each time a tube blinks on (one stutter of sound for every blink, a tiny tick when it drops out), a small bright zap as the icon buzzes on, a low steady neon hum that swells as more of the sign is lit, a brief crackle when a tube flickers, and a soft power down hum as the sign fades off.
+- Music: a quiet late night lo-fi bed at about 96 bpm: soft electric piano jazz chords, a round bass, brushed drums and a gentle kick with a lazy swing. Keep it well under the effects and let it loop cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

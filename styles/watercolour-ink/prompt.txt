@@ -11,6 +11,11 @@ Type and colour
 - A brushy, hand painted script font for the headline (like Kaushan Script) and an elegant italic serif for the small line (like Cormorant Garamond).
 - Use my brand colours if I give them. Otherwise use warm paper #f3ede0, indigo ink #26314d, muted indigo #6377ad, dusty rose #c67b86, ochre #cda45e and seal red #b4382c.
 
+Sound
+- Effects: a wet brush touch and a soft water bloom with tiny bubbles as each wash spreads, a soft bristle drag for each brush stroke (loudest where the brush moves fastest), tiny ink dabs, a quick wet brush flick for each letter, a delicate chime and a faint flutter as each petal falls, a soft wooden press when the red seal stamps down, and a gentle rinse of water as everything fades back to paper.
+- Music: a calm, slow bed inspired by East Asian music, about 80 bpm: soft zither plucks (like a guzheng or koto) on a pentatonic scale, a breathy flute melody and a quiet low drone. Keep it quieter than the effects and let it loop cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

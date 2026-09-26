@@ -704,6 +704,441 @@
       if (reduce.matches) still();
     });
 
+    // Sound: every sound is made with the Web Audio API, no files. It is off until the
+    // parent page (or ?sound=1 / ?sound=effects) turns it on, and it follows the animation
+    // clock so each sound lands on its frame.
+    const sound = (() => {
+      const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+      const LEVEL = 0.55, MUSIC = 0.75;
+      let clock = null, events = [], loopLen = 0;
+      let ctx = null, master, impulse, noiseBuf, session = null, fxBus, musicBus, verbSend;
+      let wantOn = false, wantMusic = true, playing = false;
+      let timer = 0, sleepTimer = 0, anchor = null, doneUpTo = 0;
+
+      // The list of sounds for one loop, from the same numbers as the animation. Effects land
+      // on the 12 fps steps: the first frame that shows the change.
+      function plan() {
+        const list = [];
+        const add = (t, type, extra = {}, music = false) => list.push({ t, type, music, ...extra });
+        const step = (t) => Math.ceil(t * FPS - 1e-6) / FPS;
+        const sky = new Set([sun, cloud]);
+
+        // Props pop up out of the ground with a clay pop, and squish back in at the end.
+        props.forEach((p, i) => {
+          if (p === sign) {
+            // The sign drops from the sky and lands with a thud and a squelch.
+            add(step(p.t0), "fall", { dur: 0.4, obj: p });
+            add(step(p.t0 + 0.4), "thud", { v: 0.8, obj: p });
+            add(step(p.t0 + 0.4), "squelch", { v: 0.8, f: 160, obj: p });
+          } else {
+            add(step(p.t0), "pop", { f: 260 + ((i * 5) % 9) * 45, v: sky.has(p) ? 0.55 : 1, obj: p });
+          }
+          add(step(p.t1), "sink", { f: 220 + ((i * 3) % 7) * 30, v: 0.7, obj: p });
+        });
+
+        // The buddy drops in, lands with a big squish and a happy squeak.
+        add(step(ENTER), "fall", { dur: LAND - ENTER, obj: buddy });
+        add(step(LAND), "thud", { v: 1, obj: buddy });
+        add(step(LAND), "squelch", { v: 1, f: 140, obj: buddy });
+        add(step(LAND + 0.3), "squeak", { kind: "happy", obj: buddy });
+        // Each hop: a squelch as it crouches, a boing as it springs, a thud and squish on landing.
+        HOPS.forEach((h) => {
+          add(step(h.t0 - 0.2), "squelch", { v: 0.45, f: 200, obj: buddy });
+          add(step(h.t0), "boing", { h: h.h, obj: buddy });
+          if (h.spin) add(step(h.t0 + 0.1 * h.dur), "spin", { dur: 0.8 * h.dur, obj: buddy });
+          add(step(h.t0 + h.dur), "thud", { v: h.h > 1 ? 0.9 : 0.6, obj: buddy });
+          add(step(h.t0 + h.dur), "squelch", { v: h.h > 1 ? 0.8 : 0.55, f: 170, obj: buddy });
+          if (h.spin) add(step(h.t0 + h.dur + 0.3), "squeak", { kind: "happy", obj: buddy });
+        });
+        // A curious little blip as it glances at the sign, and tiny blips for blinks.
+        add(step(6.3), "squeak", { kind: "curious", obj: buddy });
+        BLINKS.forEach((b) => add(step(b), "blink", { obj: buddy }));
+        // It crouches and hops away with a "wheee" before everything squishes back in.
+        add(step(EXIT - 0.2), "squelch", { v: 0.5, f: 200, obj: buddy });
+        add(step(EXIT), "boing", { h: 2, obj: buddy });
+        add(step(EXIT + 0.05), "squeak", { kind: "whee", obj: buddy });
+
+        // Music at 96 bpm (0.625 s a beat): 4 bars fill the 10 s loop exactly. C Am F G.
+        // A pizzicato bass on 1 and 3, pizzicato chords on 2 and 4, a xylophone tune in
+        // eighths and a soft wooden tick on the off-beats.
+        const B = 0.625;
+        const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+        const bass = [[48, 43], [45, 40], [41, 36], [43, 38]];
+        const chords = [[60, 64, 67], [57, 60, 64], [57, 60, 65], [59, 62, 67]];
+        const tune = [
+          [76, 0, 79, 81, 0, 79, 0, 76],
+          [72, 0, 76, 79, 0, 76, 0, 74],
+          [81, 0, 77, 76, 0, 72, 0, 74],
+          [74, 0, 79, 83, 0, 81, 79, 0],
+        ];
+        for (let bar = 0; bar < 4; bar++) {
+          for (let beat = 0; beat < 4; beat++) {
+            const t = (bar * 4 + beat) * B;
+            if (beat % 2 === 0) add(t, "pizz", { f: hz(bass[bar][beat / 2]), v: 1 }, true);
+            else add(t, "chord", { notes: chords[bar].map(hz) }, true);
+            add(t + B / 2, "tock", { v: beat % 2 ? 1 : 0.6 }, true);
+          }
+          tune[bar].forEach((m, k) => { if (m) add((bar * 4 + k / 2) * B, "xylo", { f: hz(m), v: k % 2 ? 0.75 : 1 }, true); });
+        }
+        return list;
+      }
+
+      // Called once the animation starts.
+      function attach(c) {
+        if (clock) return;
+        clock = c;
+        loopLen = c.length;
+        events = plan()
+          .map((e) => ({ ...e, t: ((e.t % loopLen) + loopLen) % loopLen }))
+          .sort((a, b) => a.t - b.t);
+        reduce.addEventListener("change", update);
+        update();
+      }
+
+      // Audio graph: effects and music buses, a small reverb, a compressor before the speakers.
+      function makeGraph() {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -14;
+        comp.knee.value = 8;
+        comp.ratio.value = 4;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.18;
+        master = ctx.createGain();
+        master.gain.value = LEVEL;
+        master.connect(comp).connect(ctx.destination);
+
+        // Reverb impulse: stereo noise that fades out.
+        const len = Math.floor(ctx.sampleRate * 1.3);
+        impulse = ctx.createBuffer(2, len, ctx.sampleRate);
+        for (let c = 0; c < 2; c++) {
+          const d = impulse.getChannelData(c);
+          for (let s = 0; s < len; s++) d[s] = (Math.random() * 2 - 1) * Math.pow(1 - s / len, 3.2);
+        }
+        noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+        const nd = noiseBuf.getChannelData(0);
+        for (let s = 0; s < nd.length; s++) nd[s] = Math.random() * 2 - 1;
+      }
+
+      // Each time sound is turned on it gets fresh buses, so sounds queued before a
+      // stop can never leak out later.
+      function openSession() {
+        const t = ctx.currentTime;
+        session = ctx.createGain();
+        session.gain.setValueAtTime(0, t);
+        session.gain.linearRampToValueAtTime(1, t + 0.05);
+        session.connect(master);
+        fxBus = ctx.createGain();
+        fxBus.connect(session);
+        const verb = ctx.createConvolver();
+        verb.buffer = impulse;
+        const verbOut = ctx.createGain();
+        verbOut.gain.value = 0.3;
+        verbSend = ctx.createGain();
+        verbSend.connect(verb).connect(verbOut).connect(session);
+        // Music goes through its own gate (so music:false also silences its reverb).
+        musicBus = ctx.createGain();
+        musicBus.gain.value = wantMusic ? MUSIC : 0;
+        musicBus.connect(session);
+        const musicVerb = ctx.createGain();
+        musicVerb.gain.value = 0.25;
+        musicBus.connect(musicVerb).connect(verbSend);
+      }
+      function closeSession() {
+        const old = session, t = ctx.currentTime;
+        session = null;
+        old.gain.cancelScheduledValues(t);
+        old.gain.setValueAtTime(old.gain.value, t);
+        old.gain.linearRampToValueAtTime(0, t + 0.15);
+        setTimeout(() => old.disconnect(), 250);
+      }
+
+      // Small building blocks.
+      function amp(when, peak, attack, decay, out) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, when);
+        g.gain.exponentialRampToValueAtTime(peak, when + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay);
+        g.connect(out);
+        return g;
+      }
+      function osc(type, freq, when, dur) {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.setValueAtTime(freq, when);
+        o.start(when);
+        o.stop(when + dur + 0.05);
+        return o;
+      }
+      function noise(when, dur) {
+        const s = ctx.createBufferSource();
+        s.buffer = noiseBuf;
+        s.loop = true;
+        s.start(when, Math.random() * 0.8);
+        s.stop(when + dur + 0.05);
+        return s;
+      }
+      function filter(type, freq, q = 0.7) {
+        const f = ctx.createBiquadFilter();
+        f.type = type;
+        f.frequency.value = freq;
+        f.Q.value = q;
+        return f;
+      }
+      function pan(value, out) {
+        const p = ctx.createStereoPanner();
+        p.pan.value = value;
+        p.connect(out);
+        return p;
+      }
+      function send(node, amount) {
+        const g = ctx.createGain();
+        g.gain.value = amount;
+        node.connect(g).connect(verbSend);
+      }
+      // Pan a sound towards the piece that makes it, from where it stands in the scene.
+      const panFor = (e) => (e.obj && e.obj.home ? Math.max(-0.6, Math.min(0.6, e.obj.home.x / 5)) : 0);
+      // A wobbly pitch, like soft clay moving: a short vibrato on an oscillator.
+      function wobblePitch(o, when, dur, rate, depth) {
+        const lfo = osc("sine", rate, when, dur);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(depth, when);
+        g.gain.exponentialRampToValueAtTime(depth * 0.05, when + dur);
+        lfo.connect(g).connect(o.frequency);
+      }
+
+      // One function per sound.
+      const voices = {
+        pop(when, e) {
+          // Clay pop out of the ground: a round "bloop" that rises, with a wet little squish.
+          const o = osc("sine", e.f, when, 0.16);
+          o.frequency.exponentialRampToValueAtTime(e.f * 2.4, when + 0.05);
+          o.frequency.exponentialRampToValueAtTime(e.f * 1.8, when + 0.14);
+          const g = amp(when, 0.34 * e.v, 0.004, 0.13, pan(panFor(e), fxBus));
+          o.connect(g);
+          const bp = filter("bandpass", 1400, 3);
+          bp.frequency.exponentialRampToValueAtTime(600, when + 0.08);
+          noise(when, 0.09).connect(bp).connect(amp(when, 0.14 * e.v, 0.004, 0.07, g));
+          send(g, 0.2);
+        },
+        sink(when, e) {
+          // Squishing back into the ground: a falling, gloopy squelch.
+          const o = osc("sine", e.f * 1.3, when, 0.4);
+          o.frequency.exponentialRampToValueAtTime(e.f * 0.35, when + 0.35);
+          wobblePitch(o, when, 0.4, 26, 30);
+          const g = amp(when, 0.2 * e.v, 0.02, 0.34, pan(panFor(e), fxBus));
+          o.connect(g);
+          const bp = filter("bandpass", 900, 4);
+          bp.frequency.exponentialRampToValueAtTime(260, when + 0.35);
+          noise(when, 0.36).connect(bp).connect(amp(when, 0.2 * e.v, 0.02, 0.3, g));
+        },
+        squelch(when, e) {
+          // Squash: a short wet squish with a wobbly low body.
+          const o = osc("sine", e.f * 1.5, when, 0.2);
+          o.frequency.exponentialRampToValueAtTime(e.f * 0.6, when + 0.16);
+          wobblePitch(o, when, 0.2, 32, 40);
+          const g = amp(when, 0.3 * e.v, 0.006, 0.17, pan(panFor(e), fxBus));
+          o.connect(g);
+          const bp = filter("bandpass", 1800, 5);
+          bp.frequency.exponentialRampToValueAtTime(420, when + 0.14);
+          const n = amp(when, 0.35 * e.v, 0.004, 0.13, g);
+          noise(when, 0.16).connect(bp).connect(n);
+        },
+        thud(when, e) {
+          // Soft landing on clay: a padded low thump.
+          const o = osc("sine", 120, when, 0.2);
+          o.frequency.exponentialRampToValueAtTime(52, when + 0.1);
+          o.connect(amp(when, 0.6 * e.v, 0.003, 0.16, pan(panFor(e), fxBus)));
+          noise(when, 0.06).connect(filter("lowpass", 380)).connect(amp(when, 0.35 * e.v, 0.002, 0.05, fxBus));
+        },
+        boing(when, e) {
+          // Springy hop: a rising, wobbling "boing", bigger for higher hops.
+          const big = Math.min(1, e.h / 1.5);
+          const d = 0.28 + big * 0.2;
+          const o = osc("triangle", 150, when, d);
+          o.frequency.exponentialRampToValueAtTime(380 + big * 250, when + d * 0.7);
+          wobblePitch(o, when, d, 16, 45);
+          const g = amp(when, 0.2 + big * 0.06, 0.006, d, pan(panFor(e), fxBus));
+          o.connect(g);
+          send(g, 0.2);
+        },
+        fall(when, e) {
+          // Dropping in from the sky: a soft falling whistle.
+          const o = osc("sine", 1500, when, e.dur);
+          o.frequency.exponentialRampToValueAtTime(520, when + e.dur);
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.0001, when);
+          g.gain.exponentialRampToValueAtTime(0.06, when + e.dur * 0.3);
+          g.gain.exponentialRampToValueAtTime(0.0001, when + e.dur);
+          o.connect(g).connect(pan(panFor(e), fxBus));
+          send(g, 0.3);
+        },
+        spin(when, e) {
+          // Spin: a whoosh that circles around.
+          const n = noise(when, e.dur);
+          const bp = filter("bandpass", 700, 2);
+          const lfo = osc("sine", 2.6 / e.dur, when, e.dur);
+          const depth = ctx.createGain();
+          depth.gain.value = 450;
+          lfo.connect(depth).connect(bp.frequency);
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.0001, when);
+          g.gain.exponentialRampToValueAtTime(0.35, when + e.dur * 0.5);
+          g.gain.exponentialRampToValueAtTime(0.0001, when + e.dur);
+          const p = ctx.createStereoPanner();
+          const plfo = osc("sine", 1.3 / e.dur, when, e.dur);
+          const pd = ctx.createGain();
+          pd.gain.value = 0.6;
+          plfo.connect(pd).connect(p.pan);
+          p.connect(fxBus);
+          n.connect(bp).connect(g).connect(p);
+        },
+        squeak(when, e) {
+          // The buddy's voice, no words: a cute squeaky blip with a happy, curious or "wheee" shape.
+          const shapes = {
+            happy: [[900, 0], [1400, 0.07], [1150, 0.16], [1500, 0.22]],
+            curious: [[800, 0], [760, 0.08], [1250, 0.2]],
+            whee: [[700, 0], [1600, 0.45], [1900, 0.6]],
+          };
+          const pts = shapes[e.kind];
+          const d = pts[pts.length - 1][1] + 0.06;
+          const o = osc("triangle", pts[0][0], when, d);
+          pts.slice(1).forEach(([f, dt]) => o.frequency.exponentialRampToValueAtTime(f, when + dt));
+          wobblePitch(o, when, d, 9, 25);
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.0001, when);
+          g.gain.exponentialRampToValueAtTime(0.1, when + 0.02);
+          g.gain.setValueAtTime(0.1, when + d - 0.06);
+          g.gain.exponentialRampToValueAtTime(0.0001, when + d);
+          o.connect(filter("lowpass", 3500)).connect(g).connect(pan(panFor(e), fxBus));
+          send(g, 0.25);
+        },
+        blink(when, e) {
+          const o = osc("sine", 1900, when, 0.05);
+          o.frequency.exponentialRampToValueAtTime(2400, when + 0.03);
+          o.connect(amp(when, 0.05, 0.002, 0.035, pan(panFor(e), fxBus)));
+        },
+
+        // Music.
+        pizz(when, e) {
+          // Plucked string: a bright saw that closes down fast.
+          const out = amp(when, 0.34 * e.v, 0.003, 0.26, musicBus);
+          const lp = filter("lowpass", 1800, 2);
+          lp.frequency.exponentialRampToValueAtTime(260, when + 0.2);
+          lp.connect(out);
+          osc("sawtooth", e.f, when, 0.3).connect(lp);
+          osc("sine", e.f, when, 0.3).connect(out);
+        },
+        chord(when, e) {
+          const out = amp(when, 0.1, 0.003, 0.2, pan(-0.2, musicBus));
+          const lp = filter("lowpass", 2400, 1.5);
+          lp.frequency.exponentialRampToValueAtTime(500, when + 0.18);
+          lp.connect(out);
+          for (const f of e.notes) osc("sawtooth", f, when, 0.24).connect(lp);
+        },
+        xylo(when, e) {
+          // Xylophone: a bright bar tone with a strong overtone and a mallet tap.
+          const out = amp(when, 0.12 * e.v, 0.002, 0.4, pan(0.25, musicBus));
+          osc("sine", e.f, when, 0.42).connect(out);
+          osc("sine", e.f * 3.98, when, 0.12).connect(amp(when, 0.35, 0.001, 0.08, out));
+          noise(when, 0.01).connect(filter("bandpass", 3000, 1)).connect(amp(when, 0.2, 0.0005, 0.006, out));
+        },
+        tock(when, e) {
+          const o = osc("sine", 1250, when, 0.04);
+          o.frequency.exponentialRampToValueAtTime(900, when + 0.03);
+          o.connect(amp(when, 0.07 * e.v, 0.001, 0.03, pan(0.1, musicBus)));
+        },
+      };
+
+      // The audio time being heard right now, from the output clock when the browser gives one.
+      function heardNow() {
+        const ts = ctx.getOutputTimestamp ? ctx.getOutputTimestamp() : null;
+        const pnow = performance.now();
+        if (ts && ts.contextTime > 0 && ts.performanceTime > 0 && Math.abs(pnow - ts.performanceTime) < 1000) {
+          return ts.contextTime + (pnow - ts.performanceTime) / 1000;
+        }
+        return ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0);
+      }
+
+      // Look-ahead scheduler: every 25 ms, schedule sounds due in the next 100 ms.
+      // Timeline time is mapped to heard audio time by an anchor that is re-set after any jump.
+      function tick() {
+        if (!playing || !clock || ctx.state !== "running") { anchor = null; return; }
+        if (document.hidden || !clock.running() || reduce.matches) { anchor = null; return; }
+        const now = clock.time();
+        const at = heardNow();
+        if (anchor) {
+          const err = now - (anchor.tl + (at - anchor.audio));
+          if (Math.abs(err) > 0.08) anchor = null; // the animation jumped or stalled
+          else anchor.tl += err * 0.05; // ease out small drift
+        }
+        if (!anchor) {
+          anchor = { tl: now, audio: at };
+          // Start fresh so nothing piles up, but never book the same stretch twice.
+          doneUpTo = now > doneUpTo - 0.5 && now < doneUpTo ? doneUpTo : now;
+        }
+        const from = doneUpTo;
+        const to = anchor.tl + (at - anchor.audio) + 0.1 + Math.max(0, ctx.currentTime - at);
+        if (to <= from) return;
+        for (let k = Math.floor(from / loopLen); k <= Math.floor(to / loopLen); k++) {
+          for (const e of events) {
+            const t = k * loopLen + e.t;
+            if (t < from || t >= to) continue;
+            if (e.music && !wantMusic) continue;
+            voices[e.type](Math.max(ctx.currentTime, anchor.audio + (t - anchor.tl)), e);
+          }
+        }
+        doneUpTo = to;
+      }
+
+      // Turn sound on or off to match what was asked for.
+      function update() {
+        const on = wantOn && clock && !reduce.matches;
+        if (on) {
+          if (!ctx) makeGraph();
+          clearTimeout(sleepTimer);
+          if (ctx.state !== "running") ctx.resume().catch(() => {});
+          if (!playing) {
+            playing = true;
+            anchor = null;
+            openSession();
+            clearInterval(timer);
+            timer = setInterval(tick, 25);
+          }
+          const t = ctx.currentTime;
+          musicBus.gain.cancelScheduledValues(t);
+          musicBus.gain.setTargetAtTime(wantMusic ? MUSIC : 0, t, 0.03);
+        } else if (playing) {
+          playing = false;
+          clearInterval(timer);
+          closeSession();
+          sleepTimer = setTimeout(() => ctx.suspend(), 200);
+        }
+      }
+
+      // Browsers may block audio until the first click or key press.
+      const unlock = () => { if (playing && ctx && ctx.state !== "running") ctx.resume().catch(() => {}); };
+      addEventListener("pointerdown", unlock);
+      addEventListener("keydown", unlock);
+
+      addEventListener("message", (event) => {
+        if (event.origin !== location.origin) return;
+        const data = event.data;
+        if (!data || data.type !== "motionprompt-sound") return;
+        if (typeof data.on === "boolean") wantOn = data.on;
+        if (typeof data.music === "boolean") wantMusic = data.music;
+        update();
+      });
+
+      const fromUrl = params.get("sound");
+      if (fromUrl === "1" || fromUrl === "effects") {
+        wantOn = true;
+        wantMusic = fromUrl === "1";
+      }
+
+      return { attach };
+    })();
+
     // Wait briefly for the font so the sign is drawn in the right face.
     Promise.race([
       document.fonts.load('800 1em "Baloo 2"'),
@@ -711,6 +1146,7 @@
     ]).finally(() => {
       resize();
       apply();
+      sound.attach({ length: LOOP, time: () => (performance.now() - start) / 1000, running: () => !reduce.matches });
     });
   </script>
 </body>

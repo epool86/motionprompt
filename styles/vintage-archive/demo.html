@@ -1128,8 +1128,9 @@
     // can swallow the change event in Chrome.
     const reduce = matchMedia("(prefers-reduced-motion: reduce)");
     const STILL = 10.9;
-    let ready = false, still = false;
+    let ready = false, still = false, lastFrame = -Infinity;
     gsap.ticker.add(() => {
+      lastFrame = performance.now();
       if (!ready) return;
       sync(tl.time());
       if (still) return;
@@ -1150,6 +1151,518 @@
         tl.play();
       }
     }
+
+    // ---- Sound ----
+    // Every sound is made with the Web Audio API, nothing is loaded. It stays off until the parent
+    // page (or ?sound=1 / ?sound=effects) turns it on, and it follows the GSAP timeline clock so the
+    // typewriter, stamps and photos land with the frames they belong to.
+    const sound = (() => {
+      // Its own copy of the media query, read only when it changes (reading it every tick can swallow the change event).
+      const motion = matchMedia("(prefers-reduced-motion: reduce)");
+      let reduced = motion.matches;
+      const LEVEL = 0.6, FX = 2.4, MUSIC = 0.8;
+      const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+      const toPan = (x) => Math.max(-0.8, Math.min(0.8, (x - 0.5) * 1.4));
+      let ctx = null, master, impulse, white, pink, projector, crackle, session = null, gates = [], beds = null;
+      let fxBus, fxVerb, musBus, musVerb, musTone;
+      let wantOn = false, wantMusic = true, playing = false, fresh = true;
+      let timer = 0, sleepTimer = 0, anchor = null, doneUpTo = 0;
+
+      // Timeline time in seconds (it keeps counting across loops), or null while it is not running.
+      function clock() {
+        if (!ready || still || tl.paused() || performance.now() - lastFrame > 250) return null;
+        return tl.totalTime();
+      }
+
+      // One loop of sounds, in loop seconds, worked out from the same numbers as the timeline.
+      const events = (() => {
+        const list = [];
+        const add = (t, type, extra = {}, music = false) =>
+          list.push({ t: ((t % L) + L) % L, type, music, ...extra });
+        // Typewriter: one key per typed letter (same maths as sync), a bell and a return at each caption end.
+        const keys = (tp, at, dur, pan0, pan1) => {
+          [...tp.text].forEach((ch, i) => {
+            const p = pan0 + (pan1 - pan0) * (i / Math.max(1, tp.text.length - 1));
+            add(at + tp.times[i] * dur, ch === " " ? "space" : "key", { k: i * 7 + tp.text.length, p });
+          });
+        };
+        keys(kicker, KICK.at, KICK.dur, -0.2, 0.2);
+        caps.forEach((tp, i) => {
+          const at = CAP[i].at, dur = tp.text.length * 0.042;
+          keys(tp, at, dur, -0.35, 0.35);
+          add(at + dur + 0.1, "bell", {});
+          add(at + dur + 0.3, "carriage", {});
+        });
+        // Photos drop onto the page; the print below gets nudged.
+        S.forEach((s, i) => {
+          const at = s + (i ? 0.15 : 0);
+          add(at, "photo", { p: [0.15, -0.15, 0.1][i] });
+          if (i) add(at + 0.35, "nudge", {});
+        });
+        // The ink line draws to each mark, then a stamp thunks down on each year.
+        add(0.5, "pen", { dur: 0.8, p0: -0.8, p1: toPan(MARKS[0]) });
+        stamps.forEach((el, i) => {
+          const at = i ? S[i] + 0.8 : 1.3;
+          if (i) add(S[i], "pen", { dur: 0.75, p0: toPan(MARKS[i - 1]), p1: toPan(MARKS[i]) });
+          add(at + 0.24, "stamp", { p: toPan(MARKS[i]) });
+        });
+        add(8.8, "pen", { dur: 0.6, p0: toPan(MARKS[2]), p1: 0.8 });
+        // Warm light leaks, and the gentle burn out at the end of the reel.
+        add(3.75, "leak", { p: -0.6 });
+        add(7.75, "leak", { p: 0.6 });
+        add(L - 0.6, "burn", {});
+
+        // Music: an old-time waltz on a warm piano, 90 bpm in three, six bars fill the 12 s loop.
+        // F, Dm, Bb, C7, F, C7. It plays through a gramophone-like tone with a light crackle (see beds).
+        const BEAT = L / 18;
+        const bars = [
+          { bass: 41, chord: [57, 60, 65], tune: [[0, 69, 2], [2, 72, 1]] },
+          { bass: 38, chord: [57, 62, 65], tune: [[0, 74, 2], [2, 72, 1]] },
+          { bass: 34, chord: [58, 62, 65], tune: [[0, 70, 1], [1, 69, 1], [2, 67, 1]] },
+          { bass: 36, chord: [58, 64, 67], tune: [[0, 67, 3]] },
+          { bass: 41, chord: [57, 60, 65], tune: [[0, 69, 1], [1, 72, 1], [2, 77, 1]] },
+          { bass: 36, chord: [55, 58, 64], tune: [[0, 76, 2], [2, 72, 1]] },
+        ];
+        bars.forEach((bar, k) => {
+          const t0 = k * 3 * BEAT;
+          add(t0, "piano", { notes: [bar.bass, bar.bass + 12], v: 0.8, len: 1.4 }, true);
+          add(t0 + BEAT, "piano", { notes: bar.chord, v: 0.45, len: 0.5 }, true);
+          add(t0 + 2 * BEAT, "piano", { notes: bar.chord, v: 0.4, len: 0.5 }, true);
+          for (const [b, m, len] of bar.tune) add(t0 + b * BEAT, "piano", { notes: [m], v: 0.75, len: len * BEAT, tune: 1 }, true);
+        });
+        return list.sort((a, b) => a.t - b.t);
+      })();
+
+      // Audio graph: master gain into a gentle compressor, so nothing clips.
+      function makeGraph() {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const sr = ctx.sampleRate;
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -16;
+        comp.knee.value = 10;
+        comp.ratio.value = 3;
+        comp.attack.value = 0.004;
+        comp.release.value = 0.2;
+        master = ctx.createGain();
+        master.gain.value = LEVEL;
+        master.connect(comp).connect(ctx.destination);
+        const rand = rng(5);
+
+        // White and pink noise.
+        white = ctx.createBuffer(1, sr * 2, sr);
+        pink = ctx.createBuffer(1, sr * 2, sr);
+        const w = white.getChannelData(0), p = pink.getChannelData(0);
+        let b0 = 0, b1 = 0, b2 = 0;
+        for (let i = 0; i < w.length; i++) {
+          const x = rand() * 2 - 1;
+          w[i] = x;
+          b0 = 0.99765 * b0 + x * 0.099046;
+          b1 = 0.963 * b1 + x * 0.2965164;
+          b2 = 0.57 * b2 + x * 1.0526913;
+          p[i] = (b0 + b1 + b2 + x * 0.1848) * 0.2;
+        }
+
+        // A small warm room.
+        const len = Math.floor(sr * 1.4);
+        impulse = ctx.createBuffer(2, len, sr);
+        for (let c = 0; c < 2; c++) {
+          const d = impulse.getChannelData(c);
+          let y = 0;
+          for (let i = 0; i < len; i++) {
+            y += 0.5 * ((rand() * 2 - 1) - y);
+            d[i] = y * Math.pow(1 - i / len, 3) * 0.6;
+          }
+        }
+
+        // The projector: one second that loops, 16 sprocket clicks with a softer shutter tick
+        // between them, a whirr that pulses with the clicks and a low motor hum.
+        projector = ctx.createBuffer(1, sr, sr);
+        const pr = projector.getChannelData(0);
+        let lp = 0;
+        for (let i = 0; i < sr; i++) {
+          const ph = (i / sr) * 16 % 1;
+          lp += 0.08 * ((rand() * 2 - 1) - lp);
+          pr[i] = lp * (0.35 + 0.65 * Math.pow(Math.sin(Math.PI * ph), 2)) * 0.5
+            + 0.22 * Math.sin((2 * Math.PI * 48 * i) / sr) + 0.08 * Math.sin((2 * Math.PI * 96 * i) / sr);
+        }
+        for (let k = 0; k < 32; k++) {
+          const at = Math.round((k * sr) / 32), big = k % 2 === 0, v = (big ? 1 : 0.45) * (0.8 + rand() * 0.4);
+          for (let j = 0; j < sr * 0.006; j++) pr[(at + j) % sr] += (rand() * 2 - 1) * v * Math.exp(-j / (sr * 0.0012));
+        }
+
+        // Vinyl crackle: three seconds of sparse pops and a faint hiss.
+        crackle = ctx.createBuffer(1, sr * 3, sr);
+        const cr = crackle.getChannelData(0);
+        for (let i = 0; i < cr.length; i++) cr[i] = (rand() * 2 - 1) * 0.02;
+        for (let k = 0; k < 40; k++) {
+          const at = Math.floor(rand() * cr.length), v = 0.15 + Math.pow(rand(), 3) * 0.85;
+          for (let j = 0; j < sr * 0.002; j++) cr[(at + j) % cr.length] += (rand() * 2 - 1) * v * Math.exp(-j / (sr * 0.0004));
+        }
+      }
+
+      // Each switch on gets fresh buses, so sounds booked before a switch off never leak out later.
+      function openSession() {
+        const t = ctx.currentTime;
+        session = ctx.createGain();
+        session.gain.setValueAtTime(0, t);
+        session.gain.linearRampToValueAtTime(1, t + 0.08);
+        session.connect(master);
+        const verb = ctx.createConvolver();
+        verb.buffer = impulse;
+        verb.connect(session);
+        // Effects sit clearly above the music.
+        [fxBus, fxVerb] = [session, verb].map((to) => {
+          const g = ctx.createGain();
+          g.gain.value = FX;
+          g.connect(to);
+          return g;
+        });
+        // Music goes through gates, so music:false silences it and its reverb too.
+        musBus = ctx.createGain();
+        musVerb = ctx.createGain();
+        gates = [[musBus, session], [musVerb, verb]].map(([from, to]) => {
+          const g = ctx.createGain();
+          g.gain.value = wantMusic ? MUSIC : 0;
+          from.connect(g).connect(to);
+          return g;
+        });
+        // A gramophone tone for the piano: no deep lows, soft highs, a little warmth in the middle.
+        musTone = filter("highpass", 140, 0.6);
+        const mid = filter("peaking", 1100, 0.8);
+        mid.gain.value = 3;
+        musTone.connect(mid).connect(filter("lowpass", 3600, 0.6)).connect(musBus);
+        beds = makeBeds(t);
+      }
+      function closeSession() {
+        const old = session, t = ctx.currentTime;
+        session = null;
+        old.gain.cancelScheduledValues(t);
+        old.gain.setValueAtTime(old.gain.value, t);
+        old.gain.linearRampToValueAtTime(0, t + 0.15);
+        for (const s of beds.sources) s.stop(t + 0.2);
+        beds = null;
+        setTimeout(() => old.disconnect(), 300);
+      }
+      function setGates() {
+        const t = ctx.currentTime;
+        for (const g of gates) {
+          g.gain.cancelScheduledValues(t);
+          g.gain.setValueAtTime(g.gain.value, t);
+          g.gain.linearRampToValueAtTime(wantMusic ? MUSIC : 0, t + 0.12);
+        }
+      }
+
+      // Continuous layers: the projector (an effect) and the record crackle (part of the music).
+      // They stay silent until the reel runs, and hush when it stops.
+      function makeBeds(t) {
+        const loopSrc = (buf) => {
+          const s = ctx.createBufferSource();
+          s.buffer = buf;
+          s.loop = true;
+          s.start(t);
+          return s;
+        };
+        const proj = ctx.createGain();
+        proj.gain.value = 0;
+        const ps = loopSrc(projector);
+        ps.connect(filter("highpass", 90)).connect(filter("lowpass", 4200)).connect(proj).connect(pan(0.25, fxBus));
+        const crack = ctx.createGain();
+        crack.gain.value = 0;
+        const cs = loopSrc(crackle);
+        cs.connect(filter("highpass", 700)).connect(crack).connect(musBus);
+        return { proj, crack, sources: [ps, cs], awake: false };
+      }
+      function wakeBeds(at) {
+        if (!beds || beds.awake) return;
+        beds.proj.gain.setTargetAtTime(0.06, at, 0.15);
+        beds.crack.gain.setTargetAtTime(0.35, at, 0.15);
+        beds.awake = true;
+      }
+      function hushBeds(at) {
+        if (!beds || !beds.awake) return;
+        beds.proj.gain.setTargetAtTime(0, at, 0.06);
+        beds.crack.gain.setTargetAtTime(0, at, 0.06);
+        beds.awake = false;
+      }
+
+      // Small building blocks.
+      function amp(when, peak, attack, decay, out) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, when);
+        g.gain.exponentialRampToValueAtTime(peak, when + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay);
+        g.connect(out);
+        return g;
+      }
+      function swellGain(when, peak, rise, hold, fall, out) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, when);
+        g.gain.linearRampToValueAtTime(peak, when + rise);
+        g.gain.setValueAtTime(peak, when + rise + hold);
+        g.gain.linearRampToValueAtTime(0, when + rise + hold + fall);
+        g.connect(out);
+        return g;
+      }
+      function osc(type, freq, when, dur) {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.setValueAtTime(freq, when);
+        o.start(when);
+        o.stop(when + dur + 0.05);
+        return o;
+      }
+      function noise(buf, when, dur) {
+        const s = ctx.createBufferSource();
+        s.buffer = buf;
+        s.loop = true;
+        s.start(when, Math.random() * 1.5);
+        s.stop(when + dur + 0.05);
+        return s;
+      }
+      function filter(type, freq, q = 0.7) {
+        const f = ctx.createBiquadFilter();
+        f.type = type;
+        f.frequency.value = freq;
+        f.Q.value = q;
+        return f;
+      }
+      function pan(value, out) {
+        const p = ctx.createStereoPanner();
+        p.pan.value = value;
+        p.connect(out);
+        return p;
+      }
+      function wet(node, amount, music) {
+        const g = ctx.createGain();
+        g.gain.value = amount;
+        node.connect(g).connect(music ? musVerb : fxVerb);
+      }
+      // Paper and pen texture: the level wobbles quickly and unevenly.
+      function rough(when, dur, rate, depth) {
+        const g = ctx.createGain();
+        g.gain.value = 1 - depth * 0.5;
+        const lp = filter("lowpass", rate);
+        const amt = ctx.createGain();
+        amt.gain.value = depth * 3;
+        noise(white, when, dur).connect(lp).connect(amt).connect(g.gain);
+        return g;
+      }
+
+      // One function per sound.
+      const voices = {
+        // A typewriter key: a sharp type bar strike, a small metal ring and the platen thud.
+        key(when, e) {
+          const v = 0.8 + ((e.k * 37) % 10) / 25, tone = 1 + (((e.k * 53) % 9) - 4) * 0.03;
+          const p = pan(e.p, fxBus);
+          noise(white, when, 0.02).connect(filter("bandpass", 3200 * tone, 1.2)).connect(amp(when, 0.22 * v, 0.001, 0.016, p));
+          osc("triangle", 2150 * tone, when, 0.04).connect(amp(when, 0.035 * v, 0.001, 0.035, p));
+          const thud = osc("sine", 190, when, 0.05);
+          thud.frequency.exponentialRampToValueAtTime(110, when + 0.03);
+          thud.connect(amp(when, 0.14 * v, 0.001, 0.035, p));
+          wet(p, 0.12);
+        },
+        // The space bar: a duller, lower knock.
+        space(when, e) {
+          const p = pan(e.p, fxBus);
+          noise(pink, when, 0.03).connect(filter("bandpass", 1100, 1.2)).connect(amp(when, 0.14, 0.001, 0.025, p));
+          osc("sine", 150, when, 0.05).connect(amp(when, 0.12, 0.001, 0.04, p));
+        },
+        // The carriage bell at the end of a line.
+        bell(when) {
+          const p = pan(0.45, fxBus);
+          for (const [k, v, d] of [[1, 0.09, 1.1], [2.41, 0.035, 0.6], [3.93, 0.015, 0.3]]) {
+            osc("sine", 2250 * k, when, d + 0.02).connect(amp(when, v, 0.002, d, p));
+          }
+          wet(p, 0.4);
+        },
+        // The carriage returns: a quick ratchet run and a slide.
+        carriage(when) {
+          const p = ctx.createStereoPanner();
+          p.pan.setValueAtTime(0.45, when);
+          p.pan.linearRampToValueAtTime(-0.35, when + 0.32);
+          p.connect(fxBus);
+          for (let i = 0; i < 9; i++) {
+            const t = when + 0.3 * Math.pow(i / 9, 0.8);
+            noise(white, t, 0.01).connect(filter("bandpass", 2600, 2)).connect(amp(t, 0.07, 0.001, 0.008, p));
+          }
+          noise(pink, when, 0.36).connect(filter("bandpass", 900, 0.9)).connect(swellGain(when, 0.05, 0.05, 0.2, 0.1, p));
+          const stop = when + 0.34;
+          osc("sine", 170, stop, 0.06).connect(amp(stop, 0.12, 0.002, 0.05, p));
+        },
+        // A photo drops onto the page: a soft rush of air, then it settles flat.
+        photo(when, e) {
+          const p = pan(e.p, fxBus);
+          const n = noise(pink, when, 0.35);
+          const bp = filter("bandpass", 1500, 0.7);
+          bp.frequency.setValueAtTime(1500, when);
+          bp.frequency.exponentialRampToValueAtTime(450, when + 0.32);
+          n.connect(bp).connect(swellGain(when, 0.1, 0.12, 0, 0.2, p));
+          const land = when + 0.3;
+          noise(pink, land, 0.08).connect(filter("lowpass", 800)).connect(amp(land, 0.26, 0.003, 0.07, p));
+          osc("sine", 125, land, 0.08).connect(amp(land, 0.12, 0.003, 0.07, p));
+          wet(p, 0.2);
+        },
+        // The print below shifts a little: a tiny paper slide.
+        nudge(when) {
+          const n = noise(white, when, 0.2);
+          n.connect(filter("bandpass", 2400, 0.8)).connect(rough(when, 0.2, 80, 0.6)).connect(swellGain(when, 0.03, 0.06, 0, 0.14, fxBus));
+        },
+        // A dip pen scratches the ink line across the page.
+        pen(when, e) {
+          const d = e.dur;
+          const n = noise(white, when, d);
+          const g = ctx.createGain();
+          const curve = new Float32Array(17);
+          for (let i = 0; i < 17; i++) {
+            const u = i / 16;
+            curve[i] = 0.05 * Math.sin(Math.PI * u) * (i ? 1 : 0);
+          }
+          g.gain.setValueCurveAtTime(curve, when, d);
+          const p = ctx.createStereoPanner();
+          p.pan.setValueAtTime(e.p0, when);
+          p.pan.linearRampToValueAtTime(e.p1, when + d);
+          p.connect(fxBus);
+          n.connect(filter("bandpass", 3800, 1.4)).connect(rough(when, d, 120, 0.9)).connect(g).connect(p);
+        },
+        // A rubber stamp thunks down on the year.
+        stamp(when, e) {
+          const p = pan(e.p, fxBus);
+          const body = osc("sine", 120, when, 0.16);
+          body.frequency.exponentialRampToValueAtTime(68, when + 0.1);
+          body.connect(amp(when, 0.34, 0.002, 0.14, p));
+          noise(pink, when, 0.07).connect(filter("bandpass", 420, 1.2)).connect(amp(when, 0.3, 0.002, 0.06, p));
+          noise(white, when, 0.02).connect(filter("highpass", 2500)).connect(amp(when, 0.06, 0.001, 0.015, p));
+          wet(p, 0.25);
+        },
+        // A warm light leak: a soft low swell of air from the side it comes from.
+        leak(when, e) {
+          const n = noise(pink, when, 1.2);
+          const lp = filter("lowpass", 500, 0.7);
+          lp.frequency.setValueAtTime(400, when);
+          lp.frequency.linearRampToValueAtTime(1100, when + 0.3);
+          lp.frequency.linearRampToValueAtTime(350, when + 1.1);
+          n.connect(lp).connect(swellGain(when, 0.07, 0.3, 0, 0.8, pan(e.p, fxBus)));
+        },
+        // The film burns out: a gentle rising whoosh with a soft fizz, fading as the reel restarts.
+        burn(when) {
+          const n = noise(pink, when, 1.45);
+          const bp = filter("bandpass", 350, 0.7);
+          bp.frequency.setValueAtTime(350, when);
+          bp.frequency.exponentialRampToValueAtTime(1800, when + 0.6);
+          bp.frequency.exponentialRampToValueAtTime(500, when + 1.35);
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.0001, when);
+          g.gain.exponentialRampToValueAtTime(0.16, when + 0.6);
+          g.gain.exponentialRampToValueAtTime(0.0001, when + 1.4);
+          n.connect(bp).connect(g).connect(fxBus);
+          wet(g, 0.4);
+          const fizz = noise(white, when + 0.2, 1);
+          fizz.connect(filter("highpass", 4000)).connect(rough(when + 0.2, 1, 300, 1.2)).connect(swellGain(when + 0.2, 0.03, 0.4, 0, 0.6, fxBus));
+        },
+        // Music: a warm piano note or chord (a few soft partials that fade, and a felt hammer).
+        piano(when, e) {
+          e.notes.forEach((m, i) => {
+            const f = hz(m), t = when + i * 0.008, low = m < 48;
+            const out = pan(Math.max(-0.5, Math.min(0.5, (m - 60) / 30)), musTone);
+            const d = (low ? 2.4 : 1.6) * (e.tune ? 1.3 : 1);
+            [[1, 1], [2, 0.42], [3, 0.16], [4, 0.07]].forEach(([k, v]) => {
+              const o = osc(k === 1 ? "triangle" : "sine", f * k * (1 + 0.0004 * k * k), t, d / k + 0.1);
+              o.connect(amp(t, 0.1 * e.v * v, 0.004, d / k, out));
+            });
+            noise(pink, t, 0.02).connect(filter("lowpass", 1500)).connect(amp(t, 0.03 * e.v, 0.001, 0.015, out));
+            wet(out, 0.35, true);
+          });
+        },
+      };
+
+      // Look-ahead scheduler: every 25 ms, book the sounds due in the next 100 ms.
+      // Timeline time maps to audio time through an anchor that is reset after any jump or pause.
+      function pump() {
+        const ok = playing && ctx.state === "running" && !document.hidden && !reduced;
+        const now = ok ? clock() : null;
+        const at = ctx.currentTime;
+        if (now === null) {
+          anchor = null;
+          if (playing) hushBeds(at);
+          return;
+        }
+        wakeBeds(at);
+        if (anchor) {
+          const err = now - (anchor.tl + (at - anchor.audio));
+          if (Math.abs(err) > 0.08) anchor = null; // the animation jumped or stalled
+          else anchor.tl += err * 0.05; // ease out small drift
+        }
+        if (!anchor) {
+          anchor = { tl: now, audio: at };
+          // After a switch on or a real gap, start from now (nothing piles up). After a small
+          // hiccup, carry on from where booking stopped, so nothing plays twice or goes missing.
+          if (fresh || now - doneUpTo > 0.3 || now < doneUpTo - 0.3) doneUpTo = now;
+          fresh = false;
+        }
+        const from = doneUpTo, to = anchor.tl + (at - anchor.audio) + 0.1;
+        if (to <= from) return;
+        for (let k = Math.floor(from / L); k <= Math.floor(to / L); k++) {
+          for (const e of events) {
+            const t = k * L + e.t;
+            if (t < from || t >= to || (e.music && !wantMusic)) continue;
+            voices[e.type](Math.max(at, anchor.audio + (t - anchor.tl)), e);
+          }
+        }
+        doneUpTo = to;
+      }
+
+      // Turn sound on or off to match what was asked for.
+      function update() {
+        const on = wantOn && !reduced;
+        if (on) {
+          if (!ctx) makeGraph();
+          clearTimeout(sleepTimer);
+          if (ctx.state !== "running") ctx.resume().catch(() => {});
+          if (!playing) {
+            playing = true;
+            anchor = null;
+            fresh = true;
+            openSession();
+            clearInterval(timer);
+            timer = setInterval(pump, 25);
+          }
+        } else if (playing) {
+          playing = false;
+          clearInterval(timer);
+          closeSession();
+          sleepTimer = setTimeout(() => ctx.suspend().catch(() => {}), 200);
+        }
+      }
+      function setMusic(on) {
+        if (on === wantMusic) return;
+        wantMusic = on;
+        if (playing) setGates();
+      }
+
+      // Browsers may block audio until the first click or key press.
+      const unlock = () => { if (playing && ctx.state !== "running") ctx.resume().catch(() => {}); };
+      addEventListener("pointerdown", unlock);
+      addEventListener("keydown", unlock);
+      motion.addEventListener("change", () => {
+        reduced = motion.matches;
+        update();
+      });
+
+      addEventListener("message", (event) => {
+        const d = event.data;
+        if (event.origin !== location.origin || !d || d.type !== "motionprompt-sound") return;
+        if (typeof d.music === "boolean") setMusic(d.music);
+        if (typeof d.on === "boolean") wantOn = d.on;
+        update();
+      });
+      const fromUrl = params.get("sound");
+      if (fromUrl === "1" || fromUrl === "effects") {
+        wantMusic = fromUrl === "1";
+        wantOn = true;
+        update();
+      }
+      return { update };
+    })();
 
     let timer;
     addEventListener("resize", () => {

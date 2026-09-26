@@ -13,6 +13,11 @@ Type and colour
 - A bold, hand lettered comic font (like Bangers), all capitals, with thick black outlines and a hard offset shadow on the big words.
 - Use my brand colours if I give them. Otherwise use comic red #e8262b, sunny yellow #ffd21f, sky cyan #27b1e6, ink black #16161b and off-white paper #fbf1dc.
 
+Sound
+- Effects: a fast cartoon whoosh as each panel slides in and a heavy slam with a rattly shake when it lands, a buzzy megaphone blare, a pop for each bubble, bubbly blips for the thought dots, a slide whistle for the "?!", a wooden rattle as the box wobbles, a cork pop as the lid flies off with a sparkly rise, a big "POW" punch with a crash cymbal, an even bigger smash for the final burst, a bouncy "bwop" on each pulse, and a halftone whoosh for the wipe.
+- Music: a playful cartoon bed at about 100 bpm, with the panel slams on the beat: a bouncy tuba style bass, a light kick, snare and woodblock, a soft organ chord and short horn stabs. It ends on a little "ta-da" just before the wipe and loops cleanly.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

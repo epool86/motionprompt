@@ -13,6 +13,11 @@ Type and colour
 - A casual handwritten font (like Caveat) for the labels, an elegant serif (like DM Serif Display) for the dish name, and a rounded bold sans serif (like Nunito) for small details.
 - Use my brand colours if I give them. Otherwise use warm wood #c48a58, cream card #fff7ea, dark brown text #3b2418, tomato red #d8452b and leaf green #3f8a3c.
 
+Sound
+- Effects: appetising little sounds timed to the motion. Each ingredient lands with its own soft sound: a muffled thud for rice, a wet splat for sauce, round plops for eggs, crisp taps for sliced vegetables, and tiny pebble ticks and bounces for nuts and crunchy bits. A soft steam hiss that swells and fades with each puff, squeaky marker strokes as each label and arrow draws, a paper swish as the menu card slides in and out, a firm stamp thunk as the price badge lands, and a light rising swish as the food lifts away.
+- Music: a cheerful, appetising cooking show bed, about 87 bpm: bright ukulele strums, a round bass, soft kick, claps and shaker, with a little glockenspiel tune. Keep it light, quieter than the effects, and let it loop smoothly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

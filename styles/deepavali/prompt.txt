@@ -14,6 +14,11 @@ Type and colour
 - An elegant display serif for the title (like Rozha One) in gold. A clean rounded sans serif (like Poppins) for the small line.
 - Use my brand colours if I give them, with gold as the accent. Otherwise use deep purple #2a0a35, magenta #d6246e, orange #f28c28, yellow #f9c80e, turquoise #1fb5ac and gold #f5c04a.
 
+Sound
+- Effects: a soft rustle as the marigold garlands swing in and sway, tiny chalky taps as the kolam dots appear, a soft sandy stroke as each ring of lines draws, a gentle powdery bloom with a small bell as each ring fills with colour, a warm whoosh and a soft chime as each diya lights (the notes rise lamp by lamp), little twinkles on the sparkles, and a bright bell as the title appears.
+- Music: a warm, gentle Indian inspired bed at about 80 bpm: a tanpura style drone, a soft tabla pattern (one 16 beat cycle per loop) and a bansuri style flute melody that slides between notes. Keep it celebratory but calm, quieter than the effects, and let it loop cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

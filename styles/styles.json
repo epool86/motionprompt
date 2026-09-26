@@ -259,9 +259,9 @@
   {
     "slug": "pixel-art",
     "name": "Pixel art",
-    "summary": "A retro 16-bit game world: a pixel hero runs, grabs coins and levels up.",
+    "summary": "Your offer as a pixel game level: a Player 1 card, blocks that reveal it, a level up CTA.",
     "library": "Canvas",
-    "tags": ["retro", "promo", "social"]
+    "tags": ["retro", "promo", "product"]
   },
   {
     "slug": "deepavali",

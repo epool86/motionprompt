@@ -11,6 +11,11 @@ Type and colour
 - A clean sans serif font (like Inter), bold for the big numbers with even-width digits so they do not wobble while counting, and regular for labels.
 - Use my brand colours if I give them, one colour per chart. Otherwise use an off white background #f7f5f0, near black text #16181d, grey labels, and blue #3b5bff, green #16a37a and coral #ff6a3d for the charts.
 
+Sound
+- Effects: soft quick ticks while each big number counts up (fast at first, slowing as the count settles, one tick per step) that end on a clear, satisfying ding when the number lands, a soft pop as each bar grows (rising a note each bar), a smooth rising pen sweep while a line draws from left to right, a gentle swell that opens up as a donut fills, and a light swoosh as each card slides in and out.
+- Music: a clean, upbeat corporate bed, about 130 bpm in a bright major key: light plucked arpeggios, a soft pulsing bass, a quiet kick and a gentle shaker. Keep it well under the effects and let it loop cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

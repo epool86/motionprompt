@@ -14,6 +14,11 @@ Type and colour
 - A clean, friendly sans serif font (like DM Sans), medium for messages and bold for the name.
 - Use my brand colours if I give them. Otherwise use a warm sand background #f6eee6, dark ink #1f1c2c text, violet #5b3df5 for sent bubbles and buttons, and coral #ff7a59 for the avatar and reactions.
 
+Sound
+- Effects: soft keyboard taps while a message types into the message bar (one per letter, a lower tap for spaces), a quick whoosh when it sends, and a pop as each bubble lands, brighter for sent messages on the right and lower and rounder for replies on the left. Soft little blips with the typing dots, a springy pop with a sparkle for a heart reaction, small blips when a voice note starts and stops playing, and two tiny clicks as the read ticks turn on. Make every tone original, never a copy of a real app's alert sounds.
+- Music: a light, casual lo-fi bed, about 80 bpm: soft electric piano chords, a round bass, dusty laid back drums and a little vinyl crackle. Keep it well under the effects and let it loop cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

@@ -11,6 +11,11 @@ Type and colour
 - A casual handwriting font (like Caveat), bold enough to read easily.
 - Use my brand colours if I give them. Otherwise use a warm white board #fbf8f1, dark marker ink #23262f, a blue marker #2f6fe4 for arrows and ticks, and a yellow highlighter #ffd84a.
 
+Sound
+- Effects: a soft felt marker stroke for every line, starting and stopping with the line as it draws, with a light squeak on some of the longer lines. Quick little scribbles while words write on, a broad soft swipe for each highlighter band, a gentle bell "ding" when the key idea appears (like a lightbulb lighting up), a bright little tick for each checkmark, and an eraser rubbing across the board as it wipes clean at the end.
+- Music: a friendly explainer bed, about 90 bpm in a happy major key: a strummed ukulele, a soft plucked bass, light claps and a shaker, no whistling. Keep it well under the effects and let it loop cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

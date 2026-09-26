@@ -13,6 +13,11 @@ Type and colour
 - A sketchy chalk font (like Cabin Sketch) for the headline and a hand-written font (like Caveat) for the menu, both with a dusty chalk texture.
 - Use my brand colours if I give them. Otherwise use cream #f4e8c8, kopitiam green #3f8f6b, chalkboard #263229, chalk white #f7f3e8, chalk yellow #f5d677 and milky tea brown #b77a47.
 
+Sound
+- Effects: a warm, real kopitiam feel timed to the motion. A soft clink of cups, saucers and plates as each item lands on the marble, and a lighter clink as each is cleared. A liquid pouring stream for the teh tarik that gets louder and brighter as the mug is pulled high and softer as it comes down, with a frothy splash and small bubbles as the foam builds, then a few drips. Gritty chalk scratches as each line writes, with a small squeak now and then, a soft felt rub as the duster wipes the board, and the gentle whirr of the slow ceiling fan underneath.
+- Music: a relaxed kopitiam morning bed, about 80 bpm: a soft fingerpicked nylon guitar with a gentle old radio style electric piano tune and light brushes. Warm and unhurried, quieter than the effects, and it loops smoothly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

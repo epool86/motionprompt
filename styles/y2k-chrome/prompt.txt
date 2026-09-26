@@ -13,6 +13,11 @@ Type and colour
 - A wide, heavy rounded font (like Unbounded), all capitals, with the chrome treatment described above.
 - Use my brand colours if I give them. Otherwise use lilac #dcd6ff, baby pink #ff9ad8, baby blue #8fd8ff, deep navy #2b2f5c for outlines and silver #c3c8d4.
 
+Sound
+- Effects: a soft liquid-chrome shimmer that swells as the blob morphs, with gentle gloopy bloops, a glassy pop as each bubble reaches the top of its bob, a bright little twinkle for every star glint, a soft papery flutter each time the butterfly's wings close, and a bright metallic swoosh that crosses the title with every shine sweep.
+- Music: a bubbly Y2K pop bed at about 96 bpm: glossy detuned synth chords, a bouncy pluck arpeggio with a light echo, a round bass and a crisp, lightly swung beat. Keep it under the effects and let it loop cleanly.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

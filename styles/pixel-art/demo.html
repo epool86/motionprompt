@@ -6,7 +6,8 @@
   <title>Pixel art demo</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/press-start-2p@5.3.0/400.css">
   <style>
-    /* Colours can be set from the URL: ?text=...&bg=41a6f6&ink=1a1c2c&accent=ffcd75&accent2=b13e53 */
+    /* Words and colours can be set from the URL: ?text=Name|Role|Call to action|Handle|Item 1|Item 2|Item 3|Proof
+       &bg=41a6f6&ink=1a1c2c&accent=ffcd75&accent2=b13e53 */
     html, body {
       margin: 0;
       height: 100%;
@@ -33,13 +34,30 @@
     const params = new URLSearchParams(location.search);
     const hex = (key, fallback) => "#" + (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
     const colors = { bg: hex("bg", "41a6f6"), ink: hex("ink", "1a1c2c"), accent: hex("accent", "ffcd75"), accent2: hex("accent2", "b13e53") };
-    const text = (params.get("text") || "Press start").trim().slice(0, 40).toUpperCase();
+    // Words from the URL: ?text=Name|Role|Call to action|Handle|Item 1|Item 2|Item 3|Proof label
+    const parts = (params.get("text") || "").split("|").map((s) => s.trim());
+    // Too long? Cut at the last whole word that fits.
+    const pick = (i, fallback, max) => {
+      const s = (parts[i] || fallback).replace(/\s+/g, " ");
+      if (s.length <= max) return s;
+      const cut = s.slice(0, max + 1).lastIndexOf(" ");
+      return cut > 0 ? s.slice(0, cut) : s.slice(0, max);
+    };
+    const copy = {
+      name: pick(0, "Aina", 10).toUpperCase(),
+      role: pick(1, "Cake maker", 16).toUpperCase(),
+      cta: pick(2, "Order now", 12).toUpperCase(),
+      handle: pick(3, parts[0] ? "@" + parts[0].toLowerCase().replace(/[^a-z0-9._]/g, "") : "@aina.bakes", 18),
+      items: [[4, "Custom cakes"], [5, "Same day"], [6, "Free delivery"]].map(([i, f]) => pick(i, f, 16).toUpperCase()),
+      proof: pick(7, "Happy customers", 16).toUpperCase(),
+      stats: [["TASTE", 7], ["SPEED", 6], ["LOVE", 8]],
+    };
 
     const canvas = document.getElementById("scene");
-    canvas.setAttribute("aria-label", `A retro 8-bit game level: a little pixel hero runs past a kampung house and palm trees, collects coins and levels up under the words: ${text}`);
+    canvas.setAttribute("aria-label", `A retro pixel game that presents ${copy.name}, ${copy.role}. A Player 1 card shows three stats, then the hero runs through a level where blocks reveal ${copy.items.join(", ")}, coins count ${copy.proof}, and a level up box says ${copy.cta} ${copy.handle}.`);
     const ctx = canvas.getContext("2d");
 
-    const LOOP = 10; // seconds
+    const LOOP = 12; // seconds
     const FONT = '64px "Press Start 2P"';
 
     // Mix two hex colours, t from 0 to 1.
@@ -194,18 +212,51 @@
     }
     const blocks = { brick: block("brick"), q: block("q"), star: block("star"), used: block("used") };
 
-    const crate = (() => {
-      const [c, g] = makeCanvas(16, 16);
-      const R = (col, x, y, w, h) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
-      R(PAL.k, 0, 0, 16, 16);
-      R(PAL.M, 1, 1, 14, 14);
-      R(PAL.m, 1, 1, 14, 2);
-      R(PAL.m, 1, 13, 14, 2);
-      R(PAL.m, 1, 1, 2, 14);
-      R(PAL.m, 13, 1, 2, 14);
-      for (let i = 0; i < 10; i++) R(PAL.m, 3 + i, 3 + i, 1, 1), R(PAL.m, 12 - i, 3 + i, 1, 1);
-      return c;
-    })();
+    // Item icons, 12 by 12: a cake, a fast clock and a delivery van (generic, for any business).
+    const icons = [
+      sprite([
+        ".....y......",
+        ".....o......",
+        ".....w......",
+        "..kkkkkkkk..",
+        ".kppppppppk.",
+        ".kpwppwpppk.",
+        ".kMpMMpMMMk.",
+        ".kMMMMMMMMk.",
+        ".kppppppppk.",
+        ".kMMMMMMMMk.",
+        "kkkkkkkkkkkk",
+        ".kssssssssk.",
+      ]),
+      sprite([
+        "...kkkkkk...",
+        "..kwwwwwwk..",
+        ".kwwwkwwwwk.",
+        "kwwwwkwwwyyk",
+        "kwwwwkwwyyk.",
+        "kwwwwkkkyk..",
+        "kwwwwwwyyyk.",
+        "kwwwwwwwyyyk",
+        ".kwwwwwwwyk.",
+        "..kwwwwwwyk.",
+        "...kkkkkkk..",
+        "............",
+      ]),
+      sprite([
+        "............",
+        "kkkkkkk.....",
+        "krrrrrk.....",
+        "kryyyrkkkk..",
+        "krrrrrkCCkk.",
+        "krrrrrkCCCk.",
+        "krrrrrrrrrrk",
+        "kRRRRRRRRRRk",
+        "kkkkkkkkkkkk",
+        ".kdk....kdk.",
+        ".kkk....kkk.",
+        "............",
+      ]),
+    ];
 
     // Tiny 3 by 5 digits for the score pop ups.
     const TINY = {
@@ -279,7 +330,7 @@
       ctx.drawImage(textImage(str, col), x, y);
     }
 
-    // A chunky headline letter: dark outline, drop shadow and a two tone fill.
+    // A chunky letter: dark outline, drop shadow and a two tone fill.
     function bigLetter(ch, k, top, bottom) {
       const w = 8 * k + 2, h = 8 * k + 2 + Math.max(1, k - 1);
       const [c, g] = makeCanvas(w, h);
@@ -306,8 +357,15 @@
     const SPEED = 46; // world pixels per second
     const JH = 32; // jump height
     const JD = 0.7; // jump length
-    const jumps = [2.4, 3.6, 4.9, 6.2, 8.2];
-    const Q_AT = 3.6, STAR_AT = 6.2, LEVEL_AT = 6.62;
+    // The Player 1 card: the name types in, the stats fill, PRESS START blinks, then the card slides away.
+    const NAME_AT = 0.7, LETTER = 0.07;
+    const ROLE_AT = NAME_AT + copy.name.length * LETTER + 0.12;
+    const STAT_AT = [1.35, 1.65, 1.95], SEG = 0.05, SEGS = 8;
+    const BLINKS = [2.3, 2.8], PRESS_AT = 3.0, SLIDE_AT = 3.2, SLIDE = 0.4;
+    // The level: each ? block reveals one item, the star block gives the level up, then the call to action.
+    const ITEMS_AT = [4.4, 5.7, 7.0], STAR_AT = 8.0, LEVEL_AT = 8.42;
+    const BOX_AT = 8.5, CTA_AT = 9.4, CLOSE_AT = 11.3;
+    const jumps = [...ITEMS_AT, STAR_AT, 9.7, 10.8];
     const jumpY = (t) => {
       let y = 0;
       for (const p of jumps) {
@@ -317,26 +375,42 @@
       return y;
     };
 
-    // Coins: T is when the hero reaches it, lift is its height above the ground.
-    const coins = [
-      ...[1.0, 1.2, 1.4].map((T) => ({ T, lift: 0 })),
-      ...[2.2, 2.4, 2.6].map((T) => ({ T, lift: jumpY(T) })),
-      ...[7.1, 7.3, 7.5].map((T) => ({ T, lift: 0 })),
-      ...[8.0, 8.2, 8.4].map((T) => ({ T, lift: jumpY(T) })),
-    ];
-    // Score events, for the counter and the pop ups.
-    const events = [
-      ...coins.map((c) => ({ t: c.T, add: 100, coin: 1 })),
-      { t: Q_AT + 0.45, add: 200, coin: 1 },
-      { t: LEVEL_AT, add: 1000, coin: 0 },
-    ];
+    // Coins are the proof points: each one adds to the counter. T is when the hero reaches it.
+    const coins = [3.7, 3.9, 5.0, 5.2, 6.25, 6.45, 7.45, 7.6].map((T) => ({ T, lift: jumpY(T) }));
+    const PROOF = 1200, PER_COIN = PROOF / coins.length;
+    function counterAt(t) {
+      const n = coins.filter((c) => t >= c.T).length;
+      return n === coins.length ? `${PROOF.toLocaleString("en")}+` : Math.round(n * PER_COIN).toLocaleString("en");
+    }
 
     const clamp01 = (v) => Math.min(1, Math.max(0, v));
     const easeOut = (u) => 1 - Math.pow(1 - clamp01(u), 3);
+    const easeIn = (u) => Math.pow(clamp01(u), 3);
     const backOut = (u) => {
       const s = 2.4, v = clamp01(u) - 1;
       return 1 + (s + 1) * v * v * v + s * v * v;
     };
+
+    // Wrap words into lines at the biggest pixel size k (8 * k pixels a letter) that fits.
+    function fitLines(str, maxW, maxH, kMax, gap = 2) {
+      const words = str.split(/\s+/).filter(Boolean);
+      for (let k = kMax; k >= 1; k--) {
+        const per = Math.floor(maxW / (8 * k));
+        if (per < 1) continue;
+        const lines = [];
+        let ok = true;
+        for (const word of words) {
+          if (word.length > per) { ok = false; break; }
+          const last = lines[lines.length - 1];
+          if (last && last.length + 1 + word.length <= per) lines[lines.length - 1] = `${last} ${word}`;
+          else lines.push(word);
+        }
+        const h = lines.length * 8 * k + (lines.length - 1) * gap * k;
+        if (ok && h <= maxH) return { k, lines, w: Math.max(...lines.map((l) => l.length)) * 8 * k, h };
+      }
+      const per = Math.max(1, Math.floor(maxW / 8));
+      return { k: 1, lines: [str.slice(0, per)], w: Math.min(str.length, per) * 8, h: 8 };
+    }
 
     // ---- Layout, rebuilt on resize ----
     let W = 0, H = 0, L = null, bg = null;
@@ -352,72 +426,102 @@
       ctx.imageSmoothingEnabled = false;
 
       const oneRow = W >= 240;
-      const hudBottom = oneRow ? 13 : 23;
+      const hudBottom = oneRow ? 18 : 27;
       const groundH = Math.max(32, Math.round(H * 0.17));
       const groundY = H - groundH;
       const blockBottom = groundY - 16 - JH;
       const blockTop = blockBottom - 16;
       const heroX = Math.round(W * 0.3) - 8;
+      const sky = { top: hudBottom + 3, bottom: blockTop - 3 };
+      const skyH = sky.bottom - sky.top;
 
-      // Headline: the biggest pixel size whose lines fit above the blocks.
-      const bandTop = hudBottom + 4, bandBottom = blockTop - 6;
-      const words = text.split(/\s+/).filter(Boolean);
-      let head = null;
-      for (let k = 5; k >= 1; k--) {
-        const maxChars = Math.floor((W - 10) / (8 * k));
-        if (maxChars < 1) continue;
-        const lines = [];
-        let fits = true;
-        for (const word of words) {
-          if (word.length > maxChars) { fits = false; break; }
-          const last = lines[lines.length - 1];
-          if (last && last.length + 1 + word.length <= maxChars) lines[lines.length - 1] = `${last} ${word}`;
-          else lines.push(word);
+      // Item labels: icon plus words, as big as the sky allows.
+      const fitLabel = (item, kMax) => {
+        for (const k of [2, 1].filter((x) => x <= kMax)) {
+          const iw = 12 * k;
+          const fit = fitLines(item, W - 20 - iw - 4 * k, skyH - 10, k);
+          if (fit.k !== k) continue;
+          const h = Math.max(iw, fit.h) + 10, w = iw + 4 * k + fit.w + 12;
+          if (h <= skyH) return { ...fit, iw, w, h };
         }
-        const lineH = 8 * k + 2 + Math.max(1, k - 1);
-        const gap = 2 * k;
-        const height = lines.length * lineH + (lines.length - 1) * gap;
-        if (fits && height <= bandBottom - bandTop) {
-          head = { k, lines, lineH, gap, height };
-          break;
-        }
-      }
-      if (!head) head = { k: 1, lines: [text.slice(0, Math.floor((W - 10) / 8))], lineH: 10, gap: 2, height: 10 };
+        const fit = fitLines(item, W - 36, skyH - 10, 1);
+        return { ...fit, iw: 12, w: 12 + 4 + fit.w + 12, h: Math.max(12, fit.h) + 10 };
+      };
+      // All three labels use the same letter size, so they read as a set.
+      const kAll = Math.min(...copy.items.map((item) => fitLabel(item, 2).k));
+      const labels = copy.items.map((item) => fitLabel(item, kAll));
+      // Call to action box: the action in chunky letters, the handle underneath.
+      const ctaFit = fitLines(copy.cta, W - 24, skyH - 30, 2, 3);
+      const handleFit = fitLines(copy.handle, W - 24, 8, 1);
+      const levelFit = fitLines("LEVEL UP!", W - 24, skyH - 14, 2);
 
-      // The banner goes under the headline if there is room, else in a dialog box over the ground.
-      const room = bandBottom - bandTop;
-      let headTop = bandTop + Math.floor((room - head.height) / 3), bannerY = 0, bannerK = 0;
-      for (const k of oneRow ? [2, 1] : [1]) {
-        const stack = head.height + 6 + 8 * k + 14;
-        if (stack > room) continue;
-        headTop = bandTop + Math.floor((room - stack) / 2);
-        bannerY = headTop + head.height + 6;
-        bannerK = k;
-        break;
-      }
-      if (!bannerK) {
-        bannerK = groundH >= 40 && oneRow ? 2 : 1;
-        bannerY = groundY + 5 + Math.floor((groundH - 5 - (8 * bannerK + 14)) / 2);
-      }
-      const bannerH = 8 * bannerK + 14;
-      const letters = [];
-      head.lines.forEach((line, li) => {
-        const x0 = Math.round((W - line.length * 8 * head.k) / 2);
-        [...line].forEach((ch, ci) => {
-          if (ch === " ") return;
-          letters.push({ ch, x: x0 + ci * 8 * head.k - 1, y: headTop + li * (head.lineH + head.gap) - 1 });
-        });
-      });
-      const bigTop = colors.accent, bigBottom = mix(colors.accent, "#ef7d57", 0.65);
-      const letterImg = new Map(), letterFlash = new Map();
-      for (const l of letters) {
-        if (letterImg.has(l.ch)) continue;
-        letterImg.set(l.ch, bigLetter(l.ch, head.k, bigTop, bigBottom));
-        letterFlash.set(l.ch, bigLetter(l.ch, head.k, PAL.w, PAL.Y));
-      }
-
-      L = { oneRow, groundY, groundH, blockTop, blockBottom, heroX, letters, letterImg, letterFlash, k: head.k, bannerK, bannerH, bannerY };
+      L = {
+        oneRow, hudBottom, groundY, groundH, blockTop, blockBottom, heroX, sky, labels, ctaFit, handleFit, levelFit,
+        card: layoutCard(),
+      };
       buildBackground();
+    }
+
+    // The Player 1 card: portrait, name, role, three stat bars and PRESS START.
+    function layoutCard() {
+      const pad = W >= 200 ? 6 : 4;
+      const box = { x: pad, y: pad, w: W - pad * 2, h: H - pad * 2 };
+      const wide = W >= H * 1.25;
+      const statW = 5 * 8 + 4 + SEGS * 9 + 1;
+      const c = { box, wide };
+      if (wide) {
+        // Portrait on the left, the words on the right, the pair centred in the card.
+        const s = box.h >= 150 ? 4 : box.h >= 110 ? 3 : 2;
+        const pw = 18 * s + 6;
+        const maxCol = box.w - pw - 44;
+        c.name = fitLines(copy.name, maxCol, 27, 3);
+        c.name.h += 3; // outline and shadow
+        c.role = fitLines(copy.role, maxCol, 18, 1);
+        const colW = Math.max(c.name.w, c.role.w, statW, 11 * 8);
+        const left = box.x + Math.max(10, Math.floor((box.w - pw - 20 - colW) / 2));
+        const colX = left + pw + 20;
+        const blockH = 8 + 8 + c.name.h + 5 + c.role.h + 9 + 3 * 11 - 3 + 9 + 8;
+        const top = box.y + Math.max(6, Math.floor((box.h - blockH) / 2));
+        c.header = { x: colX, y: top };
+        c.portrait = { x: left, y: box.y + Math.floor((box.h - pw) / 2), s, size: pw };
+        c.name.x = colX;
+        c.name.y = top + 16;
+        c.role.x = colX;
+        c.role.y = c.name.y + c.name.h + 5;
+        c.stats = { x: colX, y: c.role.y + c.role.h + 9 };
+        c.press = { x: colX, y: c.stats.y + 3 * 11 - 3 + 9 };
+        c.centerX = null;
+      } else {
+        // Stacked: the biggest portrait and name that still leave some air between the rows.
+        const inner = box.w - 12;
+        c.role = fitLines(copy.role, inner, 18, 1);
+        let s = 2, gap = 0, pw = 0, fixed = 0;
+        for (const [ps, nk, minGap] of [[4, 3, 6], [4, 2, 5], [3, 2, 3], [2, 2, 3], [2, 1, 0]]) {
+          s = ps;
+          pw = 18 * s + 6;
+          c.name = fitLines(copy.name, inner, 8 * nk + 3, nk);
+          c.name.h += 3; // outline and shadow
+          fixed = 8 + pw + c.name.h + c.role.h + 3 * 11 - 3 + 8;
+          gap = Math.floor((box.h - 12 - fixed) / 6);
+          if (gap >= minGap) break;
+        }
+        gap = Math.max(2, Math.min(12, gap));
+        let y = box.y + 6 + Math.max(0, Math.floor((box.h - 12 - fixed - gap * 6) / 2)) + gap;
+        const cx = box.x + Math.floor(box.w / 2);
+        c.header = { y };
+        y += 8 + gap;
+        c.portrait = { x: cx - Math.floor(pw / 2), y, s, size: pw };
+        y += pw + gap;
+        c.name.y = y;
+        y += c.name.h + gap;
+        c.role.y = y;
+        y += c.role.h + gap;
+        c.stats = { x: cx - Math.floor(statW / 2), y };
+        y += 3 * 11 - 3 + gap;
+        c.press = { y };
+        c.centerX = cx;
+      }
+      return c;
     }
 
     // Pixel disc, drawn as crisp rows.
@@ -590,8 +694,60 @@
 
     const mod = (a, n) => ((a % n) + n) % n;
 
+    // Blocks in the level: three ? blocks (one item each) and the star block.
+    const BLOCKS = [
+      { T: ITEMS_AT[0], kind: "q", left: true, right: true },
+      { T: ITEMS_AT[1], kind: "q", left: true, right: true },
+      { T: ITEMS_AT[2], kind: "q", left: true, right: true },
+      { T: STAR_AT, kind: "star", left: false, right: true },
+    ];
+
+    // A game style dialog box.
+    function panel(x, y, w, h) {
+      ctx.fillStyle = PAL.k;
+      ctx.fillRect(x - 1, y - 1, w + 2, h + 3);
+      ctx.fillStyle = PAL.w;
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = PAL.n;
+      ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
+    }
+
+    // Text lines at pixel size k, with a one pixel shadow.
+    function drawLines(fit, x, y, col, center = false, gap = 2) {
+      fit.lines.forEach((line, i) => {
+        const lx = center ? x + Math.round((fit.w - line.length * 8 * fit.k) / 2) : x;
+        const ly = y + i * (8 + gap) * fit.k;
+        ctx.drawImage(textImage(line, PAL.k, fit.k), lx + 1, ly + 1);
+        ctx.drawImage(textImage(line, col, fit.k), lx, ly);
+      });
+    }
+
+    // Chunky letters (outline and drop shadow), cached per letter, size and colour set.
+    const bigCache = new Map();
+    function big(ch, k, flash) {
+      const key = `${ch}|${k}|${flash ? 1 : 0}`;
+      if (!bigCache.has(key)) {
+        bigCache.set(key, flash ? bigLetter(ch, k, PAL.w, PAL.Y) : bigLetter(ch, k, colors.accent, mix(colors.accent, "#ef7d57", 0.65)));
+      }
+      return bigCache.get(key);
+    }
+    function drawBig(fit, x, y, shown = Infinity, flash = false, gap = 3) {
+      let n = 0;
+      fit.lines.forEach((line, li) => {
+        const lx = x + Math.round((fit.w - line.length * 8 * fit.k) / 2);
+        [...line].forEach((ch, ci) => {
+          const i = n++;
+          if (ch === " " || i >= shown) return;
+          ctx.drawImage(big(ch, fit.k, flash), lx + ci * 8 * fit.k - 1, y + li * (8 + gap) * fit.k - 1);
+        });
+      });
+    }
+
+    // HUD slot for item i.
+    const slotX = (i) => W - 5 - (3 - i) * 16;
+
     // ---- One frame ----
-    function draw(t) {
+    function draw(t, calm = false) {
       const { groundY, blockTop, heroX } = L;
       const scroll = Math.round(t * SPEED);
       const worldToScreen = (T) => Math.round(T * SPEED) - scroll + heroX;
@@ -600,7 +756,7 @@
       // Sky and clouds
       ctx.drawImage(bg.sky, 0, 0);
       const cloudSpots = [[0.08, 0.38], [0.52, 0.3], [0.86, 0.48]];
-      const skyTop = L.oneRow ? 14 : 24;
+      const skyTop = L.hudBottom;
       bg.clouds.forEach((cl, i) => {
         const span = W + 60;
         const x = mod(Math.round(cloudSpots[i][0] * span - t * (4 + i * 1.5)), span) - 40;
@@ -630,17 +786,23 @@
       for (let n = -1; n <= 2; n++) {
         const shift = n * period;
         const tt = t - n * LOOP;
-        // Crate
-        const cx = worldToScreen(4.9) + shift - 8;
-        if (cx > -20 && cx < W + 20) ctx.drawImage(crate, cx, groundY - 16);
-        // Block rows: a ? block between bricks, and a star block.
-        for (const [T, kind] of [[Q_AT, "q"], [STAR_AT, "star"]]) {
-          const bx = worldToScreen(T) + shift - 8;
+        // Items rise out of their blocks (drawn first, so the block hides the bottom).
+        ITEMS_AT.forEach((Q, i) => {
+          const u = tt - Q;
+          if (u < 0.02 || u >= 0.95) return;
+          const x = worldToScreen(Q) + shift - 6;
+          if (x < -20 || x > W + 20) return;
+          const bob = u > 0.35 && Math.floor(u * 6) % 2 ? -1 : 0;
+          ctx.drawImage(icons[i], x, Math.round(blockTop + 2 - easeOut((u - 0.02) / 0.26) * 14) + bob);
+        });
+        // Blocks with bricks beside them.
+        for (const b of BLOCKS) {
+          const bx = worldToScreen(b.T) + shift - 8;
           if (bx < -40 || bx > W + 40) continue;
-          const bump = tt >= T && tt < T + 0.16 ? -Math.round(Math.sin(((tt - T) / 0.16) * Math.PI) * 4) : 0;
-          ctx.drawImage(blocks.brick, bx - 16, blockTop);
-          ctx.drawImage(blocks.brick, bx + 16, blockTop);
-          ctx.drawImage(tt >= T ? blocks.used : blocks[kind], bx, blockTop + bump);
+          const bump = tt >= b.T && tt < b.T + 0.16 ? -Math.round(Math.sin(((tt - b.T) / 0.16) * Math.PI) * 4) : 0;
+          if (b.left) ctx.drawImage(blocks.brick, bx - 16, blockTop);
+          if (b.right) ctx.drawImage(blocks.brick, bx + 16, blockTop);
+          ctx.drawImage(tt >= b.T ? blocks.used : blocks[b.kind], bx, blockTop + bump);
         }
         // Coins, spinning until they are picked up.
         coins.forEach((c, i) => {
@@ -650,13 +812,6 @@
           const f = Math.floor(t * 8 + i * 0.7) % 4;
           ctx.drawImage(coinFrames[f], x, Math.round(groundY - 12 - c.lift));
         });
-        // Coin that pops out of the ? block
-        const qt = tt - Q_AT;
-        if (qt >= 0 && qt < 0.45) {
-          const x = worldToScreen(Q_AT) + shift - 4;
-          const rise = Math.sin((qt / 0.45) * Math.PI * 0.85) * 26;
-          ctx.drawImage(coinFrames[Math.floor(qt * 20) % 4], x, Math.round(blockTop - 8 - rise));
-        }
         // The star rises out of its block, then flies into the hero.
         const st = tt - STAR_AT;
         if (st >= 0 && st < LEVEL_AT - STAR_AT) {
@@ -667,25 +822,22 @@
           const x = x0 + (hx - x0) * fly, y = (y0 - up) + (hy - (y0 - up)) * fly * fly;
           ctx.drawImage(star, Math.round(x), Math.round(y));
         }
-        // Sparkles and score pop ups where things were picked up.
-        const pops = [
-          ...coins.map((c) => ({ t: c.T, x: worldToScreen(c.T), y: groundY - 8 - c.lift, add: 100 })),
-          { t: Q_AT + 0.45, x: worldToScreen(Q_AT), y: blockTop - 20, add: 200 },
-        ];
-        for (const p of pops) {
-          const u = tt - p.t;
-          if (u < 0 || u > 0.7) continue;
-          const x = p.x + shift;
-          if (u < 0.32) ctx.drawImage(sparkleFrames[Math.min(3, Math.floor(u / 0.08))], x - 2, Math.round(p.y) - 2);
-          tinyText(ctx, `+${p.add}`, x - 7, Math.round(p.y - 10 - easeOut(u / 0.7) * 10), PAL.w);
-        }
+        // Sparkles and "+150" pop ups where coins were picked up.
+        coins.forEach((c, i) => {
+          const u = tt - c.T;
+          if (u < 0 || u > 0.7) return;
+          const x = worldToScreen(c.T) + shift, y = groundY - 8 - c.lift;
+          if (u < 0.32) ctx.drawImage(sparkleFrames[Math.min(3, Math.floor(u / 0.08))], x - 2, Math.round(y) - 2);
+          // Coins come in pairs: one pop up for the pair, so the numbers never overlap.
+          if (i % 2) tinyText(ctx, `+${Math.round(PER_COIN * 2)}`, x - 12, Math.round(y - 10 - easeOut(u / 0.7) * 10), PAL.w);
+        });
       }
 
       // The hero
       const jy = Math.round(jumpY(t));
       const inAir = jy > 0;
-      const powered = t >= LEVEL_AT && t < 9.2;
-      const pal = powered ? 1 + (Math.floor(t * 12) % 2) : 0;
+      const powered = t >= LEVEL_AT && t < CLOSE_AT + 0.6;
+      const pal = powered && !calm ? 1 + (Math.floor(t * 12) % 2) : powered ? 1 : 0;
       const step = [0, 1, 2, 1][Math.floor(t * 12) % 4];
       const frame = inAir ? 3 : step;
       const bob = !inAir && step === 1 ? -1 : 0;
@@ -721,85 +873,188 @@
       }
 
       drawHud(t);
-      drawHeadline(t);
-      drawBanner(t);
+      drawItems(t);
+      drawCta(t, calm);
+      if (!calm) drawCard(t);
       drawIris(t, heroX + 8, heroY + 8);
     }
 
+    // Top bar: the proof counter on the left, the collected items on the right.
     function drawHud(t) {
-      let score = 0, count = 0;
-      for (const e of events) if (t >= e.t) { score += e.add; count += e.coin; }
-      const scoreStr = String(score).padStart(6, "0");
-      const coinStr = `x${String(count).padStart(2, "0")}`;
+      const value = counterAt(t);
+      const fresh = coins.some((c) => t >= c.T && t < c.T + 0.15);
       const coinImg = coinFrames[Math.floor(t * 6) % 4];
+      const room = Math.floor((slotX(0) - 4 - 17) / 8);
       if (L.oneRow) {
-        drawText(`SCORE ${scoreStr}`, 6, 4);
-        const cx = Math.round(W / 2 - 16);
-        ctx.drawImage(coinImg, cx, 4);
-        drawText(coinStr, cx + 10, 4);
-        drawText("WORLD 1-1", W - 6 - 72, 4);
+        ctx.drawImage(coinImg, 6, 5);
+        drawText(value, 17, 5, fresh ? PAL.Y : PAL.y);
+        const label = copy.proof.slice(0, Math.max(0, room - value.length - 1));
+        if (label) drawText(label, 17 + (value.length + 1) * 8, 5, PAL.w);
       } else {
-        drawText("SCORE", 6, 4);
-        drawText(scoreStr, 6, 14);
-        drawText("WORLD", W - 46, 4);
-        drawText("1-1", W - 30, 14);
-        const cx = Math.round(W / 2 - 14);
-        ctx.drawImage(coinImg, cx, 9);
-        drawText(coinStr, cx + 10, 9);
+        ctx.drawImage(coinImg, 6, 4);
+        drawText(value, 17, 4, fresh ? PAL.Y : PAL.y);
+        drawText(copy.proof.slice(0, Math.floor((W - 10) / 8)), 5, 18, PAL.w);
+      }
+      for (let i = 0; i < 3; i++) {
+        const x = slotX(i);
+        ctx.fillStyle = PAL.k;
+        ctx.fillRect(x, 2, 14, 14);
+        ctx.fillStyle = PAL.d;
+        ctx.fillRect(x + 1, 3, 12, 12);
+        if (t >= ITEMS_AT[i] + 1.25) ctx.drawImage(icons[i], x + 1, 3);
+        else {
+          ctx.fillStyle = PAL.s;
+          ctx.fillRect(x + 6, 8, 2, 2);
+        }
       }
     }
 
-    // Headline letters drop in one by one, then ripple gently in whole pixels.
-    function drawHeadline(t) {
-      const flash = t >= LEVEL_AT && t < LEVEL_AT + 0.5 && Math.floor(t * 16) % 2 === 0;
-      L.letters.forEach((l, i) => {
-        const start = 0.45 + i * 0.07;
-        const u = (t - start) / 0.45;
-        if (u < 0) return;
-        let dy = -Math.round((1 - backOut(u)) * 24);
-        if (u >= 1) dy = Math.sin(t * 5 - i * 0.6) > 0.55 ? -1 : 0;
-        ctx.drawImage((flash ? L.letterFlash : L.letterImg).get(l.ch), l.x, l.y + dy);
+    // Each item: its label pops up in the sky, then its icon flies up into its HUD slot.
+    function drawItems(t) {
+      const { sky, blockTop, heroX } = L;
+      ITEMS_AT.forEach((Q, i) => {
+        const u = t - Q;
+        if (u >= 0.95 && u < 1.25) {
+          const f = easeIn((u - 0.95) / 0.3);
+          const x0 = Math.round(Q * SPEED) - Math.round((Q + 0.95) * SPEED) + heroX - 6, y0 = blockTop - 12;
+          const x = x0 + (slotX(i) + 1 - x0) * f, y = y0 + (3 - y0) * f - Math.sin(f * Math.PI) * 10;
+          ctx.drawImage(icons[i], Math.round(x), Math.round(y));
+        }
+        if (u < 0.18 || u > 1.1) return;
+        const lab = L.labels[i];
+        const grow = u > 0.98 ? 1 - clamp01((u - 0.98) / 0.12) : backOut((u - 0.18) / 0.2);
+        const w = Math.max(6, Math.round((lab.w * Math.min(grow, 1.15)) / 2) * 2);
+        const h = Math.max(4, Math.round(lab.h * Math.min(1, grow)));
+        const x = Math.round((W - w) / 2), y = sky.top + Math.round((sky.bottom - sky.top - h) / 2);
+        panel(x, y, w, h);
+        if (grow < 0.95 || u > 1.0) return;
+        const bx = Math.round((W - lab.w) / 2);
+        const k = lab.k;
+        ctx.drawImage(icons[i], bx + 6, y + Math.round((lab.h - lab.iw) / 2), lab.iw, lab.iw);
+        const textH = lab.lines.length * 8 * k + (lab.lines.length - 1) * 2 * k;
+        drawLines(lab, bx + 6 + lab.iw + 4 * k, y + Math.round((lab.h - textH) / 2), PAL.y);
       });
     }
 
-    // "LEVEL UP!" in a game style dialog box.
-    function drawBanner(t) {
-      const u = t - (LEVEL_AT + 0.05);
-      const end = 9.1;
-      if (u < 0 || t > end + 0.2) return;
-      const k = L.bannerK;
-      const label = "LEVEL UP!";
-      const fullW = label.length * 8 * k + 16;
-      const grow = t > end ? 1 - clamp01((t - end) / 0.2) : backOut(u / 0.3);
-      const bw = Math.max(4, Math.round(fullW * grow / 2) * 2);
-      const bh = Math.max(4, Math.round(L.bannerH * Math.min(1, grow)));
-      const x = Math.round((W - bw) / 2), y = L.bannerY + Math.round((L.bannerH - bh) / 2);
-      ctx.fillStyle = PAL.k;
-      ctx.fillRect(x - 1, y - 1, bw + 2, bh + 3);
-      ctx.fillStyle = PAL.w;
-      ctx.fillRect(x, y, bw, bh);
-      ctx.fillStyle = PAL.n;
-      ctx.fillRect(x + 2, y + 2, bw - 4, bh - 4);
-      if (grow < 0.95) return;
-      // Text blinks through three colours, then settles.
-      const cols = [PAL.y, PAL.w, PAL.C, PAL.g];
-      const col = u < 1.2 && !reduce.matches ? cols[Math.floor(u * 10) % cols.length] : PAL.y;
-      const tx = Math.round(W / 2 - (label.length * 8 * k) / 2);
-      const ty = L.bannerY + Math.round((L.bannerH - 8 * k) / 2);
-      ctx.drawImage(textImage(label, PAL.k, k), tx + 1, ty + 1);
-      ctx.drawImage(textImage(label, col, k), tx, ty);
+    // Finale: LEVEL UP! in a dialog box, which then turns into the call to action and the handle.
+    function drawCta(t, calm) {
+      const { sky, levelFit, ctaFit, handleFit } = L;
+      const u = t - BOX_AT;
+      if (u < 0) return;
+      const aw = levelFit.w + 16, ah = levelFit.h + 14;
+      const bw = Math.max(ctaFit.w + 2, handleFit.w) + 16, bh = ctaFit.h + 3 + 6 + 8 + 18;
+      const m = clamp01((t - CTA_AT) / 0.15);
+      const grow = t < CTA_AT ? backOut(u / 0.3) : 1;
+      const w = Math.max(4, Math.round(((aw + (bw - aw) * m) * Math.min(grow, 1.1)) / 2) * 2);
+      const h = Math.max(4, Math.round((ah + (bh - ah) * m) * Math.min(1, grow)));
+      const x = Math.round((W - w) / 2), y = sky.top + Math.round((sky.bottom - sky.top - h) / 2);
+      panel(x, y, w, h);
+      if (grow < 0.95 || (m > 0 && m < 1)) return;
+      if (t < CTA_AT) {
+        const cols = [PAL.y, PAL.w, PAL.C, PAL.g];
+        const col = calm ? PAL.y : cols[Math.floor(u * 10) % cols.length];
+        drawLines(levelFit, Math.round((W - levelFit.w) / 2), y + 7, col, true);
+      } else {
+        const v = t - CTA_AT;
+        const flash = !calm && v < 0.5 && Math.floor(v * 16) % 2 === 0;
+        drawBig(ctaFit, Math.round((W - ctaFit.w) / 2), y + 7, Infinity, flash);
+        drawLines(handleFit, Math.round((W - handleFit.w) / 2), y + 7 + ctaFit.h + 3 + 6, PAL.C, true);
+        // A blinking arrow, like a dialog waiting for a button press.
+        if (calm || Math.floor(t * 2) % 2 === 0) {
+          ctx.fillStyle = PAL.y;
+          const ax = x + w - 9, ay = y + h - 8;
+          ctx.fillRect(ax, ay, 5, 1);
+          ctx.fillRect(ax + 1, ay + 1, 3, 1);
+          ctx.fillRect(ax + 2, ay + 2, 1, 1);
+        }
+      }
       // Two twinkling sparkles on the corners.
-      const f = Math.floor(t * 8) % 4;
+      const f = calm ? 2 : Math.floor(t * 8) % 4;
       ctx.drawImage(sparkleFrames[f], x - 3, y - 3);
-      ctx.drawImage(sparkleFrames[(f + 2) % 4], x + bw - 2, y + bh - 2);
+      ctx.drawImage(sparkleFrames[(f + 2) % 4], x + w - 2, y + h - 2);
     }
 
-    // Classic circle wipe: closes on the hero at the end of the loop and opens at the start.
-    function drawIris(t, cx, cy) {
+    // The Player 1 card. It slides up out of the frame to start the level.
+    function drawCard(t) {
+      if (t >= SLIDE_AT + SLIDE) return;
+      const c = L.card, { box } = c;
+      const dy = t > SLIDE_AT ? -Math.round(easeIn((t - SLIDE_AT) / SLIDE) * (box.y + box.h + 4)) : 0;
+      ctx.save();
+      ctx.translate(0, dy);
+      panel(box.x, box.y, box.w, box.h);
+      // A faint dotted pattern, like a select screen.
+      ctx.fillStyle = PAL.d;
+      for (let y = box.y + 5; y < box.y + box.h - 4; y += 4) {
+        for (let x = box.x + 5 + (y % 8 ? 2 : 0); x < box.x + box.w - 4; x += 4) ctx.fillRect(x, y, 1, 1);
+      }
+      const cx = c.centerX;
+      const leftOf = (w) => (cx === null ? null : cx - Math.round(w / 2));
+      // Header
+      const head = "PLAYER 1";
+      drawText(head, cx === null ? c.header.x : leftOf(head.length * 8), c.header.y, PAL.y);
+      // Portrait: the hero on a little stage, with select arrows either side.
+      const p = c.portrait;
+      ctx.fillStyle = PAL.k;
+      ctx.fillRect(p.x - 1, p.y - 1, p.size + 2, p.size + 2);
+      ctx.fillStyle = PAL.w;
+      ctx.fillRect(p.x, p.y, p.size, p.size);
+      ctx.fillStyle = colors.bg;
+      ctx.fillRect(p.x + 2, p.y + 2, p.size - 4, p.size - 4);
+      ctx.fillStyle = PAL.G;
+      ctx.fillRect(p.x + 2, p.y + p.size - 2 - 2 * p.s, p.size - 4, 2 * p.s);
+      ctx.fillStyle = PAL.g;
+      ctx.fillRect(p.x + 2, p.y + p.size - 2 - 2 * p.s, p.size - 4, p.s);
+      const hop = Math.floor(t * 3) % 2 ? -p.s : 0;
+      ctx.drawImage(hero[0][1], p.x + 1 + p.s, p.y + p.size - 2 - 17 * p.s + hop, 16 * p.s, 16 * p.s);
+      if (Math.floor(t * 3) % 2 === 0) {
+        ctx.fillStyle = PAL.y;
+        const my = p.y + Math.floor(p.size / 2);
+        for (let i = 0; i < 4; i++) {
+          ctx.fillRect(p.x - 8 + i, my - i, 1, i * 2 + 1);
+          ctx.fillRect(p.x + p.size + 7 - i, my - i, 1, i * 2 + 1);
+        }
+      }
+      // Name, typed in letter by letter.
+      const shown = Math.max(0, Math.floor((t - NAME_AT) / LETTER) + 1);
+      drawBig(c.name, cx === null ? c.name.x : leftOf(c.name.w), c.name.y, shown);
+      if (t >= ROLE_AT) drawLines(c.role, cx === null ? c.role.x : leftOf(c.role.w), c.role.y, PAL.C, true);
+      // Three stat bars that fill up one segment at a time.
+      copy.stats.forEach(([label, value], j) => {
+        const y = c.stats.y + j * 11;
+        drawText(label, c.stats.x, y, PAL.w);
+        const bx = c.stats.x + 44;
+        ctx.fillStyle = PAL.k;
+        ctx.fillRect(bx, y - 1, SEGS * 9 + 1, 10);
+        ctx.fillStyle = PAL.d;
+        ctx.fillRect(bx + 1, y, SEGS * 9 - 1, 8);
+        const n = Math.max(0, Math.min(value, Math.floor((t - STAT_AT[j]) / SEG) + 1));
+        const col = [PAL.y, PAL.C, PAL.r][j];
+        for (let s = 0; s < n; s++) {
+          ctx.fillStyle = col;
+          ctx.fillRect(bx + 1 + s * 9, y, 8, 8);
+          ctx.fillStyle = PAL.w;
+          ctx.fillRect(bx + 1 + s * 9, y, 8, 1);
+        }
+      });
+      // PRESS START blinks, then flashes when pressed.
+      const blink = BLINKS.some((b) => t >= b && t < b + 0.25);
+      if (blink || t >= PRESS_AT) {
+        const col = t >= PRESS_AT ? (Math.floor(t * 16) % 2 ? PAL.w : PAL.y) : PAL.w;
+        const s = "PRESS START";
+        drawText(s, cx === null ? c.press.x : leftOf(s.length * 8), c.press.y, col);
+      }
+      ctx.restore();
+    }
+
+    // Classic circle wipe: opens on the card at the start, closes on the hero at the end.
+    function drawIris(t, hx, hy) {
       const maxR = Math.hypot(W, H);
-      let r = maxR;
-      if (t < 0.65) r = maxR * Math.pow(clamp01((t - 0.08) / 0.57), 2);
-      else if (t > 9.3) r = maxR * Math.pow(1 - clamp01((t - 9.3) / 0.6), 2);
+      let r = maxR, cx = hx, cy = hy;
+      if (t < 0.65) {
+        r = maxR * Math.pow(clamp01((t - 0.08) / 0.57), 2);
+        cx = L.card.portrait.x + L.card.portrait.size / 2;
+        cy = L.card.portrait.y + L.card.portrait.size / 2;
+      } else if (t > CLOSE_AT) r = maxR * Math.pow(1 - clamp01((t - CLOSE_AT) / 0.6), 2);
       if (r >= maxR) return;
       ctx.fillStyle = PAL.k;
       for (let y = 0; y < H; y++) {
@@ -812,20 +1067,21 @@
     }
 
     // ---- Run ----
-    let frame = 0, start = 0;
+    let frame = 0, start = 0, last = 0;
     function loop(now) {
       if (!start) start = now;
       draw(((now - start) / 1000) % LOOP);
+      last = now; // the sound reads this frame time
       frame = requestAnimationFrame(loop);
     }
 
-    // Reduced motion: one still frame, just after the level up.
+    // Reduced motion: one still frame of the level with every item collected and the call to action.
     const reduce = matchMedia("(prefers-reduced-motion: reduce)");
-    const STILL = 6.98;
+    const STILL = 10.2;
     function apply() {
       cancelAnimationFrame(frame);
       frame = 0;
-      if (reduce.matches) draw(STILL);
+      if (reduce.matches) draw(STILL, true);
       else {
         start = 0;
         frame = requestAnimationFrame(loop);
@@ -837,19 +1093,559 @@
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
         build();
-        if (reduce.matches) draw(STILL);
+        if (reduce.matches) draw(STILL, true);
       }, 100);
     });
     reduce.addEventListener("change", apply);
 
+    // ---- Sound: off until the page asks for it. Every sound is made here with Web Audio, no files. ----
+    // o.clock() gives { t, p }: animation seconds t (not wrapped) that were true at performance time p (ms),
+    // or null while the animation is stopped. o.plan() lists one loop of { t, type, music, dur, long }.
+    // o.voices[type](when, e, A, skip) makes one sound. o.setup(A) can add extra nodes to each session
+    // and set A.stop to end them.
+    function makeSound(o) {
+      const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+      const LOOK = 0.1;
+      let ctx = null, A = null, impulse = null, noiseBuf = null, master = null;
+      let events = [], loopLen = 1;
+      let wantOn = false, wantMusic = true, timer = 0, sleepTimer = 0;
+      let animOff = null, outOff = null, done = null, longs = [];
+
+      function build() {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const sr = ctx.sampleRate;
+        // Compressor last, so nothing clips.
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -14;
+        comp.knee.value = 8;
+        comp.ratio.value = 4;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.2;
+        master = ctx.createGain();
+        master.gain.value = o.level;
+        master.connect(comp).connect(ctx.destination);
+        // White noise, and a reverb impulse made of stereo noise that fades away.
+        noiseBuf = ctx.createBuffer(1, sr * 2, sr);
+        const n = noiseBuf.getChannelData(0);
+        for (let i = 0; i < n.length; i++) n[i] = Math.random() * 2 - 1;
+        const len = Math.floor(sr * (o.verbTime || 1.6));
+        impulse = ctx.createBuffer(2, len, sr);
+        for (let c = 0; c < 2; c++) {
+          const d = impulse.getChannelData(c);
+          for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.5);
+        }
+      }
+
+      // Small building blocks.
+      function amp(when, peak, attack, decay, out) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, when);
+        g.gain.exponentialRampToValueAtTime(peak, when + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay);
+        if (out) g.connect(out);
+        return g;
+      }
+      function osc(type, freq, when, dur) {
+        const s = ctx.createOscillator();
+        s.type = type;
+        s.frequency.setValueAtTime(freq, when);
+        s.start(when);
+        s.stop(when + dur + 0.05);
+        return s;
+      }
+      function noise(when, dur) {
+        const s = ctx.createBufferSource();
+        s.buffer = noiseBuf;
+        s.loop = true;
+        s.start(when, Math.random() * 1.5);
+        s.stop(when + dur + 0.05);
+        return s;
+      }
+      function filter(type, freq, q = 0.7) {
+        const f = ctx.createBiquadFilter();
+        f.type = type;
+        f.frequency.value = freq;
+        f.Q.value = q;
+        return f;
+      }
+      function pan(value, out) {
+        const p = ctx.createStereoPanner();
+        p.pan.value = value;
+        p.connect(out);
+        return p;
+      }
+      const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+
+      // Each switch on gets fresh buses, so sounds booked before a switch off never leak out later.
+      function openSession() {
+        const t = ctx.currentTime;
+        const out = ctx.createGain();
+        out.gain.setValueAtTime(0, t);
+        out.gain.linearRampToValueAtTime(1, t + 0.05);
+        out.connect(master);
+        const fx = ctx.createGain();
+        fx.connect(out);
+        // Music gate: music:false fades this to zero, with the music's own reverb.
+        const gate = ctx.createGain();
+        gate.gain.value = wantMusic ? o.music : 0;
+        gate.connect(out);
+        const mus = ctx.createGain();
+        mus.connect(gate);
+        const verb = (dest) => {
+          const c = ctx.createConvolver();
+          c.buffer = impulse;
+          const tone = filter("lowpass", 4000);
+          const input = ctx.createGain();
+          input.connect(c).connect(tone).connect(dest);
+          return input;
+        };
+        const fxVerb = verb(fx), musVerb = verb(mus);
+        longs = [];
+        A = {
+          ctx, out, fx, mus, gate, fxVerb, musVerb, amp, osc, noise, filter, pan, hz,
+          // Reverb sends, one for effects and one for music.
+          send(node, amount) { const g = ctx.createGain(); g.gain.value = amount; node.connect(g).connect(fxVerb); },
+          msend(node, amount) { const g = ctx.createGain(); g.gain.value = amount; node.connect(g).connect(musVerb); },
+        };
+        if (o.setup) o.setup(A);
+      }
+      function closeSession() {
+        const S = A, old = A.out, t = ctx.currentTime;
+        A = null;
+        old.gain.cancelScheduledValues(t);
+        old.gain.setValueAtTime(old.gain.value, t);
+        old.gain.linearRampToValueAtTime(0, t + 0.15);
+        setTimeout(() => {
+          old.disconnect();
+          if (S.stop) S.stop(); // stop any steady sources the session started (like an LFO)
+        }, 300);
+      }
+
+      // AudioContext time for a performance time (seconds), using the output clock when there is one.
+      function outputOffset() {
+        const pnow = performance.now();
+        const ts = ctx.getOutputTimestamp ? ctx.getOutputTimestamp() : null;
+        let raw;
+        if (ts && ts.contextTime > 0 && ts.performanceTime > 0 && Math.abs(pnow - ts.performanceTime) < 1000) {
+          raw = ts.contextTime - ts.performanceTime / 1000;
+        } else {
+          raw = ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0) - pnow / 1000;
+        }
+        if (outOff === null || Math.abs(raw - outOff) > 0.04) outOff = raw;
+        else outOff += (raw - outOff) * 0.1;
+        return outOff;
+      }
+
+      function play(e, when, skip = 0) {
+        if (e.music && !wantMusic) return;
+        if (!e.long) return o.voices[e.type](when, e, A, skip);
+        // Long sounds get their own faders, so a resync can fade them out before starting them again.
+        const f = ctx.createGain(), fs = ctx.createGain();
+        f.connect(e.music ? A.mus : A.fx);
+        fs.connect(e.music ? A.musVerb : A.fxVerb);
+        const view = Object.create(A);
+        view.fx = view.mus = f;
+        view.send = view.msend = (node, amount) => { const g = ctx.createGain(); g.gain.value = amount; node.connect(g).connect(fs); };
+        o.voices[e.type](when, e, view, skip);
+        longs = longs.filter((x) => x.end > ctx.currentTime);
+        longs.push({ faders: [f, fs], end: when + e.dur - skip + 1, music: !!e.music });
+      }
+      function fadeLongs(musicOnly) {
+        const t = ctx.currentTime;
+        for (const x of longs) {
+          if (musicOnly && !x.music) continue;
+          for (const g of x.faders) {
+            g.gain.setValueAtTime(1, t);
+            g.gain.linearRampToValueAtTime(0, t + 0.08);
+          }
+        }
+        longs = longs.filter((x) => musicOnly && !x.music);
+      }
+
+      // Long sounds already under way (a hum, a pad) start part way through, so they do not wait a loop.
+      function catchUp(now, musicOnly) {
+        const lt = ((now % loopLen) + loopLen) % loopLen;
+        for (const e of events) {
+          if (!e.long || (musicOnly && !e.music)) continue;
+          if (lt > e.t + 0.02 && lt < e.t + e.dur - 0.15) play(e, ctx.currentTime + 0.02, lt - e.t);
+        }
+      }
+
+      // Look-ahead scheduler: every 25 ms, book the sounds due in the next 100 ms of animation time.
+      function tick() {
+        const c = A && ctx.state === "running" && !document.hidden && !reduce.matches ? o.clock() : null;
+        if (!c) { done = null; return; }
+        const raw = c.p / 1000 - c.t;
+        if (animOff === null || Math.abs(raw - animOff) > 0.08) { animOff = raw; done = null; }
+        else animOff += (raw - animOff) * 0.05;
+        const off = outputOffset();
+        const now = performance.now() / 1000 - animOff;
+        if (done === null) {
+          // Start or resume: pick up from now, skip anything missed (no burst).
+          done = now;
+          fadeLongs(false);
+          catchUp(now, false);
+        }
+        const to = now + LOOK;
+        if (to <= done) return;
+        for (let k = Math.floor(done / loopLen); k * loopLen < to; k++) {
+          for (const e of events) {
+            const at = k * loopLen + e.t;
+            if (at >= done && at < to) play(e, Math.max(ctx.currentTime, at + animOff + off));
+          }
+        }
+        done = to;
+      }
+
+      function update() {
+        const on = wantOn && !reduce.matches;
+        if (on) {
+          if (!ctx) build();
+          clearTimeout(sleepTimer);
+          if (ctx.state !== "running") ctx.resume().catch(() => {});
+          if (!A) {
+            openSession();
+            done = null;
+            animOff = null;
+            outOff = null;
+          }
+          if (!timer) timer = setInterval(tick, 25);
+          tick();
+        } else if (ctx) {
+          clearInterval(timer);
+          timer = 0;
+          done = null;
+          if (A) closeSession();
+          clearTimeout(sleepTimer);
+          sleepTimer = setTimeout(() => {
+            if (!(wantOn && !reduce.matches)) ctx.suspend().catch(() => {});
+          }, 220);
+        }
+      }
+
+      function setMusic(on) {
+        if (on === wantMusic) return;
+        wantMusic = on;
+        if (!A) return;
+        const g = A.gate.gain, t = ctx.currentTime;
+        g.cancelScheduledValues(t);
+        g.setValueAtTime(g.value, t);
+        g.linearRampToValueAtTime(on ? o.music : 0, t + 0.12);
+        if (on && done !== null) {
+          fadeLongs(true);
+          catchUp(done - LOOK, true);
+        }
+      }
+
+      // Call again whenever the animation is rebuilt (new size, new text).
+      function replan() {
+        loopLen = o.loopLen();
+        events = o.plan().sort((a, b) => a.t - b.t);
+        done = null;
+      }
+
+      // Browsers may block audio until a click or key press: resume then.
+      const unlock = () => {
+        if (ctx && wantOn && !reduce.matches && ctx.state !== "running") ctx.resume().catch(() => {});
+      };
+      addEventListener("pointerdown", unlock);
+      addEventListener("keydown", unlock);
+      reduce.addEventListener("change", update);
+      addEventListener("message", (event) => {
+        const d = event.data;
+        if (event.origin !== location.origin || !d || d.type !== "motionprompt-sound") return;
+        if (typeof d.music === "boolean") setMusic(d.music);
+        if (typeof d.on === "boolean") wantOn = d.on;
+        update();
+      });
+      const fromUrl = new URLSearchParams(location.search).get("sound");
+      if (fromUrl === "1" || fromUrl === "effects") {
+        wantOn = true;
+        wantMusic = fromUrl === "1";
+      }
+
+      return { replan, start: update };
+    }
+
+    // The sound follows the same clock as the picture: loop time = (frame time - start) / 1000.
+    // 120 bpm: 24 beats (6 bars) fill one 12 s loop. The music rests for the circle wipe.
+    const BEAT = LOOP / 24;
+    const sound = makeSound({
+      level: 0.6,
+      music: 0.11,
+      verbTime: 0.6,
+      clock: () => (frame && last && performance.now() - last < 250 ? { t: (last - start) / 1000, p: last } : null),
+      loopLen: () => LOOP,
+      setup(A) {
+        const { ctx } = A;
+        // Pulse waves with a thin (12.5 %) and a medium (25 %) duty, like an 8-bit sound chip.
+        const pulse = (d) => {
+          const re = new Float32Array(40), im = new Float32Array(40);
+          for (let n = 1; n < 40; n++) re[n] = (2 / (n * Math.PI)) * Math.sin(n * Math.PI * d);
+          return ctx.createPeriodicWave(re, im);
+        };
+        A.waves = { thin: pulse(0.125), mid: pulse(0.25) };
+        // A chip tone: pulse or triangle, pitch in Hz.
+        A.chip = (wave, f, when, dur) => {
+          const s = ctx.createOscillator();
+          if (wave === "triangle" || wave === "square") s.type = wave;
+          else s.setPeriodicWave(A.waves[wave]);
+          s.frequency.setValueAtTime(f, when);
+          s.start(when);
+          s.stop(when + dur + 0.02);
+          return s;
+        };
+        // A plain on and off envelope with tiny ramps, so notes do not click.
+        A.box = (when, peak, dur, out) => {
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0, when);
+          g.gain.linearRampToValueAtTime(peak, when + 0.004);
+          g.gain.setValueAtTime(peak, when + Math.max(0.005, dur - 0.012));
+          g.gain.linearRampToValueAtTime(0, when + dur);
+          g.connect(out);
+          return g;
+        };
+        // Full level, then a straight fade to silence.
+        A.fade = (when, peak, hold, release, out) => {
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0, when);
+          g.gain.linearRampToValueAtTime(peak, when + 0.004);
+          g.gain.setValueAtTime(peak, when + hold);
+          g.gain.linearRampToValueAtTime(0, when + hold + release);
+          g.connect(out);
+          return g;
+        };
+        // A short run of chip notes: [midi, length] pairs.
+        A.run = (when, notes, wave, peak, out) => {
+          let at = when;
+          for (const [m, d] of notes) {
+            if (m) A.chip(wave, A.hz(m), at, d).connect(A.box(at, peak, d - 0.005, out));
+            at += d;
+          }
+        };
+      },
+      plan() {
+        const list = [];
+        // Circle wipe: opens on the card at the start, closes on the hero at the end.
+        list.push({ t: 0.08, type: "iris", dur: 0.57, up: true });
+        list.push({ t: CLOSE_AT, type: "iris", dur: 0.6, up: false });
+        // The card: a tick per name letter, a chime for the role, ticks as each stat bar fills.
+        [...copy.name].forEach((ch, i) => {
+          if (ch !== " ") list.push({ t: NAME_AT + i * LETTER, type: "tick", m: 84 + [0, 2, 4, 7, 9][i % 5] });
+        });
+        list.push({ t: ROLE_AT, type: "role" });
+        copy.stats.forEach(([, value], j) => {
+          for (let s = 0; s < value; s++) list.push({ t: STAT_AT[j] + s * SEG, type: "fill", m: 60 + j * 5 + s * 2 });
+          if (value === SEGS) list.push({ t: STAT_AT[j] + (SEGS - 1) * SEG + 0.06, type: "maxed" });
+        });
+        // PRESS START blinks, then it is pressed and the card slides away.
+        BLINKS.forEach((b) => list.push({ t: b, type: "blip" }));
+        list.push({ t: PRESS_AT, type: "select" });
+        list.push({ t: SLIDE_AT, type: "slide", dur: SLIDE });
+        // The level: coins (and the counter ticking up), jumps, block bumps and item reveals.
+        coins.forEach((c, i) => {
+          list.push({ t: c.T, type: "coin", step: i % 2 });
+          list.push({ t: c.T + 0.04, type: "count" });
+        });
+        jumps.forEach((p) => {
+          list.push({ t: p - JD / 2, type: "jump" });
+          list.push({ t: p + JD / 2, type: "land" });
+        });
+        ITEMS_AT.forEach((Q, i) => {
+          list.push({ t: Q, type: "bump" });
+          list.push({ t: Q + 0.03, type: "reveal", i });
+          list.push({ t: Q + 1.25, type: "stash", i });
+        });
+        list.push({ t: STAR_AT, type: "bump" });
+        list.push({ t: STAR_AT + 0.02, type: "sprout" });
+        // The star reaches the hero: power up jingle, level up fanfare, then the call to action.
+        list.push({ t: LEVEL_AT, type: "powerup" });
+        list.push({ t: BOX_AT, type: "fanfare" });
+        list.push({ t: CTA_AT, type: "cta" });
+
+        // Music: an original, cheerful loop. Pulse lead, triangle bass, noise drums.
+        const E = BEAT / 2;
+        const lead = [
+          [76, 79, 84, 79, 81, 79, 76, 74],
+          [72, 76, 81, 76, 79, 76, 72, 74],
+          [77, 81, 84, 81, 86, 84, 81, 77],
+          [79, 83, 86, 83, 84, 83, 81, 79],
+          null, // rests under the level up fanfare
+          [79, 0, 81, 83, 84, 0, 0, 0],
+        ];
+        const roots = [48, 45, 41, 43, 48, 43];
+        for (let b = 0; b < 6; b++) {
+          const t0 = b * 4 * BEAT;
+          if (lead[b]) lead[b].forEach((m, k) => {
+            if (!m) return;
+            const long = b === 5 && k === 4;
+            list.push({ t: t0 + k * E, type: "lead", m, dur: long ? E * 2 : E * 0.8, music: true });
+          });
+          // Harmony pulse on the off beats in the breakdown bar.
+          if (b === 4) [1, 3].forEach((q) => list.push({ t: t0 + q * BEAT, type: "harm", notes: [64, 67, 72], music: true }));
+          for (let q = 0; q < 4; q++) {
+            const tb = t0 + q * BEAT;
+            if (b === 5 && q === 3) continue; // quiet beat for the wipe
+            const root = b === 5 && q === 2 ? 48 : roots[b];
+            list.push({ t: tb, type: "bass", m: root + [0, 7, 12, 7][q], music: true });
+            list.push({ t: tb, type: q % 2 ? "snare" : "kick", music: true });
+            list.push({ t: tb + E, type: "hat", music: true });
+          }
+        }
+        return list;
+      },
+      voices: {
+        iris(when, e, A) {
+          const s = A.chip("mid", e.up ? 180 : 1100, when, e.dur);
+          s.frequency.exponentialRampToValueAtTime(e.up ? 1100 : 160, when + e.dur);
+          // A fast wobble, like a chip sweep.
+          const lfo = A.osc("square", 24, when, e.dur);
+          const depth = A.ctx.createGain();
+          depth.gain.value = 60;
+          lfo.connect(depth).connect(s.frequency);
+          s.connect(A.box(when, 0.1, e.dur, A.fx));
+        },
+        tick(when, e, A) {
+          A.chip("thin", A.hz(e.m), when, 0.04).connect(A.box(when, 0.06, 0.035, A.pan(0.1, A.fx)));
+        },
+        role(when, e, A) {
+          A.run(when, [[79, 0.06], [84, 0.1]], "thin", 0.07, A.pan(-0.1, A.fx));
+        },
+        fill(when, e, A) {
+          A.chip("mid", A.hz(e.m), when, 0.03).connect(A.box(when, 0.05, 0.028, A.pan(0.25, A.fx)));
+        },
+        maxed(when, e, A) {
+          A.run(when, [[88, 0.05], [91, 0.08]], "thin", 0.07, A.pan(0.25, A.fx));
+        },
+        blip(when, e, A) {
+          A.chip("mid", A.hz(84), when, 0.06).connect(A.box(when, 0.07, 0.05, A.fx));
+        },
+        select(when, e, A) {
+          A.run(when, [[72, 0.05], [79, 0.05], [84, 0.12]], "mid", 0.1, A.fx);
+        },
+        slide(when, e, A) {
+          const s = A.chip("thin", 900, when, e.dur);
+          s.frequency.exponentialRampToValueAtTime(1800, when + e.dur);
+          s.connect(A.fade(when, 0.06, e.dur * 0.4, e.dur * 0.6, A.fx));
+          A.noise(when, e.dur).connect(A.filter("bandpass", 1500, 1.2)).connect(A.fade(when, 0.08, 0.05, e.dur - 0.05, A.fx));
+        },
+        coin(when, e, A) {
+          const base = [81, 83][e.step];
+          const s = A.chip("mid", A.hz(base), when, 0.25);
+          s.frequency.setValueAtTime(A.hz(base + 7), when + 0.045);
+          s.frequency.setValueAtTime(A.hz(base + 12), when + 0.09);
+          s.connect(A.fade(when, 0.13, 0.09, 0.15, A.pan(0.2, A.fx)));
+        },
+        count(when, e, A) {
+          for (let i = 0; i < 3; i++) {
+            const at = when + i * 0.04;
+            A.chip("thin", 2100, at, 0.02).connect(A.box(at, 0.04, 0.018, A.pan(-0.4, A.fx)));
+          }
+        },
+        jump(when, e, A) {
+          const s = A.chip("mid", 240, when, 0.2);
+          s.frequency.exponentialRampToValueAtTime(760, when + 0.16);
+          s.connect(A.fade(when, 0.12, 0.1, 0.1, A.fx));
+        },
+        land(when, e, A) {
+          const n = A.noise(when, 0.05);
+          n.connect(A.filter("lowpass", 900)).connect(A.amp(when, 0.14, 0.002, 0.045, A.fx));
+        },
+        bump(when, e, A) {
+          const s = A.chip("square", 150, when, 0.1);
+          s.frequency.exponentialRampToValueAtTime(90, when + 0.08);
+          s.connect(A.filter("lowpass", 1200)).connect(A.box(when, 0.18, 0.09, A.fx));
+          A.noise(when, 0.03).connect(A.filter("bandpass", 600, 1)).connect(A.amp(when, 0.12, 0.001, 0.025, A.fx));
+        },
+        // Item reveal: the item rises with a quick run, then a bright little jingle, one step higher per item.
+        reveal(when, e, A) {
+          const up = [0, 2, 4][e.i];
+          A.run(when, [[60 + up, 0.035], [64 + up, 0.035], [67 + up, 0.035], [72 + up, 0.035]], "thin", 0.08, A.fx);
+          A.run(when + 0.18, [[76 + up, 0.08], [79 + up, 0.08], [84 + up, 0.2]], "mid", 0.1, A.pan(0.15, A.fx));
+          A.chip("triangle", A.hz(60 + up), when + 0.18, 0.36).connect(A.box(when + 0.18, 0.12, 0.36, A.fx));
+        },
+        stash(when, e, A) {
+          A.run(when, [[91 + [0, 2, 4][e.i], 0.04], [96 + [0, 2, 4][e.i], 0.07]], "thin", 0.06, A.pan(0.45, A.fx));
+        },
+        sprout(when, e, A) {
+          // The star rises out of its block: a quick climbing run.
+          [60, 64, 67, 72, 76, 79].forEach((m, i) => {
+            const at = when + i * 0.035;
+            A.chip("thin", A.hz(m + 12), at, 0.04).connect(A.box(at, 0.09, 0.035, A.fx));
+          });
+        },
+        powerup(when, e, A) {
+          // Twinkly star pick up: fast alternating run up two octaves.
+          [72, 79, 76, 84, 79, 88, 84, 91].forEach((m, i) => {
+            const at = when + i * 0.03;
+            A.chip("mid", A.hz(m), at, 0.035).connect(A.box(at, 0.1, 0.03, A.pan(i % 2 ? 0.3 : -0.3, A.fx)));
+          });
+        },
+        fanfare(when, e, A) {
+          // Short original fanfare with a triangle part under it.
+          const notes = [[67, 0.1], [72, 0.1], [76, 0.1], [79, 0.24], [76, 0.1], [84, 0.55]];
+          let at = when;
+          for (const [m, d] of notes) {
+            const s = A.chip("mid", A.hz(m), at, d);
+            if (d > 0.5) {
+              // Vibrato on the last long note.
+              const lfo = A.osc("sine", 7, at, d);
+              const depth = A.ctx.createGain();
+              depth.gain.setValueAtTime(0, at);
+              depth.gain.linearRampToValueAtTime(A.hz(m) * 0.012, at + 0.2);
+              lfo.connect(depth).connect(s.frequency);
+            }
+            s.connect(A.box(at, 0.11, d - 0.01, A.fx));
+            A.chip("triangle", A.hz(m - 12), at, d).connect(A.box(at, 0.12, d - 0.01, A.fx));
+            at += d;
+          }
+        },
+        // The call to action lands: a bright two note "ding ding" with a sparkle on top.
+        cta(when, e, A) {
+          A.run(when, [[84, 0.09], [0, 0.03], [91, 0.3]], "mid", 0.11, A.fx);
+          A.chip("triangle", A.hz(72), when, 0.42).connect(A.box(when, 0.12, 0.42, A.fx));
+          [96, 100, 103].forEach((m, i) => {
+            const at = when + 0.14 + i * 0.04;
+            A.chip("thin", A.hz(m), at, 0.04).connect(A.box(at, 0.04, 0.035, A.pan(0.35, A.fx)));
+          });
+        },
+        lead(when, e, A) {
+          const g = A.box(when, 0.13, e.dur, A.pan(-0.1, A.mus));
+          A.chip("mid", A.hz(e.m), when, e.dur).connect(g);
+          A.msend(g, 0.15);
+        },
+        harm(when, e, A) {
+          const g = A.box(when, 0.05, BEAT * 0.45, A.pan(0.25, A.mus));
+          for (const m of e.notes) A.chip("thin", A.hz(m), when, BEAT * 0.45).connect(g);
+        },
+        bass(when, e, A) {
+          A.chip("triangle", A.hz(e.m), when, BEAT * 0.8).connect(A.box(when, 0.3, BEAT * 0.8, A.mus));
+        },
+        kick(when, e, A) {
+          const s = A.chip("triangle", 180, when, 0.1);
+          s.frequency.exponentialRampToValueAtTime(50, when + 0.08);
+          s.connect(A.box(when, 0.4, 0.09, A.mus));
+        },
+        snare(when, e, A) {
+          A.noise(when, 0.1).connect(A.filter("bandpass", 2200, 0.6)).connect(A.amp(when, 0.22, 0.001, 0.09, A.mus));
+        },
+        hat(when, e, A) {
+          A.noise(when, 0.03).connect(A.filter("highpass", 7000)).connect(A.amp(when, 0.08, 0.001, 0.02, A.pan(0.3, A.mus)));
+        },
+      },
+    });
+
     // Wait briefly for the font so the letters are read from the right face.
-    const chars = [...new Set((text + "SCOREWORLD0123456789-xLEVEUP!").replace(/\s/g, ""))].join("");
+    const all = [copy.name, copy.role, copy.cta, copy.handle, ...copy.items, copy.proof, "PLAYER1PRESSTARTLEVEUP!0123456789,+", ...copy.stats.map((s) => s[0])].join("");
+    const chars = [...new Set(all.replace(/\s/g, ""))].join("");
     Promise.race([
       document.fonts.load(FONT, chars),
       new Promise((resolve) => setTimeout(resolve, 2500)),
     ]).finally(() => {
       build();
       apply();
+      sound.replan();
+      sound.start();
     });
   </script>
 </body>

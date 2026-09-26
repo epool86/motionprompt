@@ -346,6 +346,7 @@
 
       if (reduce.matches) tl.pause(tl.labels.hold);
       else tl.time(keep % LOOP);
+      sound.replan();
     }
 
     reduce.addEventListener("change", () => {
@@ -353,6 +354,435 @@
       if (reduce.matches) tl.pause(tl.labels.hold);
       else tl.play();
     });
+
+    // Sound: every sound is made with the Web Audio API. It is off until the
+    // parent page (or ?sound=1 / ?sound=effects) turns it on, and it follows the
+    // GSAP timeline clock. The sounds are worked out from the same list of strokes
+    // the timeline draws, so each squeak starts and stops with its line.
+    const sound = (() => {
+      const LEVEL = 1.1, MUSIC = 0.15;
+      const BEAT = LOOP / 16; // 87 bpm: four bars fill one 11 s loop exactly
+      const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+      const clock = () => (tl && !tl.paused() ? tl.totalTime() : null);
+      const loopLength = () => tl.duration();
+      // Ukulele chords (G C E A tuning): C  Am  F  G.
+      const CHORDS = [[67, 60, 64, 72], [69, 60, 64, 69], [69, 60, 65, 69], [67, 62, 67, 71]];
+      const ROOTS = [36, 33, 41, 43];
+      let strings = null, uke = null;
+      let ctx = null, master, impulse, noiseBuf, session = null, fxBus, musicBus, verbSend;
+      let wantOn = false, wantMusic = true, playing = false;
+      let timer = 0, sleepTimer = 0, anchor = null, doneUpTo = 0;
+
+      // The list of sounds for one loop, read from the strokes of the current build.
+      function plan() {
+        const list = [];
+        const add = (t, type, extra = {}, music = false) => list.push({ t, type, music, ...extra });
+        // Same small seeded random for every build, so each loop sounds the same.
+        let s = 3;
+        const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+        const panAt = (node) => {
+          const r = node.getBoundingClientRect();
+          return Math.max(-0.6, Math.min(0.6, ((r.left + r.width / 2) / innerWidth - 0.5) * 1.2));
+        };
+        // The doodle groups, in the order they are drawn: bulb, checklist, chart.
+        const groups = [];
+        steps.forEach((st) => {
+          const g = st.node.parentNode;
+          if (st.kind === "draw" && g !== content && !groups.includes(g)) groups.push(g);
+        });
+        let rays = 0, ticks = 0, long = 0;
+        steps.forEach((st) => {
+          if (st.kind === "draw") {
+            const blue = st.node.getAttribute("class") === "blue";
+            const g = groups.indexOf(st.node.parentNode);
+            const p = panAt(st.node);
+            // Squeak on every other longer line, so it stays charming, not shrill.
+            const squeak = st.dur >= 0.2 && long++ % 2 === 0;
+            add(st.at, "stroke", { dur: st.dur, blue, p, squeak, f: 1900 + rnd() * 700 });
+            if (g === 0 && blue && rays++ === 0) add(st.at, "ding", {});
+            if (g === 1 && blue) add(st.at + st.dur * 0.6, "check", { f: hz([84, 88, 91][ticks++ % 3]), p });
+          } else {
+            const user = svg.querySelector(`[clip-path="url(#${st.node.parentNode.id})"]`);
+            const p = panAt(user);
+            if (user && user.classList.contains("marker")) add(st.at, "swipe", { dur: st.dur, p });
+            else {
+              // Handwriting: a run of tiny strokes across the word.
+              const n = Math.max(2, Math.round(st.dur * 11));
+              for (let k = 0; k < n; k++) add(st.at + (k / n) * st.dur + rnd() * 0.02, "scribble", { dur: 0.04 + rnd() * 0.05, f: 2200 + rnd() * 1400, p });
+            }
+          }
+        });
+        // Eraser wipe at the end of the loop (same numbers as the timeline).
+        add(LOOP - 1.1, "erase", { dur: 0.8 });
+
+        // Music: strummed ukulele, a soft bass, light claps and a shaker.
+        const strum = [[0, 1], [2, 1], [3, -1], [5, -1], [6, 1], [7, -1]];
+        CHORDS.forEach((notes, bar) => {
+          const t0 = bar * 4 * BEAT;
+          strum.forEach(([e, dir], k) => {
+            const nextE = k + 1 < strum.length ? strum[k + 1][0] : 8;
+            add(t0 + (e * BEAT) / 2, "strum", { notes, dir, v: dir > 0 ? (e === 0 ? 1 : 0.8) : 0.55, hold: ((nextE - e) * BEAT) / 2 }, true);
+          });
+          add(t0, "bass", { f: hz(ROOTS[bar]), dur: BEAT * 1.2 }, true);
+          add(t0 + 2 * BEAT, "bass", { f: hz(ROOTS[bar] + 7), dur: BEAT * 0.8 }, true);
+          add(t0 + 3.5 * BEAT, "bass", { f: hz(ROOTS[bar] + 12), dur: BEAT * 0.4 }, true);
+          for (let b = 0; b < 4; b++) {
+            if (b % 2) add(t0 + b * BEAT, "clap", {}, true);
+            for (let q = 0; q < 2; q++) add(t0 + (b + q / 2) * BEAT, "shaker", { v: q ? 0.7 : 0.3 }, true);
+          }
+        });
+        return list.sort((a, b) => a.t - b.t);
+      }
+      let events = plan();
+
+      // Audio graph: effects and music buses, a small reverb, a compressor before the speakers.
+      function makeGraph() {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -14;
+        comp.knee.value = 8;
+        comp.ratio.value = 4;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.2;
+        master = ctx.createGain();
+        master.gain.value = LEVEL;
+        master.connect(comp).connect(ctx.destination);
+
+        // Reverb impulse: stereo noise that fades out.
+        const len = Math.floor(ctx.sampleRate * 1.4);
+        impulse = ctx.createBuffer(2, len, ctx.sampleRate);
+        for (let ch = 0; ch < 2; ch++) {
+          const d = impulse.getChannelData(ch);
+          for (let s = 0; s < len; s++) d[s] = (Math.random() * 2 - 1) * Math.pow(1 - s / len, 3.5);
+        }
+
+        noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+        const nd = noiseBuf.getChannelData(0);
+        for (let s = 0; s < nd.length; s++) nd[s] = Math.random() * 2 - 1;
+
+        // Plucked nylon strings (Karplus-Strong), made once in code.
+        strings = new Map();
+        const sr = ctx.sampleRate;
+        for (const m of new Set(CHORDS.flat())) {
+          const f = hz(m), period = Math.max(2, Math.floor(sr / f - 0.5));
+          const n = Math.floor(sr * 1.1), buf = ctx.createBuffer(1, n, sr), d = buf.getChannelData(0);
+          const line = new Float32Array(period);
+          let lp = 0;
+          for (let i = 0; i < period; i++) line[i] = lp += 0.4 * ((Math.random() * 2 - 1) - lp);
+          let idx = 0, peak = 0;
+          for (let i = 0; i < n; i++) {
+            const cur = line[idx], next = line[(idx + 1) % period];
+            line[idx] = 0.994 * 0.5 * (cur + next);
+            d[i] = cur;
+            peak = Math.max(peak, Math.abs(cur));
+            idx = (idx + 1) % period;
+          }
+          for (let i = 0; i < n; i++) d[i] /= peak || 1;
+          strings.set(m, { buf, rate: sr / f / (period + 0.5) });
+        }
+      }
+
+      // Each time sound is turned on it gets fresh buses, so sounds queued before a
+      // stop can never leak out later.
+      function openSession() {
+        const t = ctx.currentTime;
+        session = ctx.createGain();
+        session.gain.setValueAtTime(0, t);
+        session.gain.linearRampToValueAtTime(1, t + 0.05);
+        session.connect(master);
+        fxBus = ctx.createGain();
+        fxBus.connect(session);
+        musicBus = ctx.createGain();
+        musicBus.gain.value = wantMusic ? MUSIC : 0;
+        musicBus.connect(session);
+        const verb = ctx.createConvolver();
+        verb.buffer = impulse;
+        const tone = ctx.createBiquadFilter();
+        tone.type = "lowpass";
+        tone.frequency.value = 4000;
+        const verbOut = ctx.createGain();
+        verbOut.gain.value = 0.3;
+        verbSend = ctx.createGain();
+        verbSend.connect(verb).connect(tone).connect(verbOut).connect(session);
+        // Ukulele body: a little warmth, a soft top end and a touch of room.
+        uke = ctx.createGain();
+        const body = filter("peaking", 400, 1);
+        body.gain.value = 3;
+        const top = filter("lowpass", 5500, 0.5);
+        uke.connect(body).connect(top).connect(musicBus);
+        send(uke, 0.25);
+      }
+      function closeSession() {
+        const old = session, t = ctx.currentTime;
+        session = null;
+        old.gain.cancelScheduledValues(t);
+        old.gain.setValueAtTime(old.gain.value, t);
+        old.gain.linearRampToValueAtTime(0, t + 0.15);
+        setTimeout(() => old.disconnect(), 250);
+      }
+
+      // Small building blocks.
+      function amp(when, peak, attack, decay, out) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, when);
+        g.gain.exponentialRampToValueAtTime(peak, when + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay);
+        g.connect(out);
+        return g;
+      }
+      function osc(type, freq, when, dur) {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.setValueAtTime(freq, when);
+        o.start(when);
+        o.stop(when + dur + 0.05);
+        return o;
+      }
+      function noise(when, dur) {
+        const s = ctx.createBufferSource();
+        s.buffer = noiseBuf;
+        s.loop = true;
+        s.start(when, Math.random() * 1.5);
+        s.stop(when + dur + 0.05);
+        return s;
+      }
+      function filter(type, freq, q = 0.7) {
+        const f = ctx.createBiquadFilter();
+        f.type = type;
+        f.frequency.value = freq;
+        f.Q.value = q;
+        return f;
+      }
+      function pan(value, out) {
+        const p = ctx.createStereoPanner();
+        p.pan.value = value;
+        p.connect(out);
+        return p;
+      }
+      function send(node, amount) {
+        const g = ctx.createGain();
+        g.gain.value = amount;
+        node.connect(g).connect(verbSend);
+      }
+      // A gain that follows a list of [time offset, level] points with straight ramps.
+      function shape(when, points, out) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, when);
+        for (const [dt, v] of points) g.gain.linearRampToValueAtTime(v, when + dt);
+        g.connect(out);
+        return g;
+      }
+
+      // One function per sound.
+      const voices = {
+        stroke(when, e) {
+          // Marker on a whiteboard: a dry felt hiss that follows the line, with a squeak on some lines.
+          const d = Math.max(0.04, e.dur);
+          const out = pan(e.p, fxBus);
+          const v = e.blue ? 0.16 : 0.14;
+          const g = shape(when, [[Math.min(0.02, d * 0.3), v], [d * 0.5, v * 1.1], [d, v * 0.7], [d + 0.03, 0]], out);
+          const bp = filter("bandpass", e.blue ? 2600 : 2200, 1.3);
+          bp.frequency.setValueAtTime(bp.frequency.value * 0.9, when);
+          bp.frequency.linearRampToValueAtTime(bp.frequency.value * 1.15, when + d);
+          noise(when, d + 0.05).connect(filter("highpass", 500)).connect(bp).connect(g);
+          noise(when, d + 0.05).connect(filter("lowpass", 1100)).connect(amp(when, 0.35, 0.01, d, g));
+          if (e.squeak) {
+            const o = osc("sine", e.f, when, d);
+            o.frequency.linearRampToValueAtTime(e.f * 1.08, when + d * 0.6);
+            o.frequency.linearRampToValueAtTime(e.f * 0.97, when + d);
+            const vib = osc("sine", 13, when, d);
+            const depth = ctx.createGain();
+            depth.gain.value = e.f * 0.012;
+            vib.connect(depth).connect(o.frequency);
+            const sg = shape(when, [[d * 0.25, 0.05], [d * 0.7, 0.04], [d, 0]], out);
+            o.connect(filter("bandpass", e.f, 3)).connect(sg);
+          }
+        },
+        scribble(when, e) {
+          // One tiny handwriting stroke.
+          const g = amp(when, 0.09, 0.006, e.dur, pan(e.p, fxBus));
+          const bp = filter("bandpass", e.f, 1.6);
+          bp.frequency.linearRampToValueAtTime(e.f * 0.8, when + e.dur);
+          noise(when, e.dur + 0.02).connect(bp).connect(g);
+        },
+        swipe(when, e) {
+          // Highlighter: a broad, soft swipe from the chisel tip.
+          const d = e.dur;
+          const p = ctx.createStereoPanner();
+          p.pan.setValueAtTime(e.p - 0.2, when);
+          p.pan.linearRampToValueAtTime(e.p + 0.2, when + d);
+          p.connect(fxBus);
+          const g = shape(when, [[0.03, 0.2], [d * 0.7, 0.17], [d + 0.05, 0]], p);
+          const bp = filter("bandpass", 900, 0.8);
+          bp.frequency.setValueAtTime(900, when);
+          bp.frequency.exponentialRampToValueAtTime(1700, when + d);
+          noise(when, d + 0.08).connect(bp).connect(g);
+          noise(when, d + 0.08).connect(filter("bandpass", 4200, 1.5)).connect(amp(when, 0.25, 0.02, d, g));
+        },
+        ding(when) {
+          // The idea moment: a soft bell with a little sparkle on top.
+          const out = pan(-0.1, fxBus);
+          const g = amp(when, 0.26, 0.003, 1.4, out);
+          osc("sine", hz(84), when, 1.5).connect(g);
+          osc("sine", hz(96), when, 0.7).connect(amp(when, 0.06, 0.002, 0.5, out));
+          osc("sine", hz(91), when + 0.07, 1.1).connect(amp(when + 0.07, 0.1, 0.004, 1, out));
+          [100, 103, 108].forEach((m, k) => {
+            const t = when + 0.12 + k * 0.06;
+            osc("sine", hz(m), t, 0.3).connect(amp(t, 0.025, 0.002, 0.25, out));
+          });
+          send(g, 0.6);
+        },
+        check(when, e) {
+          // A bright little tick as each box gets its check.
+          const g = amp(when, 0.12, 0.002, 0.18, pan(e.p, fxBus));
+          osc("triangle", e.f, when, 0.2).connect(g);
+          osc("sine", e.f * 2, when, 0.1).connect(amp(when, 0.04, 0.001, 0.06, g));
+          noise(when, 0.02).connect(filter("highpass", 5000)).connect(amp(when, 0.05, 0.001, 0.012, g));
+          send(g, 0.4);
+        },
+        erase(when, e) {
+          // Eraser rubbing across the board, left to right.
+          const d = e.dur;
+          const p = ctx.createStereoPanner();
+          p.pan.setValueAtTime(-0.5, when);
+          p.pan.linearRampToValueAtTime(0.5, when + d);
+          p.connect(fxBus);
+          const g = shape(when, [[d * 0.2, 0.12], [d * 0.5, 0.2], [d * 0.8, 0.12], [d + 0.05, 0]], p);
+          const rub = ctx.createGain();
+          rub.gain.value = 0.6;
+          const lfo = osc("sine", 8, when, d + 0.05);
+          const depth = ctx.createGain();
+          depth.gain.value = 0.4;
+          lfo.connect(depth).connect(rub.gain);
+          const bp = filter("bandpass", 750, 0.9);
+          noise(when, d + 0.05).connect(bp).connect(rub).connect(g);
+          noise(when, d + 0.05).connect(filter("lowpass", 300)).connect(amp(when, 0.6, d * 0.4, d * 0.6, g));
+        },
+        strum(when, e) {
+          // Strummed ukulele: each string starts a little after the last one.
+          const notes = e.dir > 0 ? e.notes : e.notes.slice().reverse();
+          const end = when + e.hold + 0.05;
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.32 * e.v, when);
+          g.gain.setValueAtTime(0.32 * e.v, end - 0.04);
+          g.gain.exponentialRampToValueAtTime(0.001, end + 0.12);
+          g.connect(uke);
+          notes.forEach((m, k) => {
+            const s = strings.get(m);
+            const src = ctx.createBufferSource();
+            src.buffer = s.buf;
+            src.playbackRate.value = s.rate;
+            const sg = ctx.createGain();
+            sg.gain.value = (e.dir > 0 ? 1 : 0.8) * (0.7 + 0.3 * Math.random());
+            src.connect(sg).connect(g);
+            src.start(when + k * 0.014, Math.random() * 0.002);
+            src.stop(end + 0.15);
+          });
+        },
+        bass(when, e) {
+          // Soft plucked bass.
+          const g = amp(when, 0.34, 0.006, e.dur, musicBus);
+          const lp = filter("lowpass", 600, 1);
+          lp.frequency.setValueAtTime(600, when);
+          lp.frequency.exponentialRampToValueAtTime(200, when + e.dur);
+          lp.connect(g);
+          osc("triangle", e.f, when, e.dur + 0.02).connect(lp);
+        },
+        clap(when) {
+          // Soft clap: a few quick bursts, like several hands.
+          const g = ctx.createGain();
+          g.gain.value = 1;
+          g.connect(musicBus);
+          const bp = filter("bandpass", 1300, 1.2);
+          bp.connect(g);
+          [0, 0.011, 0.022].forEach((dt, k) => noise(when + dt, 0.12).connect(amp(when + dt, k === 2 ? 0.16 : 0.1, 0.002, k === 2 ? 0.1 : 0.012, bp)));
+          send(g, 0.7);
+        },
+        shaker(when, e) {
+          noise(when, 0.06).connect(filter("highpass", 6500)).connect(amp(when, 0.08 * e.v, 0.006, 0.04, musicBus));
+        },
+      };
+
+      // Look-ahead scheduler: every 25 ms, schedule sounds due in the next 100 ms.
+      // Animation time is mapped to audio time by an anchor that is re-set after any jump
+      // (a pause, a hidden tab, a restart), so missed sounds never pile up.
+      function tick() {
+        const now = playing && ctx.state === "running" && !document.hidden && !reduce.matches ? clock() : null;
+        if (now === null) { anchor = null; return; }
+        const loopLen = loopLength();
+        const at = ctx.currentTime;
+        if (anchor) {
+          const err = now - (anchor.tl + (at - anchor.audio));
+          if (Math.abs(err) > 0.08) anchor = null; // the animation jumped or stalled
+          else anchor.tl += err * 0.05; // ease out small drift
+        }
+        if (!anchor) {
+          anchor = { tl: now, audio: at };
+          doneUpTo = now; // start fresh: nothing piles up
+        }
+        const cur = anchor.tl + (at - anchor.audio);
+        const from = Math.max(doneUpTo, cur - 0.05); // after a stall, skip what is already late
+        const to = cur + 0.1;
+        if (to <= from) return;
+        for (let k = Math.floor(from / loopLen); k <= Math.floor(to / loopLen); k++) {
+          for (const e of events) {
+            const t = k * loopLen + e.t;
+            if (t < from || t >= to) continue;
+            if (e.music && !wantMusic) continue;
+            voices[e.type](Math.max(at, anchor.audio + (t - anchor.tl)), e);
+          }
+        }
+        doneUpTo = to;
+      }
+
+      // Turn sound on or off to match what was asked for.
+      function update() {
+        const on = wantOn && !reduce.matches;
+        if (on) {
+          if (!ctx) makeGraph();
+          clearTimeout(sleepTimer);
+          if (ctx.state !== "running") ctx.resume().catch(() => {});
+          if (!playing) {
+            playing = true;
+            anchor = null;
+            openSession();
+            clearInterval(timer);
+            timer = setInterval(tick, 25);
+          }
+          const t = ctx.currentTime;
+          musicBus.gain.cancelScheduledValues(t);
+          musicBus.gain.setTargetAtTime(wantMusic ? MUSIC : 0, t, 0.03);
+        } else if (playing) {
+          playing = false;
+          clearInterval(timer);
+          closeSession();
+          sleepTimer = setTimeout(() => ctx.suspend(), 200);
+        }
+      }
+      reduce.addEventListener("change", update);
+
+      // Browsers may block audio until the first click or key press.
+      const unlock = () => { if (playing && ctx && ctx.state !== "running") ctx.resume().catch(() => {}); };
+      addEventListener("pointerdown", unlock);
+      addEventListener("keydown", unlock);
+
+      addEventListener("message", (event) => {
+        if (event.origin !== location.origin) return;
+        const data = event.data;
+        if (!data || data.type !== "motionprompt-sound") return;
+        if (typeof data.on === "boolean") wantOn = data.on;
+        if (typeof data.music === "boolean") wantMusic = data.music;
+        update();
+      });
+
+      const fromUrl = params.get("sound");
+      if (fromUrl === "1" || fromUrl === "effects") {
+        wantOn = true;
+        wantMusic = fromUrl === "1";
+        update();
+      }
+      return { replan() { events = plan(); } };
+    })();
 
     let resizeTimer;
     addEventListener("resize", () => {

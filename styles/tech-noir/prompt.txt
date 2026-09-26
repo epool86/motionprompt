@@ -13,6 +13,11 @@ Type and colour
 - A light, elegant serif (like Instrument Serif) for the particle headline, and a small monospace font (like JetBrains Mono) for labels and code words.
 - Use my brand colours if I give them (one accent colour on a very dark background). Otherwise use warm black #120c09, muted grey #6b635c for lines, amber #ff8a3d and soft amber #ffb070 for the glow.
 
+Sound
+- Effects: a low, dark drone under each scene that fades with the crossfades, a short data blip as each arc leaves the glowing dot and a soft sonar ping with a dark echo as it lands, a quiet fan whirr and a soft servo whine for the devices, tiny key ticks as text types in, a soft tick for each light pulse on the cable, tiny digital clicks as chip cells light up over a low building hum, soft blips for drifting code words, and a rising swell of tiny grains as particles form the headline, a warm chord as it glows, then drifting grains as it dissolves.
+- Music: a minimal dark ambient pulse at about 120 bpm, like an Apple or Vercel keynote: a round sub bass pulse on every beat, sparse soft clicks and a faint dark pad. Keep it low under the effects and let it loop cleanly.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

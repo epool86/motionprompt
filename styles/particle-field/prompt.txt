@@ -10,6 +10,11 @@ Type and colour
 - A clean sans serif font, medium weight, generous spacing.
 - Use my brand colours if I give them: the darkest for the background, the brighter ones for the particles. Otherwise use a deep night blue background #0a0d1a with coral #ff5a4e, amber #ffb35c and cool blue #4fb3ff particles, and warm white #f6f3ea text.
 
+Sound
+- Effects: soft wind and air that rise and fall with the currents, faint granular sparkles scattered across the field like tiny glints of light, and a warm glow swell when the text appears.
+- Music: a meditative ambient drone bed: a low steady drone, slow soft chords and a few gentle bells with a long echo, about 60 bpm. Keep it quieter than the effects and let it loop cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

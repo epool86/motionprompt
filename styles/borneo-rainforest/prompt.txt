@@ -13,6 +13,11 @@ Type and colour
 - An elegant serif font (like Cormorant Garamond) for the title, and a clean sans serif (like Montserrat) in spaced capitals for the small line.
 - Use my brand colours if I give them. Otherwise use deep forest green #0f2d21, fern green #276d44, misty sage #b9cfa6, warm cream #f6f1dc, soft gold #e8c46a and rafflesia red #a8281a.
 
+Sound
+- Effects: a calm rainforest ambience timed to the motion. Soft insects shimmering high in the trees, gentle water drips and far off bird whistles all the way through, a little muffled while the mist is thick. A slow airy swell as the mist thins at the start and rolls back in at the end. A soft organic swell with faint creaks as the rafflesia opens, and a gentler one as it closes. A heavy whoosh on each of the hornbill's wingbeats, air sliding past as it glides, and a distant honking call. Faint dewdrop tones as the title letters fade up.
+- Music: a cinematic, mysterious but calm bed: a slow breathing low drone, soft wooden knocks and a simple airy flute tune. Keep it quieter than the effects and let it loop smoothly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

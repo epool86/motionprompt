@@ -10,6 +10,11 @@ Type and colour
 - A bold, clean sans serif font in capitals with wide letter spacing.
 - Use my brand colours if I give them: the logo in the main brand colour, over a soft radial glow of a darker background colour. Otherwise use a warm gold #ffb547 logo, a cool blue #6bd5ff rim light and a deep indigo #120e2b background.
 
+Sound
+- Effects: a smooth whoosh on every spin that swells and fades with the eased speed and pulses softly as the broad faces sweep round, soft metallic sparkles when the light catches the logo, a gentle rounded hit with a warm metallic ring as it settles, and a quiet shimmering tone while it floats.
+- Music: a short, epic brand-intro bed at about 80 bpm, one bar per spin: a subtle cinematic hit at the start, warm brass-like pads that swell, a soft low string pulse and a gentle riser back into the start. Keep it under the effects and let it loop cleanly.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}, so it works as an intro or outro

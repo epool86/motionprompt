@@ -13,6 +13,11 @@ Type and colour
 - An elegant, bold serif font (like Playfair Display) for captions, and a small sans serif in spaced capitals for the counter.
 - Use my brand colours if I give them. Otherwise use warm white #fbf7ef text, a gold #f2c14e accent and deep ink #10141c for the colour sweep.
 
+Sound
+- Effects: gentle and matched to each transition. A soft swish that crosses the frame for the wipe, a deep, rushing whoosh for the zoom through, three soft rising whooshes (left, middle, right) for the split panels, and a brushy paper sweep for the colour panel. A soft click as each caption word rises into view.
+- Music: a warm, calm cinematic travel bed at about 80 bpm, one bar per photo: a soft piano arpeggio, a warm string pad with a low cello note, and light percussion (a gentle kick and a quiet shaker). Emotional but calm, quieter than the effects, and it loops cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}. Share the time evenly between the photos.

@@ -12,6 +12,11 @@ Type and colour
 - A rounded, chunky bold font (like Baloo 2) for the headline, so it looks like soft clay letters.
 - Use my brand colours if I give them. Otherwise use warm cream sky #f8e4cc, soft green ground #93cf7f, orange clay #ff9457, raspberry lettering #e24e5c, sunny yellow #ffc84a and a cream sign #fff2dd.
 
+Sound
+- Effects: soft, squishy and handmade, landing on the stop motion frames. A round clay "bloop" as each piece pops up out of the ground, a soft falling whistle and a padded thud with a wet squelch when something drops in and lands, a small squelch as the character crouches, a springy "boing" for every hop, a circling whoosh for a spin, and gloopy squishes as everything sinks back into the ground. Give the character a cute voice with no words: happy squeaks, a curious "hm?" blip and a "wheee" as it hops away.
+- Music: a playful stop motion bed at about 96 bpm: a bright xylophone tune, pizzicato style plucked bass and chords, and a soft wooden tick on the off-beats. Light and bouncy, quieter than the effects, and it loops cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

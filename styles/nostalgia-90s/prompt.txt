@@ -14,6 +14,11 @@ Type and colour
 - A rounded 90s display font (like Righteous) for the title, a pixel VCR font (like VT323) for the overlay and a marker hand for labels.
 - Use my brand colours if I give them. Otherwise use sunny yellow #ffd23f, hot pink #ff4fa3, teal #1fb5b0, deep purple #2b1d5c, mint wall #9cbfae and warm wood brown #7a4a2c.
 
+Sound
+- Effects: a VHS tape clunk and a little motor spin up as the tape starts to play, a click as the power light comes on, a soft CRT power on thump with a faint high whine that fades, a short quiet test tone while the colour bars show (never piercing), a burst of soft static hiss before the title card, small pops as the title letters appear, a wobbly tape warble and hiss each time a tracking band rolls down, a quiet cassette reel whirr under everything, and a falling tone with a soft pop as the TV switches off.
+- Music: a warm 90s pop or city pop bed at about 120 bpm: mellow electric piano jazz chords, a bouncy bass, soft drums and a shaker, with a slightly wobbly, warm tape feel and a whisper of tape hiss. Keep it under the effects and let it loop cleanly.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

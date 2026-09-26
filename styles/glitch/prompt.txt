@@ -12,6 +12,11 @@ Type and colour
 - A heavy monospace font in capitals for my message (like JetBrains Mono ExtraBold), and the same font in a light weight for the captions.
 - Use my brand colours if I give them: one bright brand colour as the only accent. Otherwise use near black #0b0c0f, off white #eef2f0 text and acid green #c6ff00 for the accent, the cursor and the noise blocks.
 
+Sound
+- Effects: a short digital glitch burst on every visual burst (crunchy bit crushed tones and static that stutter and jump in step with the picture, lasting only as long as the burst), a crisp hard click on each jump cut, a bigger burst mid line with a quick pitch dive, a low thud and a stutter in the beat, soft terminal typing ticks as the status line types out, and a small blip each time the cursor blinks on. Keep every glitch short and never painful.
+- Music: cold, tight minimal techno at 120 bpm in a minor key: a short punchy kick, crisp hats, a dry rim click, a rolling filtered bass, a few echoing blips and a low drone. The beat drops out for the standby moment and comes back as the loop starts. Keep it under the effects.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

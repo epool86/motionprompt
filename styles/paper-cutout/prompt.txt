@@ -11,6 +11,11 @@ Type and colour
 - A rounded, friendly bold font (like Fredoka), dark on a light paper label.
 - Use my brand colours if I give them. Otherwise use a warm cream background #f7e4c6, sunny orange #f6a534, coral #ec6b4f, greens #c3d88f, #86b86b and #3f8f63, and dark brown text #3a2b24.
 
+Sound
+- Effects: a soft paper rustle as each piece slides in or out, a light pat as it lands, a quick card flick when a leaf or the label flips over, a small paper pop, a crinkle as stems grow, a tape rip and a thumb press when the label is taped down, and soft paper flaps for any bird. Land the sounds on the same 12 frames per second steps as the motion, so it feels like stop motion.
+- Music: a whimsical, handmade bed in a major key, about 96 bpm: a gently strummed ukulele, a simple glockenspiel tune, a soft plucked bass and quiet hand claps. Keep it quieter than the effects and let it loop cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

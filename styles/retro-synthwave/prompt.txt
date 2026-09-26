@@ -12,6 +12,11 @@ Type and colour
 - A wide, heavy, futuristic font in capitals (like Orbitron Black), leaning forward like an 80s logo.
 - Use my brand colours if I give them. Otherwise use deep purple night #12042b, hot magenta #ff2bd6 for the grid and glow, electric cyan #2de2ff for the mountain lines, and a sun from yellow #fff36b to pink #ff4f8b.
 
+Sound
+- Effects: a deep, soft road whoosh that swells each time a grid line sweeps under the camera, a bright detuned synth chord sting with a glassy shimmer when the chrome headline shows at the start, and a tape tracking warble while the band rolls down (a wobble in pitch, a flutter and a little hiss, with a tape chirp as it starts and ends).
+- Music: 80s outrun synthwave at 120 bpm, one beat for every grid line that passes: a punchy kick, a big gated snare, crisp off-beat hats, a pulsing octave bass arpeggio, lush detuned pads and a small echoing lead arpeggio in a minor key. Keep it under the effects and let it loop cleanly.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

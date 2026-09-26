@@ -14,6 +14,11 @@ Type and colour
 - A clean, modern sans serif font (like Manrope), bold for names and the price.
 - Use my brand colours if I give them, as the one accent colour. Otherwise use deep teal #0f7b6c as the accent, with dark slate #1f2a30 text on a warm off white #f3f1ec background.
 
+Sound
+- Effects: a deep soft thump as the floor slab lands, a soft rising swell for each room as its walls grow (a step higher each time), a quick run of small glass chimes as the windows fade in and short gentle creaks as the doors swing open, a small springy pop for each piece of furniture with a soft thud for the big pieces, a light switch click and a warm glow for each room that lights up, a soft swoosh with a bright two-note chime as the price card slides in, and soft reversed pops and a falling whoosh as everything folds away.
+- Music: a modern, confident real-estate bed at about 120 bpm: warm electric piano chords, a round bass, a light kick and soft clap with crisp hi-hats. Keep it under the effects, drop the beat for the fold at the end and let it loop cleanly.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

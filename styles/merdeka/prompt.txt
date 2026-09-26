@@ -12,6 +12,11 @@ Type and colour
 - A tall, bold condensed font (like Bebas Neue) for the title, and a clean bold sans serif (like Montserrat) with wide letter spacing for the small line.
 - Use my brand colours if I give them, but always keep the flag in its true colours. Otherwise use flag red #cc0001, white #ffffff, royal blue #010066, yellow #ffcc00 and a night sky navy #0a0f45.
 
+Sound
+- Effects: a bold whoosh for each colour stripe as it sweeps across the screen, a snap and rush as the flag unfurls and a soft cloth flutter with every ripple, a punchy thump as each title letter slams down with a big drum hit on the last one, two confetti cannon pops with a paper flutter as the confetti bursts in, and soft distant fireworks (a rising hiss, a gentle thump and a light crackle) timed to each burst.
+- Music: a proud, uplifting march at about 120 bpm: a crisp snare march rhythm, a soft bass drum, brass style chords that climb a step each bar and a low brass bass, with a snare roll that leads back into the start. Make it original, not any real anthem or song. Keep it quieter than the effects and let it loop cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

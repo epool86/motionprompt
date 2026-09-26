@@ -724,6 +724,531 @@
       resizeTimer = setTimeout(() => { build(); draw(); }, 150);
     });
 
+    // ---- Sound: off until the page asks for it. Every sound is made here with Web Audio, no files. ----
+    // Sounds follow the GSAP timeline clock (tl.totalTime) and are booked a little ahead at the
+    // matching AudioContext time, so they stay locked to the picture.
+    const sound = (() => {
+      const LEVEL = 1.3, MUSIC = 0.2;
+      const BEAT = LOOP / 16; // 80 bpm: four slow bars of 4/4 fill one 12 s loop exactly
+      let ctx = null, master = null, impulse = null, noiseBuf = null, grainBuf = null, bus = null;
+      let wantOn = false, wantMusic = true, playing = false, musicCatch = false;
+      let timer = 0, sleepTimer = 0, anchor = null, doneUpTo = 0, planned = null, planSize = "", events = [];
+
+      // Seeded random, so every loop sounds the same.
+      let rs = 1;
+      const rnd = () => ((rs = (rs * 16807) % 2147483647) - 1) / 2147483646;
+      const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+      const sineInOut = (p) => -(Math.cos(Math.PI * clamp(p)) - 1) / 2;
+      const power2InOut = (p) => (p < 0.5 ? 2 * p * p : 1 - 2 * (1 - p) * (1 - p));
+      const panX = (x) => clamp((x / W - 0.5) * 1.2, -0.7, 0.7);
+
+      // The list of sounds for one loop, read from the timeline itself so it follows any rebuild.
+      function plan() {
+        rs = 13;
+        const list = [];
+        const add = (t, type, extra = {}) => list.push({ t: ((t % LOOP) + LOOP) % LOOP, type, ...extra });
+        const kids = tl.getChildren(false, true, false).filter((c) => c.duration() > 0);
+        const find = (key) => kids.filter((c) => c.targets()[0] === S && key in c.vars);
+
+        // Thick mist at both ends of the loop: it thins at the start and rolls back in at the end.
+        const [veilOut, veilIn] = find("veil");
+        const veil = (t) => {
+          if (veilIn && t >= veilIn.startTime()) return sineInOut((t - veilIn.startTime()) / veilIn.duration());
+          return veilOut ? 1 - sineInOut((t - veilOut.startTime()) / veilOut.duration()) : 0;
+        };
+        if (veilOut) add(veilOut.startTime(), "mist", { dur: veilOut.duration() + 0.6, out: true });
+        if (veilIn) add(veilIn.startTime() - 0.2, "mist", { dur: veilIn.duration() + 0.4, out: false });
+
+        // The rainforest: insects, air and drips all the time, a little muffled while the mist is thick.
+        for (let t = 0; t < LOOP - 0.01; t += 3) add(t, "forest", { dur: 3.4, hold: true, veil });
+        for (let t = 0.3; t < LOOP; t += 0.45 + rnd() * 1.1) add(t, "drip", { f: 700 + rnd() * 900, v: 0.4 + rnd() * 0.6, pan: (rnd() - 0.5) * 1.4 });
+        // Distant birds whistle now and then, far off in the trees.
+        [0.9, 3.1, 6.3, 8.8, 11.0].forEach((t, i) => add(t, "whistle", { f: 1900 + rnd() * 1300, n: 2 + (i % 3), pan: (rnd() - 0.5) * 1.3, v: 0.5 + rnd() * 0.5 }));
+
+        // Title letters fade up with faint dewdrop tones.
+        const [big] = find("big");
+        if (big && T && T.letters) {
+          const n = T.letters.length, scale = [62, 64, 69, 71, 74, 76, 81];
+          let j = 0;
+          T.letters.forEach((l, i) => {
+            if (l.ch.trim()) add(big.startTime() + (big.duration() * i) / (n + 3), "dew", { f: hz(scale[j++ % scale.length] + 12), pan: panX(l.x) * 0.6 });
+          });
+        }
+
+        // The rafflesia opens with a slow organic swell, and closes softly at the end.
+        const [open, close] = find("bloom");
+        if (open) add(open.startTime(), "bloom", { dur: open.duration() + 0.8, rise: true, pan: panX(L.flower.x) });
+        if (close) add(close.startTime(), "bloom", { dur: close.duration() + 0.4, rise: false, pan: panX(L.flower.x) });
+
+        // The hornbill: a heavy whoosh on each wingbeat (the same beats the drawing uses), then a distant call.
+        const [bird] = find("bird");
+        if (bird) {
+          const b0 = bird.startTime(), bd = bird.duration(), s = L.bird.s;
+          const bx = (bt) => -s + clamp(bt / bd) * (W + s * 2);
+          for (let m = 0; m < 8; m++) {
+            const bt = (0.5 + m) / 1.6;
+            const flap = clamp(Math.max(0, 1 - Math.abs(bt - 0.9) / 0.9) + Math.max(0, 1 - Math.abs(bt - 3) / 0.5));
+            if (flap > 0.1) add(b0 + bt - 0.12, "wingbeat", { v: flap, pan: panX(bx(bt)) });
+          }
+          // A glide swish while it sails across.
+          add(b0 + 0.2, "glide", { dur: bd - 0.4, pan0: panX(bx(0.2)), pan1: panX(bx(bd - 0.2)) });
+          add(b0 + 1.9, "call", { v: 1, pan: panX(bx(1.9)) });
+          add(b0 + 2.25, "call", { v: 0.8, pan: panX(bx(2.25)) });
+          add(b0 + 5.4, "call", { v: 0.35, pan: -0.6, far: true });
+        }
+
+        // Music: a calm, mysterious bed. A breathing low drone, soft wooden knocks and an airy flute.
+        [[0, [50, 57, 62]], [6, [48, 55, 60]]].forEach(([beat, notes]) => add(beat * BEAT, "drone", { dur: 8 * BEAT + 1.5, notes: notes.map(hz), music: true, hold: true }));
+        [[0, 180, 1], [2.5, 330, 0.5], [4, 180, 0.8], [6.5, 330, 0.5], [7, 260, 0.6], [8, 180, 1], [10.5, 330, 0.5], [12, 180, 0.8], [14.5, 330, 0.5], [15, 260, 0.6]]
+          .forEach(([beat, f, v]) => add(beat * BEAT, "wood", { f, v, music: true }));
+        [[0, 69, 3], [3, 72, 1], [4, 74, 4], [8, 76, 2], [10, 74, 1], [11, 72, 1], [12, 69, 3.5]]
+          .forEach(([beat, m, len]) => add(beat * BEAT, "flute", { f: hz(m), dur: len * BEAT, music: true }));
+        return list.sort((a, b) => a.t - b.t);
+      }
+
+      // Audio graph: one compressor before the speakers so nothing clips.
+      function makeGraph() {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const sr = ctx.sampleRate;
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -14;
+        comp.knee.value = 8;
+        comp.ratio.value = 4;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.2;
+        master = ctx.createGain();
+        master.gain.value = LEVEL;
+        master.connect(comp).connect(ctx.destination);
+        // A wide, soft forest space: stereo noise that fades out, used as the reverb impulse.
+        const len = Math.floor(sr * 2.4);
+        impulse = ctx.createBuffer(2, len, sr);
+        for (let c = 0; c < 2; c++) {
+          const d = impulse.getChannelData(c);
+          for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 4);
+        }
+        noiseBuf = ctx.createBuffer(1, sr * 2, sr);
+        const nd = noiseBuf.getChannelData(0);
+        for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+        // Sparse random clicks: soft creaks as the petals stretch.
+        grainBuf = ctx.createBuffer(1, sr * 2, sr);
+        const gd = grainBuf.getChannelData(0);
+        for (let i = 0; i < gd.length; i++) if (Math.random() < 420 / sr) gd[i] = (Math.random() * 2 - 1) * (0.4 + Math.random() * 0.6);
+      }
+
+      // Fresh buses every time sound is switched on, so nothing booked before a stop can leak out later.
+      function openBus() {
+        const t = ctx.currentTime;
+        const out = ctx.createGain();
+        out.gain.setValueAtTime(0, t);
+        out.gain.linearRampToValueAtTime(1, t + 0.08);
+        out.connect(master);
+        const fx = ctx.createGain();
+        fx.connect(out);
+        const mus = ctx.createGain();
+        mus.gain.value = wantMusic ? MUSIC : 0;
+        mus.connect(out);
+        const verb = ctx.createConvolver();
+        verb.buffer = impulse;
+        const verbOut = ctx.createGain();
+        verbOut.gain.value = 0.35;
+        verb.connect(verbOut).connect(out);
+        const musVerb = ctx.createGain();
+        musVerb.gain.value = 0.5;
+        musVerb.connect(verb);
+        return { out, fx, mus, verb, musVerb };
+      }
+      function closeBus() {
+        if (!bus) return;
+        const old = bus, t = ctx.currentTime;
+        bus = null;
+        old.out.gain.cancelScheduledValues(t);
+        old.out.gain.setValueAtTime(old.out.gain.value, t);
+        old.out.gain.linearRampToValueAtTime(0, t + 0.15);
+        setTimeout(() => old.out.disconnect(), 300);
+      }
+
+      // Small building blocks.
+      function env(when, peak, attack, decay) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, when);
+        g.gain.exponentialRampToValueAtTime(peak, when + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay);
+        return g;
+      }
+      function osc(type, f, when, dur) {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.setValueAtTime(f, when);
+        o.start(when);
+        o.stop(when + dur + 0.05);
+        return o;
+      }
+      function noise(when, dur, buf = noiseBuf) {
+        const s = ctx.createBufferSource();
+        s.buffer = buf;
+        s.loop = true;
+        s.start(when, Math.random() * 1.5);
+        s.stop(when + dur + 0.05);
+        return s;
+      }
+      function filter(type, f, q = 0.7) {
+        const b = ctx.createBiquadFilter();
+        b.type = type;
+        b.frequency.value = f;
+        b.Q.value = q;
+        return b;
+      }
+      // Send a sound to the effects bus, panned, with some room.
+      function out(node, pan, room, dest = bus.fx) {
+        const p = ctx.createStereoPanner();
+        p.pan.value = pan;
+        node.connect(p).connect(dest);
+        if (room > 0) {
+          const s = ctx.createGain();
+          s.gain.value = room;
+          p.connect(s).connect(bus.verb);
+        }
+        return p;
+      }
+      // Apply a value curve, never starting in the past (the browser refuses overlapping automation).
+      function setCurve(param, curve, when, len) {
+        const start = Math.max(when, ctx.currentTime + 0.005);
+        param.setValueCurveAtTime(curve, start, Math.max(0.01, len - (start - when)));
+      }
+      // A gain that follows fn(timeline time) from skip to the end of the event, with soft ends.
+      function follow(when, e, skip, fn, edge = 0.4) {
+        const len = e.dur - skip, steps = Math.max(2, Math.ceil(len * 60));
+        const curve = new Float32Array(steps + 1);
+        for (let i = 0; i <= steps; i++) {
+          const tau = skip + (len * i) / steps;
+          const w = Math.min(1, tau / edge, (e.dur - tau) / edge);
+          curve[i] = Math.max(0, fn(e.t + tau, tau)) * Math.sin((Math.PI / 2) * clamp(w));
+        }
+        const g = ctx.createGain();
+        g.gain.value = 0;
+        setCurve(g.gain, curve, when, len);
+        return g;
+      }
+
+      const voices = {
+        mist(when, e) {
+          // A slow, soft air swell: fading away as the mist thins, rising as it rolls back in.
+          const d = e.dur, steps = Math.ceil(d * 40), curve = new Float32Array(steps + 1);
+          for (let i = 0; i <= steps; i++) {
+            const p = i / steps, s = Math.sin(Math.PI * p);
+            curve[i] = 0.22 * s * s * (e.out ? 1 - 0.5 * p : 0.5 + 0.5 * p);
+          }
+          const g = ctx.createGain();
+          g.gain.value = 0;
+          setCurve(g.gain, curve, when, d);
+          const bp = filter("bandpass", 500, 0.5);
+          bp.frequency.setValueAtTime(e.out ? 900 : 350, when);
+          bp.frequency.exponentialRampToValueAtTime(e.out ? 350 : 900, when + d);
+          noise(when, d).connect(bp).connect(g);
+          const p = ctx.createStereoPanner();
+          p.pan.setValueAtTime(e.out ? -0.3 : 0.3, when);
+          p.pan.linearRampToValueAtTime(e.out ? 0.3 : -0.3, when + d);
+          g.connect(p).connect(bus.fx);
+          const s = ctx.createGain();
+          s.gain.value = 0.5;
+          p.connect(s).connect(bus.verb);
+        },
+        forest(when, e, skip = 0) {
+          const len = e.dur - skip;
+          // Insects: a high shimmering drone with a fast pulse, from both sides.
+          [[6800, 38, -0.6, 0.1], [8200, 53, 0.55, 0.08], [5400, 21, 0.1, 0.06]].forEach(([f, rate, pan, v], i) => {
+            const g = follow(when, e, skip, (t) => v * (1 - 0.45 * e.veil(t)) * (0.75 + 0.25 * Math.sin((2 * Math.PI * (2 + i) * t) / LOOP + i)));
+            const am = ctx.createGain();
+            am.gain.value = 0.6;
+            const lfo = osc("sine", rate, when, len);
+            const depth = ctx.createGain();
+            depth.gain.value = 0.4;
+            lfo.connect(depth).connect(am.gain);
+            noise(when, len).connect(filter("bandpass", f, 6)).connect(am).connect(g);
+            out(g, pan, 0.25);
+          });
+          // Warm, damp air under the canopy.
+          const air = follow(when, e, skip, (t) => 0.12 * (0.7 + 0.3 * e.veil(t)));
+          noise(when, len).connect(filter("lowpass", 300, 0.4)).connect(air);
+          out(air, 0, 0);
+        },
+        drip(when, e) {
+          // A water drop: a tiny rising plip that rings in the trees.
+          const g = env(when, 0.07 * e.v, 0.001, 0.06);
+          const o = osc("sine", e.f, when, 0.08);
+          o.frequency.exponentialRampToValueAtTime(e.f * 2.1, when + 0.05);
+          o.connect(g);
+          out(g, e.pan, 0.55);
+        },
+        whistle(when, e) {
+          // A far bird: a few pure whistled notes that glide.
+          for (let i = 0; i < e.n; i++) {
+            const t = when + i * 0.26, f = e.f * (i % 2 ? 0.84 : 1) * (1 - i * 0.03);
+            const g = env(t, 0.025 * e.v, 0.03, 0.16);
+            const o = osc("sine", f, t, 0.22);
+            o.frequency.linearRampToValueAtTime(f * (i === e.n - 1 ? 0.8 : 1.12), t + 0.18);
+            o.connect(g);
+            out(g, e.pan, 0.7);
+          }
+        },
+        dew(when, e) {
+          const g = env(when, 0.04, 0.004, 0.9);
+          osc("sine", e.f, when, 1).connect(g);
+          const h = env(when, 0.008, 0.002, 0.3);
+          osc("sine", e.f * 2.7, when, 0.35).connect(h);
+          h.connect(g);
+          out(g, e.pan, 0.6);
+        },
+        bloom(when, e) {
+          // A slow organic swell: breathy warmth that opens up as the petals unfold.
+          const d = e.dur, steps = Math.ceil(d * 40), curve = new Float32Array(steps + 1);
+          for (let i = 0; i <= steps; i++) {
+            const p = i / steps, s = e.rise ? power2InOut(Math.min(1, p * 1.2)) : 1 - power2InOut(p);
+            const tail = e.rise ? Math.min(1, (1 - p) * 4) : Math.min(1, p * 8);
+            curve[i] = 0.16 * s * tail;
+          }
+          const g = ctx.createGain();
+          g.gain.value = 0;
+          setCurve(g.gain, curve, when, d);
+          const lp = filter("lowpass", 300, 1.2);
+          lp.frequency.setValueAtTime(e.rise ? 250 : 1400, when);
+          lp.frequency.exponentialRampToValueAtTime(e.rise ? 1500 : 250, when + d);
+          noise(when, d).connect(filter("bandpass", 420, 1.5)).connect(lp);
+          [146.8, 220, 293.7].forEach((f, i) => {
+            const o = osc("triangle", f * (1 + i * 0.002), when, d);
+            const og = ctx.createGain();
+            og.gain.value = 0.5 / (i + 1);
+            o.connect(og).connect(lp);
+          });
+          lp.connect(g);
+          out(g, e.pan, 0.6);
+          // Soft, leathery creaks as the thick petals stretch.
+          const c = ctx.createGain();
+          c.gain.value = 0;
+          const cc = new Float32Array(steps + 1).map((_, i) => 0.25 * Math.sin((Math.PI * i) / steps) ** 2);
+          setCurve(c.gain, cc, when, d);
+          noise(when, d, grainBuf).connect(filter("bandpass", 900, 2)).connect(filter("lowpass", 1600, 0.5)).connect(c);
+          out(c, e.pan, 0.4);
+        },
+        wingbeat(when, e) {
+          // A heavy "whoosh" of air through big wing feathers.
+          const d = 0.36;
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.0001, when);
+          g.gain.exponentialRampToValueAtTime(0.6 * e.v, when + 0.12);
+          g.gain.exponentialRampToValueAtTime(0.0001, when + d);
+          const bp = filter("bandpass", 380, 0.9);
+          bp.frequency.setValueAtTime(380, when);
+          bp.frequency.exponentialRampToValueAtTime(900, when + 0.12);
+          bp.frequency.exponentialRampToValueAtTime(300, when + d);
+          noise(when, d).connect(bp).connect(g);
+          const flutter = ctx.createGain();
+          flutter.gain.value = 0.7;
+          const lfo = osc("sine", 34, when, d);
+          const depth = ctx.createGain();
+          depth.gain.value = 0.3;
+          lfo.connect(depth).connect(flutter.gain);
+          g.connect(flutter);
+          out(flutter, e.pan, 0.3);
+        },
+        glide(when, e) {
+          // Air sliding past the wings while it glides.
+          const d = e.dur, steps = Math.ceil(d * 20), curve = new Float32Array(steps + 1);
+          for (let i = 0; i <= steps; i++) curve[i] = 0.045 * Math.sin((Math.PI * i) / steps);
+          const g = ctx.createGain();
+          g.gain.value = 0;
+          setCurve(g.gain, curve, when, d);
+          noise(when, d).connect(filter("bandpass", 1200, 0.6)).connect(g);
+          const p = ctx.createStereoPanner();
+          p.pan.setValueAtTime(e.pan0, when);
+          p.pan.linearRampToValueAtTime(e.pan1, when + d);
+          g.connect(p).connect(bus.fx);
+        },
+        call(when, e) {
+          // A hornbill honk (not exact): a short nasal "gok" with a falling pitch, far off in the canopy.
+          const g = env(when, (e.far ? 0.05 : 0.09) * e.v, 0.02, 0.2);
+          const o = osc("sawtooth", 420, when, 0.26);
+          o.frequency.exponentialRampToValueAtTime(300, when + 0.2);
+          const f1 = filter("bandpass", 900, 3), f2 = filter("bandpass", 1600, 4);
+          o.connect(f1).connect(g);
+          o.connect(f2).connect(g);
+          const lp = filter("lowpass", e.far ? 1300 : 2400, 0.5);
+          g.connect(lp);
+          out(lp, e.pan, e.far ? 0.9 : 0.6);
+        },
+        drone(when, e, skip = 0) {
+          // A breathing low drone: detuned tones under a slow filter, swelling in and out.
+          const len = e.dur - skip;
+          const g = follow(when, e, skip, () => 0.05, 1.5);
+          const lp = filter("lowpass", 420, 0.6);
+          e.notes.forEach((f, i) => [-8, 8].forEach((c) => {
+            const o = ctx.createOscillator();
+            o.type = i ? "triangle" : "sawtooth";
+            o.frequency.value = f / 2;
+            o.detune.value = c;
+            o.connect(lp);
+            o.start(when);
+            o.stop(when + len + 0.05);
+          }));
+          lp.connect(g);
+          g.connect(bus.mus);
+          g.connect(bus.musVerb);
+        },
+        wood(when, e) {
+          // A soft wooden knock.
+          const g = env(when, 0.2 * e.v, 0.002, 0.14);
+          const o = osc("sine", e.f * 1.1, when, 0.18);
+          o.frequency.exponentialRampToValueAtTime(e.f, when + 0.02);
+          o.connect(g);
+          const c = env(when, 0.05 * e.v, 0.001, 0.02);
+          noise(when, 0.03).connect(filter("bandpass", e.f * 5, 2)).connect(c);
+          out(g, e.f > 300 ? 0.25 : -0.2, 0, bus.mus).connect(bus.musVerb);
+          out(c, e.f > 300 ? 0.25 : -0.2, 0, bus.mus);
+        },
+        flute(when, e) {
+          // An airy flute: a soft tone with a little vibrato and breath.
+          const d = e.dur;
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.0001, when);
+          g.gain.exponentialRampToValueAtTime(0.09, when + 0.15);
+          g.gain.setValueAtTime(0.09, when + d * 0.85);
+          g.gain.exponentialRampToValueAtTime(0.0001, when + d + 0.35);
+          const o = osc("sine", e.f, when, d + 0.4);
+          const vib = osc("sine", 5, when, d + 0.4);
+          const depth = ctx.createGain();
+          depth.gain.setValueAtTime(0, when);
+          depth.gain.linearRampToValueAtTime(e.f * 0.006, when + 0.6);
+          vib.connect(depth).connect(o.frequency);
+          o.connect(g);
+          const h = ctx.createGain();
+          h.gain.value = 0.12;
+          osc("sine", e.f * 2, when, d + 0.4).connect(h).connect(g);
+          const b = ctx.createGain();
+          b.gain.value = 0.35;
+          noise(when, d + 0.4).connect(filter("bandpass", e.f * 2, 4)).connect(b).connect(g);
+          out(g, -0.25, 0, bus.mus).connect(bus.musVerb);
+        },
+      };
+
+      let lastTick = performance.now(), lastAudio = 0, hard = true;
+      gsap.ticker.add(() => { lastTick = performance.now(); });
+
+      // Look-ahead scheduler: every 25 ms, book the sounds due in the next 100 ms of timeline time.
+      // Timeline time maps to audio time through an anchor that is reset after any jump or pause.
+      function tick() {
+        if (!playing || !tl || ctx.state !== "running") { anchor = null; return; }
+        if (document.hidden || tl.paused() || reduce.matches) { anchor = null; return; }
+        if (planned !== tl) {
+          // A rebuilt timeline (after a resize): swap to fresh buses so nothing from the old plan lingers.
+          if (planned) {
+            closeBus();
+            bus = openBus();
+          }
+          planned = tl;
+          planSize = `${W}x${H}`;
+          events = plan();
+          anchor = null;
+          hard = true;
+        }
+        if (planSize !== `${W}x${H}`) {
+          // Same timeline, new window size: re-read positions and counts, and carry on.
+          planSize = `${W}x${H}`;
+          events = plan();
+        }
+        const len = tl.duration();
+        // Timeline time right now: its last rendered time plus the time since that GSAP tick.
+        const now = tl.totalTime() + Math.min(0.5, (performance.now() - lastTick) / 1000), at = ctx.currentTime;
+        if (anchor) {
+          const err = now - (anchor.tl + (at - anchor.audio));
+          if (Math.abs(err) > 0.08) anchor = null; // the animation jumped or stalled
+          else anchor.tl += err * 0.05; // ease out small drift
+        }
+        let fresh = false;
+        if (!anchor) {
+          anchor = { tl: now, audio: at };
+          // A small slip in a running clock keeps going from where booking stopped, so nothing plays twice.
+          // After a pause, a seek or a switch on, start from now: nothing missed piles up.
+          const slip = !hard && at - lastAudio < 0.6 && Math.abs(doneUpTo - now) < 0.5;
+          doneUpTo = slip ? Math.max(now, doneUpTo) : now;
+          fresh = !slip;
+          hard = false;
+        }
+        lastAudio = at;
+        // Long sounds already under way (fan, pour, pads) are picked up part way through.
+        if (fresh || musicCatch) {
+          const k0 = Math.floor(now / len);
+          for (let k = k0 - 1; k <= k0; k++) {
+            for (const e of events) {
+              if (!e.hold || (e.music && !wantMusic) || (!fresh && !e.music)) continue;
+              const t = k * len + e.t;
+              if (t < now && t + e.dur > now + 0.2) voices[e.type](at + 0.03, e, now - t + 0.03);
+            }
+          }
+          musicCatch = false;
+        }
+        const from = doneUpTo, to = anchor.tl + (at - anchor.audio) + 0.1;
+        if (to <= from) return;
+        for (let k = Math.floor(from / len); k <= Math.floor(to / len); k++) {
+          for (const e of events) {
+            const t = k * len + e.t;
+            if (t < from || t >= to) continue;
+            if (e.music && !wantMusic) continue;
+            voices[e.type](Math.max(at, anchor.audio + (t - anchor.tl)), e, 0);
+          }
+        }
+        doneUpTo = to;
+      }
+
+      // Turn sound on or off to match what was asked for.
+      function update() {
+        const on = wantOn && !reduce.matches;
+        if (on) {
+          if (!ctx) makeGraph();
+          clearTimeout(sleepTimer);
+          if (ctx.state !== "running") ctx.resume().catch(() => {});
+          if (!playing) {
+            playing = true;
+            anchor = null;
+            hard = true;
+            bus = openBus();
+            clearInterval(timer);
+            timer = setInterval(tick, 25);
+          }
+          const t = ctx.currentTime, g = bus.mus.gain;
+          g.cancelScheduledValues(t);
+          g.setValueAtTime(g.value, t);
+          g.linearRampToValueAtTime(wantMusic ? MUSIC : 0, t + 0.12);
+        } else if (playing) {
+          playing = false;
+          clearInterval(timer);
+          closeBus();
+          sleepTimer = setTimeout(() => { if (!playing) ctx.suspend().catch(() => {}); }, 220);
+        }
+      }
+
+      function set(on, music) {
+        if (music && !wantMusic) musicCatch = true;
+        wantOn = on;
+        wantMusic = music;
+        update();
+      }
+
+      // Browsers may block audio until the first click or key press.
+      const unlock = () => { if (playing && ctx && ctx.state !== "running") ctx.resume().catch(() => {}); };
+      addEventListener("pointerdown", unlock);
+      addEventListener("keydown", unlock);
+      reduce.addEventListener("change", update);
+      return { set };
+    })();
+
+    addEventListener("message", (event) => {
+      const d = event.data;
+      if (event.origin !== location.origin || !d || d.type !== "motionprompt-sound") return;
+      sound.set(!!d.on, d.music !== false);
+    });
+    const soundParam = params.get("sound");
+    if (soundParam === "1" || soundParam === "effects") sound.set(true, soundParam === "1");
+
     // Wait briefly for the fonts so the title is measured in the right face.
     Promise.race([
       Promise.all([document.fonts.load('600 1em "Cormorant Garamond"'), document.fonts.load("600 1em Montserrat")]),

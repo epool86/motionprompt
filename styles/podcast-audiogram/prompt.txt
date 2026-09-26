@@ -13,6 +13,11 @@ Type and colour
 - A bold, rounded grotesque font (like Bricolage Grotesque), extra bold for the captions and names, medium for small labels.
 - Use my brand colours if I give them. Otherwise use a warm off white background #f3eee4, near black #16140f text, one strong orange red accent #ff4a1c for the highlight, waveform and progress, and soft peach #ffd6c2 behind the portrait.
 
+Sound
+- Effects: never make up a voice or fake speech. Open with a short, soft intro sting, keep a very quiet "on air" room tone under everything, add a gentle click as each caption page changes and a soft tick when the progress bar reaches the end. If I attach my own audio clip, my audio is the main sound: the captions, word highlights and waveform bars must follow it, and everything else stays quietly under it.
+- Music: a warm podcast intro style bed, about 80 bpm: soft electric piano chords, a round bass, a small bell melody and a light beat with a rim click and shaker. Let it dip a little while captions are on screen, keep it well under the effects and let it loop cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

@@ -13,6 +13,11 @@ Type and colour
 - An elegant classical display font in capitals (like Cinzel) for the greeting, and a friendly rounded sans (like Quicksand) for the short line.
 - Use my brand colours if I give them. Otherwise use deep emerald night #06261f, emerald #1f7a5a, gold #e3b75a, light gold #f5dc9a and cream #fbf1dc.
 
+Sound
+- Effects: soft crackles from the pelita flames all the way through, a light leafy rustle as the ketupat swing, an airy shimmer with a rising chime for each ring and star as the gold pattern draws, a warm bloom as the greeting rises in, a run of bright bells that follows the shine across the words, and faint distant fireworks (a thin whistle, a soft thump and a sparkly crackle) timed to each burst.
+- Music: a gentle, joyful Raya feel at about 80 bpm: kompang style hand drums, a warm plucked melody in a major key, soft accordion chords and a round bass. Keep it calm and quieter than the effects, and let it loop cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

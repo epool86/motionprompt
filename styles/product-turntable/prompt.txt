@@ -12,6 +12,11 @@ Type and colour
 - An elegant serif for the product name (like Cormorant Garamond) and a clean sans serif in small capitals with wide letter spacing for the callouts (like Inter Tight).
 - Use my brand colours if I give them. Otherwise use a warm sand backdrop #ece4da, an ivory pedestal #f4efe8, espresso text #2b2420, gold details #c9a36b and an amber product colour #e0892f.
 
+Sound
+- Effects: a very soft mechanical hum from the turntable that rises and falls a little with its speed, a bright glassy shimmer with tiny glass sparkles each time the light glint sweeps across the product, a soft click as each callout dot appears, a thin airy whoosh as its line draws out and a soft pop for its label, a felt-like swoosh with a gentle two-note chime as the card slides up, and quiet reversed swishes as the callouts fold away and the card fades.
+- Music: a minimal, airy luxury ad bed at about 80 bpm: warm soft pads, a few gentle piano notes with a light echo, a soft round pulse and a very quiet shaker. Keep it well under the effects and let it loop cleanly with the turn.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}
