@@ -2,19 +2,19 @@ Make my video in this style: Malaysian heritage.
 
 Look and motion
 - A warm, festive Malaysian scene drawn with traditional motifs. Pick the motifs that suit my message and occasion (for example Hari Raya, Merdeka, Malaysia Day, a local brand or a greeting). Keep it respectful and draw every element as clean vector shapes.
-- Open on a wayang kulit screen glowing warm from an oil lamp behind it. A pohon beringin (the leaf shaped tree of life) rises into the middle as a perforated shadow puppet, with light shining through its holes. Simple, decorative puppets with long thin arms on rods may join it. No specific characters or religious figures.
-- The screen light floods out into a warm sky over a kampung and paddy fields. One or two wau bulan (the Kelantan crescent moon kite, with its wide wings, crescent tail, bow on top with tassels, and layered paper with floral cut-work) rise up and sway gently, strings trailing to the ground.
-- Batik motifs draw themselves like wax from a canting, as cream lines: bunga raya (hibiscus), leaves, awan larat spirals and clouds. Then rich dye colours soak in behind the lines.
-- My headline sits on a songket panel that unrolls from the middle, framed by gold pucuk rebung (bamboo shoot) triangles that rise one by one. A soft gold glint sweeps across now and then.
+- Open on a warm sky over a kampung and paddy fields: a rumah kampung on stilts, coconut palms and a soft low sun. Small batik clouds draw themselves in.
+- One or two wau bulan (the Kelantan crescent moon kite, with its wide wings, crescent tail, bow on top with tassels, and layered paper with floral cut-work) rise up from below and fly, swaying gently, strings trailing to the ground.
+- Batik motifs draw themselves like wax from a canting, as cream lines: bunga raya (hibiscus), leaves, awan larat spirals and clouds. Then rich dye colours soak in behind the lines and each flower opens a little as it blooms. Let a second, smaller flower bloom just after the first ones so this part feels rich.
+- My headline sits on a songket panel that unrolls from the middle, framed by gold pucuk rebung (bamboo shoot) triangles that rise one by one. A soft gold glint sweeps across the cloth.
 - Write my text in the language I use, Malay or English. A short second line under the headline can repeat it in the other language.
-- Keep the motion calm and graceful. At the end, fold back into the glowing shadow screen so the video can loop.
+- Keep the motion calm and graceful. At the end, the panel folds away, the batik fades and the kites drift back down, so the video returns to the opening sky and can loop.
 
 Type and colour
 - An elegant, classic display font (like Cinzel) in gold for the headline, and a friendly sans font (like Nunito) in spaced capitals for small text.
 - Use my brand colours if I give them, with songket gold as the accent. Otherwise use deep maroon #6e1129, royal blue #1f3f8f, emerald #0f6b4a, turmeric yellow #f2b431, bunga raya red #c42a3e and songket gold #d9a53a on a warm sky of #f8d894.
 
 Sound
-- Effects: a soft, low gong as the shadow screen lights up, gentle gendang taps as the puppets step in, an airy wind swell and a light buzzing hum (like the bow on a wau bulan) as the kites rise, soft brushy strokes as the batik lines draw and a gentle chime shimmer as the colour soaks in, a bright gold chime sweep as the songket opens, and a soft gong accent when my headline lands.
+- Effects: a soft airy wind that swells as the kites rise, with a light buzzing hum (like the bow on a wau bulan), soft brushy strokes as the batik lines draw, a gentle chime shimmer as the colour soaks in, a bright gold chime sweep as the songket opens, a soft gong accent when my headline lands, a cloth swish as it folds away, and a few calm falling chimes as the scene settles back.
 - Music: a calm, warm traditional feel. A simple pentatonic melody on a bamboo flute and a plucked string, over a slow gendang rhythm and a low drone. Gentle and dignified, quieter than the effects, and it loops smoothly. No chanting or vocals.
 - Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
 

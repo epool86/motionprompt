@@ -12,7 +12,7 @@
       margin: 0;
       height: 100%;
       overflow: hidden;
-      background: #1c0b06;
+      background: #f3b25c;
     }
 
     svg {
@@ -57,8 +57,6 @@
       turmeric: "#f2b431",
       red: "#c42a3e",
       wax: "#fdf1d6",
-      night: "#1c0b06",
-      shadow: "#2a0f08",
     };
 
     // ?text=Title|Small line. The default is a Malay greeting with an English line under it.
@@ -69,7 +67,7 @@
 
     const NS = "http://www.w3.org/2000/svg";
     const svg = document.getElementById("scene");
-    svg.setAttribute("aria-label", `Malaysian heritage animation: a wayang kulit shadow screen opens onto wau bulan kites, batik flowers and a kampung sky, then the title ${title} in a gold songket frame`);
+    svg.setAttribute("aria-label", `Malaysian heritage animation: wau bulan kites rise over a kampung sky while batik bunga raya flowers draw themselves and bloom, then the title ${title} in a gold songket frame`);
 
     function el(name, attrs, parent) {
       const node = document.createElementNS(NS, name);
@@ -95,8 +93,6 @@
       }
       return d + (close ? "Z" : "");
     }
-    // Right half from the top centre to the bottom centre, mirrored into a closed outline.
-    const mirror = (right) => right.concat(right.slice(1, -1).reverse().map(([x, y]) => [-x, y]));
     const cubicPts = (a, b, c, d, n = 10) => Array.from({ length: n + 1 }, (_, i) => {
       const t = i / n, s = 1 - t;
       return [0, 1].map((k) => s * s * s * a[k] + 3 * s * s * t * b[k] + 3 * s * t * t * c[k] + t * t * t * d[k]);
@@ -117,7 +113,7 @@
     const circle = (x, y, r) => `M${P([x - r, y])}a${n3(r)} ${n3(r)} 0 1 0 ${n3(r * 2)} 0a${n3(r)} ${n3(r)} 0 1 0 ${n3(-r * 2)} 0Z`;
 
     // A loop is 12 seconds; every sway repeats a whole number of times per loop.
-    const LOOP = 12, STILL = 9.6;
+    const LOOP = 10.8, STILL = 7;
     const wave = (t, cycles, phase = 0) => Math.sin(TAU * (t * cycles) / LOOP + phase);
 
     let W, H, u, tl, S, R, defs;
@@ -129,17 +125,17 @@
         L.panel = { x: W / 2, y: H * 0.575, w: W * 0.9, h: Math.min(W * 0.6, H * 0.34) };
         const k0 = Math.min(W * 0.3, H * 0.2), k1 = Math.min(W * 0.17, H * 0.12);
         L.kitesA = [{ x: W * 0.36, y: H * 0.29, s: k0 }, { x: W * 0.78, y: Math.max(H * 0.15, H * 0.05 + k1), s: k1 }];
-        L.flowers = [{ x: W * 0.17, y: H * 0.9, s: W * 0.15, flip: 1 }, { x: W * 0.85, y: H * 0.935, s: W * 0.11, flip: -1 }];
+        L.flowers = [{ x: W * 0.17, y: H * 0.9, s: W * 0.15, flip: 1 }, { x: W * 0.85, y: H * 0.935, s: W * 0.11, flip: -1 }, { x: W * 0.53, y: H * 0.985, s: W * 0.09, flip: 1, delay: 0.7 }];
       } else if (r < 1.3) {
         L.horizon = H * 0.64;
         L.panel = { x: W / 2, y: H * 0.56, w: W * 0.82, h: H * 0.32 };
         L.kitesA = [{ x: W * 0.35, y: H * 0.3, s: u * 0.24 }, { x: W * 0.77, y: H * 0.19, s: u * 0.15 }];
-        L.flowers = [{ x: W * 0.13, y: H * 0.88, s: u * 0.11, flip: 1 }, { x: W * 0.88, y: H * 0.905, s: u * 0.085, flip: -1 }];
+        L.flowers = [{ x: W * 0.13, y: H * 0.88, s: u * 0.11, flip: 1 }, { x: W * 0.88, y: H * 0.905, s: u * 0.085, flip: -1 }, { x: W * 0.52, y: H * 0.975, s: u * 0.07, flip: 1, delay: 0.7 }];
       } else {
         L.horizon = H * 0.66;
         L.panel = { x: W / 2, y: H * 0.5, w: Math.min(W * 0.56, H * 1.3), h: H * 0.52 };
         L.kitesA = [{ x: W * 0.3, y: H * 0.36, s: H * 0.28 }, { x: W * 0.72, y: H * 0.26, s: H * 0.18 }];
-        L.flowers = [{ x: W * 0.09, y: H * 0.81, s: H * 0.14, flip: 1 }, { x: W * 0.915, y: H * 0.85, s: H * 0.11, flip: -1 }];
+        L.flowers = [{ x: W * 0.09, y: H * 0.81, s: H * 0.14, flip: 1 }, { x: W * 0.915, y: H * 0.85, s: H * 0.11, flip: -1 }, { x: W * 0.5, y: H * 0.99, s: H * 0.08, flip: 1, delay: 0.7 }];
       }
       // Where the kites fly while the title is on screen.
       const p = L.panel, top = p.y - p.h / 2;
@@ -227,7 +223,8 @@
     }
 
     function buildFlower(parent, F) {
-      const g = el("g", { transform: `translate(${F.x} ${F.y}) scale(${F.s * F.flip} ${F.s})` }, parent);
+      // The group transform is set in update(), so the flower can open as it blooms.
+      const g = el("g", {}, parent);
       const sw = 0.035;
       // Awan larat tendrils: a dye band with a wax line on top.
       const tendrils = [
@@ -288,6 +285,7 @@
       [[-0.95, -0.9], [0.95, -0.55], [-1.05, 0.1], [0.2, -1.35], [1.15, 0.45]].forEach(([x, y]) => (isen += circle(x, y, 0.04)));
       const dotsP = el("path", { d: isen, fill: C.wax, "fill-opacity": 0 }, g);
       fills.push({ p: dotsP, order: 0.8 });
+      return g;
     }
 
     function buildCloud(parent, x, y, s) {
@@ -365,130 +363,6 @@
         for (let r = 1; r <= 3; r++) rows += smooth(edge(bandH * (r / 4) * (0.7 + 0.1 * r)));
         el("path", { d: rows, fill: "none", stroke: i ? "#2c6e3c" : "#7d9f45", "stroke-width": Math.max(0.6, u * 0.003), opacity: 0.45 }, parent);
       });
-    }
-
-    // ---------- Wayang kulit ----------
-    // Puppets are shadow shapes with punched holes. Each hole is a sub-path cut out with the even-odd rule.
-    const cut = (parent, d) => el("path", { d, fill: C.shadow, "fill-rule": "evenodd" }, parent);
-
-    function gunungan(g) {
-      const right = [[0, -1], [0, -1], [0.1, -0.82], [0.26, -0.56], [0.44, -0.28], [0.56, 0], [0.58, 0.24], [0.5, 0.46], [0.36, 0.62], [0.3, 0.68], [0.3, 0.68],
-        [0.36, 0.7], [0.36, 0.7], [0.36, 0.82], [0.36, 0.82], [0, 0.82]];
-      // Leaf shaped frame: a border of punched dots, a row of teardrops, an open field inside.
-      let d = smooth(mirror(right), true);
-      const ring = right.slice(1, 10), along = (i, t, sx, sy) => {
-        const a = ring[i], b = ring[i + 1];
-        return [(a[0] + (b[0] - a[0]) * t) * sx, 0.03 + (a[1] + (b[1] - a[1]) * t - 0.03) * sy];
-      };
-      for (const s of [1, -1]) {
-        for (let i = 0; i < ring.length - 1; i++) {
-          for (let k = 0; k < (i < ring.length - 2 ? 3 : 1); k++) {
-            const [x, y] = along(i, k / 3, 0.91, 0.92);
-            d += circle(x * s, y, 0.018);
-          }
-          for (let k = 0; k < 2; k++) {
-            const [x, y] = along(i, (k + 0.5) / 2, 0.83, 0.85);
-            if (y < 0.45) d += drop(x * s, y, 0.04, (Math.atan2(0.1 - y, -x * s) * 180) / Math.PI, 0.45);
-          }
-        }
-      }
-      d += smooth(mirror(right.slice(0, 9).concat([[0.2, 0.66], [0, 0.66]])).map(([x, y]) => [x * 0.74, 0.04 + (y - 0.04) * 0.76]), true);
-      // Base like a small gate, with slits between its tiers.
-      d += "M-0.06 0.815V0.76A0.06 0.06 0 0 1 0.06 0.76V0.815Z" + circle(-0.19, 0.77, 0.022) + circle(0.19, 0.77, 0.022) + circle(-0.13, 0.66, 0.015) + circle(0.13, 0.66, 0.015)
-        + "M-0.22 0.695H-0.1V0.705H-0.22ZM0.1 0.695H0.22V0.705H0.1Z";
-      cut(g, d);
-      // The tree of life: a trunk, curling branches with leaves and small flowers.
-      let branches = "", leaves = "M-0.05 0.64C-0.02 0.2 -0.03 -0.3 -0.012 -0.66L0.012 -0.66C0.03 -0.3 0.02 0.2 0.05 0.64Z" + drop(0, -0.64, 0.2, -90, 0.35);
-      [[0.4, 0.33, 0.2], [0.12, 0.34, 0.22], [-0.16, 0.27, 0.2], [-0.4, 0.17, 0.14]].forEach(([y, len, up]) => {
-        for (const s of [1, -1]) {
-          const pts = cubicPts([0, y], [len * 0.35, y - up * 0.05], [len * 0.75, y - up * 0.3], [len, y - up], 8).concat(curl([len, y - up], -60, 0.06, 1.25, 1));
-          branches += smooth(pts.map(([x, yy]) => [x * s, yy]));
-          leaves += drop(len * 0.3 * s, y - up * 0.08, 0.09, s > 0 ? -70 : -110, 0.4) + drop(len * 0.45 * s, y - up * 0.2, 0.08, s > 0 ? 60 : 120, 0.4)
-            + drop(len * 0.66 * s, y - up * 0.5, 0.09, s > 0 ? -50 : -130, 0.4) + drop(len * 0.8 * s, y - up * 0.72, 0.07, s > 0 ? 40 : 140, 0.4);
-          const fc = polar(0.055, s > 0 ? 50 : 130, [len * s, y - up]);
-          for (let k = 0; k < 6; k++) leaves += drop(fc[0], fc[1], 0.045, k * 60, 0.5);
-        }
-      });
-      el("path", { d: branches, fill: "none", stroke: C.shadow, "stroke-width": 0.03, "stroke-linecap": "round" }, g);
-      el("path", { d: leaves, fill: C.shadow }, g);
-    }
-
-    function figure(g) {
-      const body = [[-0.05, -0.6], [0.05, -0.6], [0.05, -0.6], [0.07, -0.56], [0.085, -0.52], [0.085, -0.52], [0.13, -0.49], [0.19, -0.465], [0.19, -0.465],
-        [0.1, -0.455], [0.1, -0.455], [0.105, -0.435], [0.085, -0.425], [0.09, -0.405], [0.09, -0.405], [0.05, -0.38], [0.045, -0.35],
-        [0.11, -0.31], [0.15, -0.24], [0.14, -0.14], [0.07, -0.03], [0.07, -0.03], [0.1, 0], [0.1, 0], [0.1, 0.05], [0.1, 0.05],
-        [0.17, 0.2], [0.24, 0.42], [0.24, 0.42], [0.16, 0.42], [0.16, 0.42],
-        [0.2, 0.62], [0.24, 0.86], [0.26, 0.93], [0.37, 0.98], [0.37, 0.98], [0.14, 0.99], [0.14, 0.99], [0.16, 0.9], [0.12, 0.7], [0.07, 0.46], [0.07, 0.46],
-        [0, 0.46], [0, 0.46], [-0.06, 0.62], [-0.14, 0.86], [-0.12, 0.94], [-0.04, 0.98], [-0.04, 0.98], [-0.25, 0.99], [-0.25, 0.99], [-0.22, 0.9], [-0.16, 0.62], [-0.14, 0.42], [-0.14, 0.42],
-        [-0.27, 0.42], [-0.27, 0.42], [-0.2, 0.2], [-0.12, 0.05], [-0.12, 0.05], [-0.09, -0.03], [-0.13, -0.18], [-0.13, -0.3],
-        [-0.06, -0.37], [-0.07, -0.46], [-0.08, -0.55]];
-      const flap = [[0.02, 0.04], [0.02, 0.04], [0.1, 0.3], [0.13, 0.64], [0.13, 0.64], [0.05, 0.4], [-0.02, 0.1]];
-      const crown = [[-0.07, -0.58], [-0.07, -0.58], [-0.085, -0.66], [-0.06, -0.68], [-0.06, -0.68], [-0.065, -0.75], [-0.04, -0.77], [-0.04, -0.77], [-0.035, -0.86],
-        [0, -1], [0, -1], [0.035, -0.86], [0.04, -0.77], [0.04, -0.77], [0.065, -0.75], [0.06, -0.68], [0.06, -0.68], [0.085, -0.66], [0.07, -0.58], [0.07, -0.58]];
-      const flare = [[-0.06, -0.66], [-0.06, -0.66], [-0.2, -0.68], [-0.27, -0.6], [-0.23, -0.52], [-0.16, -0.54], [-0.19, -0.59], [-0.19, -0.59], [-0.07, -0.56]];
-      // Perforations: eye, necklace, belt, chest jewel and a lattice on the cloth.
-      let holes = "M0.035 -0.515Q0.06 -0.53 0.075 -0.512Q0.055 -0.502 0.035 -0.515Z";
-      for (let i = 0; i < 6; i++) holes += circle(0.045 + i * 0.015, -0.32 + i * 0.025, 0.008);
-      for (let i = 0; i < 6; i++) holes += `M${P([-0.09 + i * 0.035, 0.03])}l0.012 -0.012l0.012 0.012l-0.012 0.012Z`;
-      for (let y = 0.13; y < 0.4; y += 0.075) {
-        const x0 = -0.12 - (y - 0.05) * 0.4 + 0.05, x1 = 0.1 + (y - 0.05) * 0.4 - 0.05;
-        for (let x = x0; x < x1; x += 0.06) if (Math.abs(x - 0.06) > 0.04) holes += `M${P([x, y - 0.02])}l0.016 0.02l-0.016 0.02l-0.016 -0.02Z`;
-      }
-      holes += `M${P([0.02, -0.25])}l0.03 0.04l-0.03 0.04l-0.03 -0.04Z`;
-      let flapDots = "";
-      for (let k = 0; k < 4; k++) flapDots += circle(0.05 + k * 0.022, 0.16 + k * 0.1, 0.012);
-      let crownDots = "";
-      for (const y of [-0.9, -0.81, -0.72, -0.64]) crownDots += circle(0, y, 0.012);
-      cut(g, smooth(body, true) + holes + flapDots);
-      cut(g, smooth(flap, true) + flapDots);
-      cut(g, smooth(crown, true) + crownDots);
-      cut(g, smooth(flare, true) + circle(-0.2, -0.62, 0.016) + circle(-0.14, -0.62, 0.012));
-    }
-
-    function buildKelir(parent, L) {
-      const m = u * 0.045, K = { x: m, y: m, w: W - 2 * m, h: H - 2 * m }, box = { x: m, y: m, width: K.w, height: K.h };
-      const g = el("g", {}, parent);
-      el("rect", { x: -W, y: -H, width: W * 3, height: H * 3, fill: C.night }, g);
-      const glow = el("radialGradient", { id: "mh-kelir", gradientUnits: "userSpaceOnUse", cx: W / 2, cy: K.y + K.h * 0.58, r: Math.max(K.w, K.h) * 0.72 }, defs);
-      [[0, "#ffe9b0"], [0.4, "#f7bd5e"], [0.78, "#c0602a"], [1, "#6a2812"]].forEach(([o, c]) => el("stop", { offset: o, "stop-color": c }, glow));
-      el("rect", { ...box, fill: "url(#mh-kelir)" }, g);
-      const hot = el("radialGradient", { id: "mh-hot", gradientUnits: "userSpaceOnUse", cx: W / 2, cy: K.y + K.h * 0.55, r: Math.max(K.w, K.h) * 0.5 }, defs);
-      [[0, "#fff8e0", 1], [1, "#fff8e0", 0]].forEach(([o, c, a]) => el("stop", { offset: o, "stop-color": c, "stop-opacity": a }, hot));
-      const hotRect = el("rect", { ...box, fill: "url(#mh-hot)" }, g);
-      el("rect", { x: m * 0.45, y: m * 0.45, width: W - m * 0.9, height: H - m * 0.9, fill: "none", stroke: C.maroon, "stroke-width": m * 0.5 }, g);
-      el("rect", { x: m * 0.82, y: m * 0.82, width: W - m * 1.64, height: H - m * 1.64, fill: "none", stroke: C.gold, "stroke-width": Math.max(0.8, m * 0.06), opacity: 0.8 }, g);
-      const clip = el("clipPath", { id: "mh-kclip" }, defs);
-      el("rect", box, clip);
-      const stage = el("g", { "clip-path": "url(#mh-kclip)" }, g);
-
-      // Sizes: the tree of life in the middle, two puppets beside it.
-      const sg = Math.min((K.h * 0.8) / 1.82, (K.w * 0.6) / 1.24), sf = sg * 0.62;
-      const base = Math.min(K.y + K.h * 0.95, H / 2 + sg * 0.9);
-      const blur = (id) => { const f = el("filter", { id, x: "-30%", y: "-30%", width: "160%", height: "160%" }, defs); return el("feGaussianBlur", { stdDeviation: 0 }, f); };
-
-      const gw = el("g", {}, stage);
-      const gi = el("g", {}, gw);
-      el("path", { d: "M0 0.815V3", stroke: C.shadow, "stroke-width": 0.022 }, gi);
-      gunungan(gi);
-      // Before it rises, the tree waits fully below the screen.
-      const gun = { wrap: gw, inner: gi, blur: blur("mh-gblur"), x: W / 2, base, s: sg, drop: K.y + K.h - base + sg * 1.95 };
-
-      const figs = [1, -1].map((side, i) => {
-        const x = W / 2 - side * Math.max(sg * 0.62 + sf * 0.3, 0) ;
-        const fx = side > 0 ? Math.max(K.x + sf * 0.34, x) : Math.min(K.x + K.w - sf * 0.34, x);
-        const wrap = el("g", {}, stage);
-        const rods = el("path", { fill: "none", stroke: C.shadow, "stroke-width": Math.max(0.8, sf * 0.012) }, wrap);
-        const inner = el("g", {}, wrap);
-        const armBack = el("g", {}, inner), foreBack = el("g", {}, inner);
-        figure(inner);
-        const armFront = el("g", {}, inner), foreFront = el("g", {}, inner);
-        const upper = "M-0.03 0L0.03 0L0.018 0.36L-0.018 0.36Z" + circle(0, 0, 0.032) + circle(0, 0.12, 0.026);
-        const fore = "M-0.02 0L0.02 0L0.011 0.33L-0.011 0.33Z" + circle(0, 0, 0.022) + "M-0.012 0.32Q-0.04 0.38 0.01 0.43Q0.03 0.38 0.012 0.32Z";
-        for (const a of [armBack, armFront]) el("path", { d: upper, fill: C.shadow }, a);
-        for (const a of [foreBack, foreFront]) el("path", { d: fore, fill: C.shadow }, a);
-        return { side, wrap, inner, rods, armBack, foreBack, armFront, foreFront, blur: blur(`mh-fblur${i}`), x: fx, base: base, s: sf, phase: i * 1.7 };
-      });
-      return { g, hotRect, gun, figs, K };
     }
 
     // ---------- Songket title panel ----------
@@ -600,122 +474,89 @@
       ];
       kites.forEach((k, i) => (k.str = el("path", {}, strings)));
       const batik = el("g", {}, world);
-      L.flowers.forEach((F) => buildFlower(batik, F));
+      // Each flower gets its own start delay (the third one blooms a little later).
+      const flowers = L.flowers.map((F) => {
+        const at = [wax.length, dyes.length, fills.length];
+        const g = buildFlower(batik, F);
+        [wax, dyes, fills].forEach((list, k) => list.slice(at[k]).forEach((o) => (o.order += F.delay || 0)));
+        return { g, F };
+      });
       const panel = buildPanel(world, L);
-      const kel = buildKelir(svg, L);
 
-      // Wax lines get a dash so they can draw themselves.
+      // Wax lines get a dash so they can draw themselves. The gap is a little longer than the line,
+      // so an undrawn line hides its round cap too (no stray dot at the start).
       for (const w of wax) {
         const len = w.p.getTotalLength();
-        w.p.setAttribute("stroke-dasharray", `${n3(len)} ${n3(len)}`);
-        w.p.setAttribute("stroke-dashoffset", n3(len));
-        w.len = len;
+        w.p.setAttribute("stroke-dasharray", `${n3(len)} ${n3(len + 0.3)}`);
+        w.len = len + 0.15;
+        w.p.setAttribute("stroke-dashoffset", n3(w.len));
       }
 
       // Animated values, read by update() on every frame.
+      const low = (i) => ({ x: L.kitesA[i].x - (i ? -1 : 1) * W * 0.12, y: H + L.kitesA[i].s * 1.3, s: L.kitesA[i].s });
       S = {
-        kel: { o: 1, s: 1, glow: 0.1 },
-        gun: { y: 1, blur: 5, sx: 1, o: 1 },
-        figs: [{ dx: 1, blur: 6, o: 0 }, { dx: 1, blur: 6, o: 0 }],
-        kites: L.kitesA.map((a, i) => ({ x: a.x - (i ? -1 : 1) * W * 0.12, y: H + a.s * 1.3, s: a.s })),
+        kites: L.kitesA.map((a, i) => low(i)),
+        blooms: flowers.map(() => ({ k: 0.86, r: -8 })),
         panel: { sy: 0, o: 0 },
-        land: { y: u * 0.06 },
+        batik: { o: 1 },
       };
-      R = { L, kel, kites, panel, land, sunG, world };
+      R = { L, kites, panel, sunG, flowers, batik, clouds };
 
       tl = gsap.timeline({ repeat: -1, onUpdate: update });
       tl.set({}, {}, LOOP);
-      // 1. Wayang kulit: lamp comes up, the tree of life is planted, two puppets step in.
-      tl.fromTo(S.kel, { glow: 0.1 }, { glow: 0.45, duration: 0.8, ease: "sine.out" }, 0)
-        .fromTo(S.gun, { y: 1, blur: 5 }, { y: 0, blur: 0, duration: 1.1, ease: "power3.out" }, 0.05)
-        .fromTo(S.figs, { dx: 1, blur: 7, o: 0 }, { dx: 0, blur: 0, o: 1, duration: 0.8, ease: "power2.out", stagger: 0.15 }, 0.9)
-        .fromTo(S.gun, { sx: 1 }, { sx: -1, duration: 0.3, ease: "power1.inOut", yoyo: true, repeat: 1, immediateRender: false }, 2.0)
-        .fromTo(S.kel, { glow: 0.45 }, { glow: 1, duration: 0.6, ease: "sine.in", immediateRender: false }, 2.6)
-        .fromTo([S.gun, ...S.figs], { o: 1 }, { o: 0, duration: 0.5, ease: "sine.in", immediateRender: false }, 2.75)
-        .fromTo(S.kel, { o: 1, s: 1 }, { o: 0, s: 1.18, duration: 0.7, ease: "power2.in", immediateRender: false }, 2.95);
-      // 2. The sky: land settles, kites rise, batik draws itself and dyes in.
-      tl.fromTo(S.land, { y: u * 0.06 }, { y: 0, duration: 1.2, ease: "power2.out" }, 3.0);
+      // 1. Clouds draw in the empty sky, then the wau bulan rise from below.
+      for (const w of wax) if (w.p.closest("g").parentNode === clouds) {
+        tl.fromTo(w.p, { attr: { "stroke-dashoffset": w.len } }, { attr: { "stroke-dashoffset": 0 }, duration: 0.7, ease: "sine.inOut" }, 0.1 + w.order);
+      }
+      for (const fl of fills) if (fl.p.closest("g").parentNode === clouds) {
+        tl.fromTo(fl.p, { attr: { "fill-opacity": 0 } }, { attr: { "fill-opacity": fl.max ?? 1 }, duration: 0.7, ease: "sine.out" }, 0.7 + fl.order);
+      }
       S.kites.forEach((k, i) => {
         const a = L.kitesA[i], b = L.kitesB[i];
-        tl.fromTo(k, { x: a.x - (i ? -1 : 1) * W * 0.12, y: H + a.s * 1.3, s: a.s }, { x: a.x, y: a.y, duration: 1.7, ease: "power2.out" }, 3.2 + i * 0.35)
-          .to(k, { x: b.x, y: b.y, s: b.s, duration: 1.3, ease: "power2.inOut" }, 6.5 + i * 0.1);
+        tl.fromTo(k, low(i), { x: a.x, y: a.y, duration: 1.8, ease: "power2.out" }, 0.3 + i * 0.35)
+          .to(k, { x: b.x, y: b.y, s: b.s, duration: 1.3, ease: "power2.inOut" }, 4.7 + i * 0.1)
+          .to(k, { ...low(i), duration: 1.35, ease: "power2.in" }, 9.2 + i * 0.1);
       });
-      const batikAt = 4.1;
-      for (const w of wax) {
-        const inCloud = w.p.closest("g").parentNode === clouds;
-        tl.fromTo(w.p, { attr: { "stroke-dashoffset": w.len } }, { attr: { "stroke-dashoffset": 0 }, duration: 0.7, ease: "sine.inOut" }, (inCloud ? 3.5 : batikAt) + w.order);
+      // 2. Batik: wax lines draw like a canting, the dye soaks in and each flower opens.
+      const batikAt = 1.4;
+      for (const w of wax) if (w.p.closest("g").parentNode !== clouds) {
+        tl.fromTo(w.p, { attr: { "stroke-dashoffset": w.len } }, { attr: { "stroke-dashoffset": 0 }, duration: 0.7, ease: "sine.inOut" }, batikAt + w.order);
       }
-      for (const fl of fills) {
-        const inCloud = fl.p.closest("g").parentNode === clouds;
-        tl.fromTo(fl.p, { attr: { "fill-opacity": 0 } }, { attr: { "fill-opacity": fl.max ?? 1 }, duration: 0.7, ease: "sine.out" }, (inCloud ? 4.2 : batikAt + 1.1) + fl.order);
+      for (const fl of fills) if (fl.p.closest("g").parentNode !== clouds) {
+        tl.fromTo(fl.p, { attr: { "fill-opacity": 0 } }, { attr: { "fill-opacity": fl.max ?? 1 }, duration: 0.7, ease: "sine.out" }, batikAt + 1.1 + fl.order);
       }
       for (const d of dyes) tl.fromTo(d.p, { attr: { "stroke-width": 0 } }, { attr: { "stroke-width": d.w }, duration: 0.6, ease: "sine.out" }, batikAt + 1 + d.order);
+      S.blooms.forEach((b, i) => tl.fromTo(b, { k: 0.86, r: -8 }, { k: 1, r: 0, duration: 1.6, ease: "sine.inOut" }, batikAt + 0.9 + (L.flowers[i].delay || 0)));
       // 3. Songket frame unrolls, triangles rise, the title appears.
-      tl.fromTo(S.panel, { sy: 0.02, o: 0 }, { sy: 1, o: 1, duration: 0.7, ease: "power3.out" }, 6.8);
+      const pAt = 5;
+      tl.fromTo(S.panel, { sy: 0.02, o: 0 }, { sy: 1, o: 1, duration: 0.7, ease: "power3.out" }, pAt);
       panel.tris.forEach((t) => {
         const from = Math.abs(t.i - (t.n - 1) / 2);
-        tl.fromTo(t.g, { scaleY: 0, svgOrigin: `${t.cx} ${t.yb}` }, { scaleY: 1, duration: 0.35, ease: "back.out(2)" }, 7.15 + from * 0.05);
+        tl.fromTo(t.g, { scaleY: 0, svgOrigin: `${t.cx} ${t.yb}` }, { scaleY: 1, duration: 0.35, ease: "back.out(2)" }, pAt + 0.35 + from * 0.05);
       });
-      tl.fromTo(panel.lineEls, { opacity: 0, y: panel.fs * 0.35 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out", stagger: 0.15 }, 7.4);
-      if (panel.subEls.length) tl.fromTo(panel.subEls, { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "sine.out" }, 8.05);
-      // 4. Everything folds back into the dark screen, ready to loop.
-      tl.to(S.panel, { sy: 0.02, o: 0, duration: 0.5, ease: "power2.in" }, 10.7)
-        .set(S.gun, { y: 1, blur: 5, o: 1, sx: 1 }, 11)
-        .fromTo(S.kel, { o: 0, s: 1.18, glow: 0.1 }, { o: 1, s: 1, duration: 1, ease: "power2.out", immediateRender: false }, 11);
+      tl.fromTo(panel.lineEls, { opacity: 0, y: panel.fs * 0.35 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out", stagger: 0.15 }, pAt + 0.6);
+      if (panel.subEls.length) tl.fromTo(panel.subEls, { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "sine.out" }, pAt + 1.25);
+      // 4. The panel folds away, the batik fades and the kites drift down: back to the opening sky.
+      tl.to(S.panel, { sy: 0.02, o: 0, duration: 0.5, ease: "power2.in" }, 8.9)
+        .fromTo(S.batik, { o: 1 }, { o: 0, duration: 1.1, ease: "sine.inOut", immediateRender: false }, 9.4);
     }
 
-    // Per-frame work: sways, flicker, puppet arms, kite strings and the gold glint.
+    // Per-frame work: sways, blooms, kite strings and the gold glint.
     function update() {
       const t = tl.time();
-      const { L, kel, kites, panel, land, sunG } = R;
+      const { L, kites, panel, sunG, flowers, batik, clouds } = R;
 
-      kel.g.setAttribute("opacity", n3(S.kel.o));
-      R.world.style.display = S.kel.o > 0.999 && S.kel.s < 1.001 ? "none" : "";
-      kel.g.style.display = S.kel.o < 0.005 ? "none" : "";
-      kel.g.setAttribute("transform", `translate(${W / 2} ${H / 2}) scale(${n3(S.kel.s)}) translate(${-W / 2} ${-H / 2})`);
-      const flicker = 0.07 * wave(t, 23) + 0.05 * wave(t, 37, 1) + 0.03 * wave(t, 61, 2);
-      kel.hotRect.setAttribute("opacity", n3(Math.max(0, Math.min(1, S.kel.glow + flicker))));
+      // The sun breathes very slowly.
+      const sk = 1 + 0.025 * wave(t, 1);
+      sunG.setAttribute("transform", `translate(${n3(W * 0.6)} ${n3(L.horizon - u * 0.1)}) scale(${n3(sk)}) translate(${n3(-W * 0.6)} ${n3(-(L.horizon - u * 0.1))})`);
 
-      const setBlur = (wrap, node, b, id) => {
-        if (b > 0.05) { node.setAttribute("stdDeviation", n3(b * u * 0.004)); wrap.setAttribute("filter", `url(#${id})`); }
-        else wrap.removeAttribute("filter");
-      };
-      const G = kel.gun;
-      const gsway = 3 * wave(t, 6);
-      G.wrap.setAttribute("opacity", n3(S.gun.o));
-      setBlur(G.wrap, G.blur, S.gun.blur, "mh-gblur");
-      G.inner.setAttribute("transform", `translate(${n3(G.x)} ${n3(G.base + S.gun.y * G.drop)}) rotate(${n3(gsway)}) scale(${n3(G.s * S.gun.sx)} ${n3(G.s)}) translate(0 -0.82)`);
-
-      kel.figs.forEach((F, i) => {
-        const st = S.figs[i];
-        F.wrap.setAttribute("opacity", n3(st.o));
-        if (st.o < 0.005) return;
-        setBlur(F.wrap, F.blur, st.blur, `mh-fblur${i}`);
-        const fx = F.x - F.side * st.dx * F.s * 0.5, bob = F.s * 0.015 * wave(t, 8, F.phase);
-        F.inner.setAttribute("transform", `translate(${n3(fx)} ${n3(F.base + bob)}) scale(${n3(F.side * F.s)} ${n3(F.s)}) translate(0 -1)`);
-        // Arms: angles from straight down, positive is forward.
-        const dir = (a) => [Math.sin(rad(a)), Math.cos(rad(a))];
-        const pose = (sh, a1, a2, up, fo) => {
-          const e = [sh[0] + dir(a1)[0] * 0.36, sh[1] + dir(a1)[1] * 0.36];
-          up.setAttribute("transform", `translate(${P(sh)}) rotate(${n3(-a1)})`);
-          fo.setAttribute("transform", `translate(${P(e)}) rotate(${n3(-a2)})`);
-          return [e[0] + dir(a2)[0] * 0.4, e[1] + dir(a2)[1] * 0.4];
-        };
-        const w1 = wave(t, 9, F.phase), w2 = wave(t, 9, F.phase + 1.2);
-        const hf = pose([0.02, -0.29], 30 + 22 * w1, 95 + 30 * w2, F.armFront, F.foreFront);
-        const hb = pose([-0.05, -0.28], -8 + 6 * w2, 25 + 10 * w1, F.armBack, F.foreBack);
-        const toPx = ([x, y]) => [fx + F.side * F.s * x, F.base + bob + F.s * (y - 1)];
-        const foot = toPx([0.04, 0.5]);
-        let d = `M${P(foot)}L${P([foot[0] - F.side * F.s * 0.05, kel.K.y + kel.K.h + 4])}`;
-        for (const h of [hf, hb]) {
-          const a = toPx(h);
-          d += `M${P(a)}L${P([a[0] - F.side * F.s * 0.12, kel.K.y + kel.K.h + 4])}`;
-        }
-        F.rods.setAttribute("d", d);
+      const bo = n3(S.batik.o);
+      batik.setAttribute("opacity", bo);
+      clouds.setAttribute("opacity", bo);
+      flowers.forEach(({ g, F }, i) => {
+        const b = S.blooms[i], k = b.k * F.s;
+        g.setAttribute("transform", `translate(${n3(F.x)} ${n3(F.y)}) rotate(${n3(b.r * F.flip)}) scale(${n3(k * F.flip)} ${n3(k)})`);
       });
-
-      land.setAttribute("transform", `translate(0 ${n3(S.land.y)})`);
-      sunG.setAttribute("transform", `translate(0 ${n3(S.land.y * 1.6)})`);
 
       kites.forEach((k, i) => {
         const st = S.kites[i];
@@ -733,7 +574,8 @@
       pg.setAttribute("opacity", n3(S.panel.o));
       pg.style.display = S.panel.o < 0.005 ? "none" : "";
       pg.setAttribute("transform", `translate(0 ${n3(p.y)}) scale(1 ${n3(Math.max(0.001, S.panel.sy))}) translate(0 ${n3(-p.y)})`);
-      const glint = ((t % 3) / 3) * 2.6 - 1.3;
+      // One gold glint crosses the cloth each loop, centred at 7.5 s.
+      const glint = ((((t - 6) % 3) + 3) % 3) / 3 * 2.6 - 1.3;
       document.getElementById("mh-gold").setAttribute("gradientTransform", `translate(${n3(glint * p.w)} ${n3(glint * p.h)})`);
     }
 
@@ -771,9 +613,12 @@
       const q = params.get("sound");
       let want = q === "1" || q === "effects";
       let music = q !== "effects";
-      const MASTER = 0.7, MUSIC = 0.24;
-      let ctx = null, master, fx, mus, verb, echo, noiseBuf, timer = 0, offTimer = 0;
+      const MASTER = 0.85, MUSIC = 0.12;
+      let ctx = null, master, noiseBuf, irBuf, sess = null, timer = 0, offTimer = 0;
+      // Buses of the current session. Every on gets fresh ones, so nothing queued before an off can leak in.
+      let fx, mus, verb, echo;
       const plucks = new Map();
+      const booked = new Map();
 
       // Timeline clock, sampled on every animation frame.
       let lastT = 0, lastPerf = 0, wraps = 0, synced = false, offset = 0, until = 0;
@@ -787,6 +632,7 @@
 
       const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
       const rnd = (a, b) => a + Math.random() * (b - a);
+      const B = LOOP / 16;
 
       function init() {
         ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -798,13 +644,8 @@
         comp.release.value = 0.25;
         comp.connect(ctx.destination);
         master = ctx.createGain();
-        master.gain.value = 0;
+        master.gain.value = MASTER;
         master.connect(comp);
-        fx = ctx.createGain();
-        fx.connect(master);
-        mus = ctx.createGain();
-        mus.gain.value = music ? MUSIC : 0;
-        mus.connect(master);
 
         // White noise, shared by wind, brushes, drums and swishes.
         const sr = ctx.sampleRate;
@@ -812,25 +653,39 @@
         const nd = noiseBuf.getChannelData(0);
         for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
 
-        // Warm room reverb from a generated, softened impulse.
-        verb = ctx.createConvolver();
-        const len = Math.floor(sr * 2.6), ir = ctx.createBuffer(2, len, sr);
+        // Warm room reverb impulse: softened noise with a smooth decay.
+        const len = Math.floor(sr * 2.6);
+        irBuf = ctx.createBuffer(2, len, sr);
         for (let c = 0; c < 2; c++) {
-          const d = ir.getChannelData(c);
+          const d = irBuf.getChannelData(c);
           let lp = 0;
           for (let i = 0; i < len; i++) {
             lp += 0.35 * (Math.random() * 2 - 1 - lp);
             d[i] = lp * Math.pow(1 - i / len, 3.2) * (i < sr * 0.012 ? i / (sr * 0.012) : 1);
           }
         }
-        verb.buffer = ir;
+      }
+
+      // One listening session: its own output, effects and music buses, reverb, echo and drone.
+      function openSession() {
+        const out = ctx.createGain(), t = ctx.currentTime;
+        out.gain.setValueAtTime(0, t);
+        out.gain.linearRampToValueAtTime(1, t + 0.3);
+        out.connect(master);
+        fx = ctx.createGain();
+        fx.connect(out);
+        mus = ctx.createGain();
+        mus.gain.value = music ? MUSIC : 0;
+        mus.connect(out);
+        verb = ctx.createConvolver();
+        verb.buffer = irBuf;
         const vOut = ctx.createGain();
         vOut.gain.value = 0.55;
-        verb.connect(vOut).connect(master);
+        verb.connect(vOut).connect(out);
 
-        // A soft echo for the music only.
+        // A soft dotted-eighth echo for the music only.
         echo = ctx.createDelay(1);
-        echo.delayTime.value = 0.5625;
+        echo.delayTime.value = B * 0.75;
         const fb = ctx.createGain(), eLp = ctx.createBiquadFilter(), eOut = ctx.createGain();
         fb.gain.value = 0.28;
         eLp.type = "lowpass";
@@ -839,8 +694,8 @@
         echo.connect(eLp).connect(fb).connect(echo);
         eLp.connect(eOut).connect(mus);
 
-        // Low drone on D and A, breathing slowly. It runs all the time under the music bus.
-        const dLp = ctx.createBiquadFilter(), dG = ctx.createGain(), breath = ctx.createOscillator(), bG = ctx.createGain();
+        // Low drone on D and A, breathing slowly under the music bus.
+        const dLp = ctx.createBiquadFilter(), dG = ctx.createGain(), bG = ctx.createGain(), oscs = [];
         dLp.type = "lowpass";
         dLp.frequency.value = 520;
         dG.gain.value = 0.1;
@@ -852,11 +707,27 @@
           g.gain.value = v;
           o.connect(g).connect(dLp);
           o.start();
+          oscs.push(o);
         });
+        const breath = ctx.createOscillator();
         breath.frequency.value = 1 / 6;
         bG.gain.value = 0.03;
         breath.connect(bG).connect(dG.gain);
         breath.start();
+        oscs.push(breath);
+        booked.clear();
+        return { out, mus, oscs };
+      }
+      // Fade a session out in about 0.15 s, then stop and drop it.
+      function closeSession(s) {
+        const t = ctx.currentTime;
+        s.out.gain.cancelScheduledValues(t);
+        s.out.gain.setValueAtTime(s.out.gain.value, t);
+        s.out.gain.linearRampToValueAtTime(0, t + 0.15);
+        setTimeout(() => {
+          s.oscs.forEach((o) => { try { o.stop(); } catch (e) {} });
+          s.out.disconnect();
+        }, 400);
       }
 
       // ---- Small building blocks ----
@@ -956,7 +827,7 @@
           hit(g, at, level * 0.3, 0.002, 0.09);
         }
       }
-      // Band-passed noise that moves between two pitches: puppet swish, cloth, air.
+      // Band-passed noise that moves between two pitches: cloth, air and the fold.
       function swish(at, dur, f0, f1, level, pk = 0.5, Q = 0.9, pan = 0, wet = 0.3) {
         const b = filter("bandpass", f0, Q, route(fx, wet, pan));
         b.frequency.setValueAtTime(f0, at);
@@ -985,26 +856,29 @@
       }
       // The busur hum of a wau bulan: a buzzy drone that rises with the kite and wavers in the wind.
       function hum(at, dur, f, level, pan) {
-        const out = route(fx, 0.35, pan);
+        const out = route(fx, 0.35, pan), end = at + dur;
         const env = amp(out);
         env.gain.setValueAtTime(0, at);
         env.gain.linearRampToValueAtTime(level, at + 0.9);
-        env.gain.setValueAtTime(level, at + dur - 1.4);
-        env.gain.linearRampToValueAtTime(0, at + dur);
+        env.gain.setValueAtTime(level, at + 3.2);
+        env.gain.linearRampToValueAtTime(level * 0.45, at + 4.6);
+        env.gain.setValueAtTime(level * 0.45, end - 1.8);
+        env.gain.linearRampToValueAtTime(0, end);
         const trem = amp(env, 0.75);
-        const l1 = osc("sine", rnd(4.6, 5.6), at, at + dur, amp(trem.gain, 0.2));
-        const l2 = osc("sine", rnd(0.6, 0.9), at, at + dur, amp(trem.gain, 0.12));
+        osc("sine", rnd(4.6, 5.6), at, end, amp(trem.gain, 0.2));
+        osc("sine", rnd(0.6, 0.9), at, end, amp(trem.gain, 0.12));
         const lp = filter("lowpass", 1900, 0.4, trem);
         const bp = filter("bandpass", f * 3, 1.4, lp);
         const vib = ctx.createGain();
         vib.gain.value = f * 0.012;
-        const wob = osc("sine", 0.35, at, at + dur, vib);
+        osc("sine", 0.35, at, end, vib);
         [1, 1.007].forEach((r) => {
-          const o = osc("sawtooth", f * r * 0.93, at, at + dur, bp);
-          o.frequency.exponentialRampToValueAtTime(f * r, at + 1.7);
+          const o = osc("sawtooth", f * r * 0.93, at, end, bp);
+          o.frequency.exponentialRampToValueAtTime(f * r, at + 1.8);
+          o.frequency.setValueAtTime(f * r, end - 1.3);
+          o.frequency.exponentialRampToValueAtTime(f * r * 0.88, end);
           vib.connect(o.frequency);
         });
-        return [l1, l2, wob];
       }
       // Paper flutter: noise chopped by a fast wobble.
       function flutter(at, dur, level, pan) {
@@ -1095,71 +969,67 @@
 
       // ---- What plays when (loop seconds). Effects follow the picture. ----
       const FX = [
-        // Wayang kulit: the lamp comes up with a gong, the tree rises, puppets step in on the drum.
-        [0, (a) => gong(a, hz(38), 1)],
-        [0.05, (a) => swish(a, 1.0, 220, 700, 0.05, 0.3, 0.8, 0, 0.3)],
-        [0.9, (a) => drum(a, "dung", 0.5, -0.3)],
-        [1.05, (a) => drum(a, "dung", 0.42, 0.3)],
-        [1.2, (a) => drum(a, "tak", 0.4, -0.2)],
-        [1.35, (a) => drum(a, "tak", 0.34, 0.2)],
-        [1.65, (a) => drum(a, "dung", 0.3, 0)],
-        // The tree of life turns over and back: two leather swishes.
-        [2.0, (a) => swish(a, 0.32, 700, 1500, 0.1, 0.55, 1.1, -0.2)],
-        [2.3, (a) => swish(a, 0.32, 1500, 650, 0.09, 0.45, 1.1, 0.2)],
-        // The light floods out into the sky: wind.
-        [2.6, (a) => wind(a, 2.6, 0.17, 0.4)],
-        // Wau bulan rise: busur hum and a paper flutter each.
-        [3.2, (a) => { hum(a, 4.8, hz(50), 0.03, -0.35); flutter(a, 1.8, 0.035, -0.35); }],
-        [3.55, (a) => { hum(a, 4.3, hz(57), 0.022, 0.4); flutter(a, 1.6, 0.028, 0.4); }],
-        // Batik: canting strokes on the clouds, then the flowers.
-        [3.5, (a) => brush(a, 0.7, 0.05, 2600, -0.3)],
-        [3.72, (a) => brush(a, 0.6, 0.035, 3200, 0.4)],
-        [4.1, (a) => brush(a, 0.7, 0.06, 2400, -0.5)],
-        [4.32, (a) => brush(a, 0.7, 0.05, 2900, 0.5)],
-        [4.55, (a) => brush(a, 0.75, 0.055, 2200, -0.4)],
-        [4.9, (a) => brush(a, 0.7, 0.045, 3100, 0.45)],
-        [5.1, (a) => brush(a, 0.6, 0.04, 2700, -0.2)],
-        // Dye soaks in: a watery swell and a rising pentatonic shimmer.
-        [5.1, (a) => swish(a, 1.5, 300, 1300, 0.05, 0.5, 0.6, 0, 0.5)],
-        [5.15, (a) => chime(a, hz(81), 0.05, 1.6, -0.4)],
-        [5.35, (a) => chime(a, hz(83), 0.045, 1.6, 0.3)],
-        [5.55, (a) => chime(a, hz(86), 0.045, 1.6, -0.2)],
-        [5.8, (a) => chime(a, hz(88), 0.04, 1.6, 0.4)],
-        [6.05, (a) => chime(a, hz(90), 0.035, 1.8, 0)],
+        // Opening: a soft airy wind that swells as the kites rise. Clouds draw in with the canting.
+        [0, (a) => wind(a, 2.8, 0.13, 0.45)],
+        [0.1, (a) => brush(a, 0.7, 0.04, 2600, -0.35)],
+        [0.35, (a) => brush(a, 0.8, 0.03, 3200, 0.4)],
+        // Wau bulan rise: busur hum and a paper flutter each, and they fall away when the kites come down.
+        [0.3, (a) => { hum(a, 10.1, hz(50), 0.03, -0.35); flutter(a, 1.8, 0.035, -0.35); }],
+        [0.65, (a) => { hum(a, 9.85, hz(57), 0.022, 0.4); flutter(a, 1.6, 0.028, 0.4); }],
+        // Batik: canting strokes for each flower (the third, in the middle, a little later).
+        [1.4, (a) => brush(a, 0.7, 0.06, 2400, -0.5)],
+        [1.62, (a) => brush(a, 0.7, 0.05, 2900, 0.5)],
+        [1.85, (a) => brush(a, 0.75, 0.055, 2200, -0.4)],
+        [2.1, (a) => brush(a, 0.7, 0.045, 2600, 0)],
+        [2.2, (a) => brush(a, 0.7, 0.04, 3100, 0.45)],
+        [2.4, (a) => brush(a, 0.6, 0.035, 2700, -0.2)],
+        [2.55, (a) => brush(a, 0.75, 0.045, 2300, 0.1)],
+        [2.9, (a) => brush(a, 0.7, 0.035, 3000, 0)],
+        // Dye soaks in and the flowers open: a watery swell and a rising pentatonic shimmer.
+        [2.4, (a) => swish(a, 1.5, 300, 1300, 0.05, 0.5, 0.6, 0, 0.5)],
+        [2.45, (a) => chime(a, hz(81), 0.05, 1.6, -0.4)],
+        [2.65, (a) => chime(a, hz(83), 0.045, 1.6, 0.3)],
+        [2.85, (a) => chime(a, hz(86), 0.045, 1.6, -0.2)],
+        [3.1, (a) => { chime(a, hz(88), 0.04, 1.6, 0.4); swish(a, 1.2, 320, 1200, 0.035, 0.5, 0.6, 0, 0.5); }],
+        [3.4, (a) => chime(a, hz(90), 0.035, 1.8, 0)],
+        [3.75, (a) => chime(a, hz(93), 0.03, 2, 0.1)],
         // Kites glide up to make room for the title.
-        [6.4, (a) => wind(a, 1.5, 0.08, 0.5)],
-        // Songket unrolls, the pucuk rebung rise with a gold chime sweep, the title lands on a gong.
-        [6.8, (a) => { swish(a, 0.7, 380, 2400, 0.16, 0.22, 0.9, 0, 0.3); drum(a + 0.1, "dung", 0.18, 0); }],
-        [7.15, (a) => {
+        [4.6, (a) => wind(a, 1.5, 0.07, 0.5)],
+        // Songket unrolls, the pucuk rebung rise with a gold chime sweep, the title lands on a soft gong.
+        [5, (a) => { swish(a, 0.7, 380, 2400, 0.16, 0.22, 0.9, 0, 0.3); drum(a + 0.1, "dung", 0.18, 0); }],
+        [5.35, (a) => {
           const steps = [...new Set(R.panel.tris.map((t) => Math.abs(t.i - (t.n - 1) / 2)))].sort((x, y) => x - y);
           steps.forEach((s, i) => chime(a + s * 0.05, hz([86, 88, 90, 93, 95, 98, 100, 102][Math.min(i, 7)]), 0.03, 0.9, 0, 0.6));
         }],
-        [7.45, (a) => gong(a, hz(45), 0.6)],
-        [8.05, (a) => R.panel.subEls.length && chime(a, hz(86), 0.035, 1.8, 0, 0.7)],
-        // The second gold glint crosses the cloth.
-        [10.05, (a) => shimmer(a, 0.9, 0.035)],
-        // The songket folds away and the shadow screen returns.
-        [10.7, (a) => { swish(a, 0.5, 2200, 320, 0.13, 0.8, 0.9, 0, 0.3); drum(a + 0.48, "dung", 0.14, 0); }],
-        [11.0, (a) => swish(a, 1.0, 250, 800, 0.06, 0.85, 0.6, 0, 0.4)],
+        [5.65, (a) => gong(a, hz(45), 0.6)],
+        [6.25, (a) => R.panel.subEls.length && chime(a, hz(86), 0.035, 1.8, 0, 0.7)],
+        // The gold glint crosses the cloth (centred at 7.5 s).
+        [7.05, (a) => shimmer(a, 0.9, 0.035)],
+        // The songket folds away, the kites drift down and the batik fades: a gentle resolve to D.
+        [8.9, (a) => { swish(a, 0.5, 2200, 320, 0.13, 0.8, 0.9, 0, 0.3); drum(a + 0.48, "dung", 0.14, 0); }],
+        [9.35, (a) => swish(a, 1.5, 1100, 280, 0.06, 0.35, 0.6, 0, 0.45)],
+        [9.7, (a) => chime(a, hz(81), 0.03, 2.2, 0.3)],
+        [10, (a) => chime(a, hz(78), 0.03, 2.2, -0.3)],
+        [10.3, (a) => chime(a, hz(74), 0.035, 2.8, 0)],
       ];
 
-      // Music: 80 bpm, 16 beats = one 12 s loop. D major pentatonic.
-      const B = 0.75, MU = [];
+      // Music: 16 beats = one loop (about 89 bpm). D major pentatonic.
+      const MU = [];
       [[0, 69, 1.5], [1.5, 71, 0.5], [2, 69, 1], [3, 66, 1], [4, 64, 1], [5, 66, 0.5], [5.5, 69, 0.5], [6, 62, 2],
         [8, 66, 1], [9, 69, 1], [10, 71, 1], [11, 74, 0.5], [11.5, 71, 0.5], [12, 69, 2], [14, 66, 1], [15, 64, 1]]
         .forEach(([b, m, d]) => MU.push([b * B, (a) => flute(a, m, d * B - 0.04, 0.16)]));
       [[50, 57, 62, 57, 54], [45, 52, 57, 52, 50], [47, 54, 59, 54, 50], [45, 52, 57, 54, 52]].forEach((notes, bar) => {
         [0, 1, 1.5, 2.5, 3].forEach((b, i) => MU.push([(bar * 4 + b) * B, (a) => pluck(a, notes[i], i ? 0.28 : 0.36, i % 2 ? 0.25 : -0.25)]));
       });
-      // Gendang on an eighth-note grid. The first bar stays light for the wayang drum.
+      // Gendang on an eighth-note grid. The first bar stays light, like an opening breath.
       for (let bar = 0; bar < 4; bar++) {
-        const pat = bar ? ["dung", 0, "tak", 0, "dung", "dung", "tak", bar === 3 ? "tak" : 0] : [0, 0, 0, 0, 0, 0, "tak", 0];
+        const pat = bar ? ["dung", 0, "tak", 0, "dung", "dung", "tak", bar === 3 ? "tak" : 0] : [0, 0, 0, 0, "dung", 0, "tak", 0];
         pat.forEach((k, i) => k && MU.push([(bar * 8 + i) * B / 2, (a) => drum(a, k, k === "dung" ? 0.26 : 0.2, 0, mus)]));
       }
 
       // ---- Scheduler: every 25 ms, queue what falls in the next ~100 ms ----
       function tick() {
-        if (!ctx || ctx.state !== "running") return;
+        if (!ctx || !sess || ctx.state !== "running") return;
         const now = performance.now() / 1000;
         if (!tl || tl.paused() || reduce.matches || document.hidden || now - lastPerf > 0.2) { synced = false; return; }
         const o = wraps * LOOP + lastT - lastPerf;
@@ -1171,42 +1041,40 @@
         const from = Math.max(until, offset + now - 0.02), to = offset + now + 0.1 + lag;
         if (to <= from) return;
         const at = (u) => Math.max(ctx.currentTime, ts.contextTime + (u - offset) - ts.performanceTime / 1000);
+        // Each event plays once per loop: a booking key per loop number stops double scheduling after a re-sync.
         for (let n = Math.floor(from / LOOP); n <= Math.floor(to / LOOP); n++) {
-          for (const list of music ? [FX, MU] : [FX]) {
-            for (const [t, fn] of list) {
-              const u = n * LOOP + t;
-              if (u > from && u <= to) fn(at(u));
+          (music ? [FX, MU] : [FX]).forEach((list, li) => list.forEach(([t, fn], i) => {
+            const u = n * LOOP + t, key = `${n}:${li}:${i}`;
+            if (u > from && u <= to && !booked.has(key)) {
+              booked.set(key, n);
+              fn(at(u));
             }
-          }
+          }));
         }
+        for (const [k, n] of booked) if (n < Math.floor(from / LOOP) - 1) booked.delete(k);
         until = to;
       }
 
-      function fade(v, time) {
-        const g = master.gain, t = ctx.currentTime;
-        g.cancelScheduledValues(t);
-        g.setValueAtTime(g.value, t);
-        g.linearRampToValueAtTime(v, t + time);
-      }
       function update() {
         const active = want && !reduce.matches && !document.hidden;
         if (active) {
           if (!ctx) init();
           clearTimeout(offTimer);
           if (ctx.state !== "running") ctx.resume().catch(() => {});
-          fade(MASTER, 0.3);
+          if (!sess) { sess = openSession(); synced = false; }
           if (!timer) timer = setInterval(tick, 25);
-        } else if (ctx) {
-          fade(0, 0.15);
+        } else if (ctx && sess) {
+          closeSession(sess);
+          sess = null;
+          synced = false;
           clearTimeout(offTimer);
           offTimer = setTimeout(() => {
             clearInterval(timer);
             timer = 0;
-            synced = false;
             ctx.suspend().catch(() => {});
-          }, 180);
+          }, 200);
         }
-        if (ctx) mus.gain.setTargetAtTime(music ? MUSIC : 0, ctx.currentTime, 0.05);
+        if (sess) sess.mus.gain.setTargetAtTime(music ? MUSIC : 0, ctx.currentTime, 0.05);
       }
 
       addEventListener("message", (e) => {
