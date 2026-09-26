@@ -262,6 +262,16 @@ a { color: var(--accent); }
 
 .site-nav .soon { color: var(--faint); cursor: default; }
 
+.site-nav .ask {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.site-nav .ask svg { width: 17px; height: 17px; flex: none; color: #1877f2; }
+
 /* Intro: one heading, one line */
 .intro { padding: 20px 0 14px; }
 

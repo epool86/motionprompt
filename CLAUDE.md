@@ -7,7 +7,7 @@ The site gives them:
 
 1. **Style gallery** (the home page): live demos of animation styles. Each style page has video
    settings (format, size, length), the style prompt to copy, and a one-line tip.
-2. **Guide** (not built yet): how to prompt, iterate, and what to do if a render times out.
+2. **Questions?** link in the header goes to the owner's Facebook (no guide page for now).
 
 Audience: friends and followers, not developers. Plain English, short sentences, no jargon
 without a one-line explanation.
@@ -32,7 +32,6 @@ index.html              home = the style directory: search, tag filters, grid of
                         Tapping a tile slides the list out and a full detail view in (preview,
                         prompt, copy); Back slides it back. Each style links as #slug
 gallery.html            old address, redirects to index.html
-guide.html              prompting tips + export to MP4
 assets/css/site.css     shared styles (design tokens on :root, light and dark)
 assets/js/*.js          shared scripts (ES modules): gallery.js (directory and views),
                         settings.js (video settings), prompt.js (load, fill, copy)
