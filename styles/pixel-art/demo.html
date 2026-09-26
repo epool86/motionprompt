@@ -54,7 +54,7 @@
     };
 
     const canvas = document.getElementById("scene");
-    canvas.setAttribute("aria-label", `A retro pixel game that presents ${copy.name}, ${copy.role}. A Player 1 card shows three stats, then the hero runs through a level where blocks reveal ${copy.items.join(", ")}, coins count ${copy.proof}, and a level up box says ${copy.cta} ${copy.handle}.`);
+    canvas.setAttribute("aria-label", `A retro pixel game in a cake world that presents ${copy.name}, ${copy.role}. A Player 1 card shows a girl baker in a chef hat with three stats, then she runs past frosting hills, lollipops and a little bakery, bumping gift boxes that reveal ${copy.items.join(", ")}. Donuts count ${copy.proof}, and a level up box says ${copy.cta} ${copy.handle}.`);
     const ctx = canvas.getContext("2d");
 
     const LOOP = 12; // seconds
@@ -73,6 +73,8 @@
       o: "#ef7d57", y: "#ffcd75", Y: "#fff3b0", g: "#a7f070", G: "#38b764", t: "#257179",
       n: "#29366f", b: "#3b5dc9", c: "#41a6f6", C: "#73eff7", s: "#94b0c2", d: "#333c57",
       f: "#f2b28a", h: "#6b3e2e", m: "#8a4b2f", M: "#d9a066", p: mix(colors.accent2, "#f4f4f4", 0.35),
+      // Cake world colours: pink icing, mint, cream, chocolate, vanilla sponge and biscuit.
+      P: "#f58fb6", v: "#3fb8a8", u: "#fff4e0", x: "#6b3a2a", X: "#4a2418", q: "#f2d38b", B: "#e0a95e", z: "#b0722f",
     };
 
     function makeCanvas(w, h) {
@@ -99,35 +101,36 @@
     }
 
     // ---- Sprites ----
+    // The hero: a girl baker in a chef hat, with a ponytail, a mint dress and a pink apron. Faces right.
     const HEAD = [
-      ".....kkkkkk.....",
-      "....krrrrrrk....",
-      "...krrrrrwwrk...",
-      "...krrrrrrrrrkk.",
-      "..kkkkkkkkrrrrrk",
-      "..khhhfffkkkkkk.",
-      "..khhffffffkfk..",
-      "..khfffffffkffk.",
-      "..kfffffffffffk.",
-      "...kffffffoffk..",
-      "....kkffffkk....",
+      "....kkkkkkk.....",
+      "...kwwwwwwwk....",
+      "..kwwwwwwwwwk...",
+      "..kwswswswswk...",
+      "..khhhhhhhhhhk..",
+      ".khhhhhhhhhhhhk.",
+      "khhhfffhhfffffk.",
+      "khhffkffffkfffk.",
+      "khhffkffffkfffk.",
+      ".khfPfffffffPfk.",
+      "..kkkfffffffkk..",
     ];
     const BODY = [
-      "...kbbbbbbk.....",
-      "..kfkbbybbkfk...",
-      "...kkbbbbbkk....",
+      "...kvvPPPPPvk...",
+      "..kfkPwwwwPkfk..",
+      "...kPPPPPPPPk...",
     ];
     const LEGS = [
-      ["..kddk...kddk...", ".kkkk....kkkk..."],
-      ["....kddddk......", "....kkkkkk......"],
-      ["...kddk.kddk....", "..kkkk..kkkkk..."],
+      ["..kvvvvvvvvvvk..", ".kkk.......kkk.."],
+      ["...kvvvvvvvvk...", "....kk....kk...."],
+      ["..kvvvvvvvvvvk..", "...kkk...kkk...."],
     ];
     const JUMP = [
-      "...kbbbbbbkkfk..",
-      "..kfkbbybbbbkk..",
-      "...kkbbbbbkk....",
-      "..kddkk.kddk....",
-      ".kkkk....kkkk...",
+      "...kvvPPPPPvkfk.",
+      "..kfkPwwwwPk....",
+      "...kPPPPPPPPk...",
+      "..kvvvvvvvvvvk..",
+      ".kkk.......kk...",
     ];
     const heroFrames = (pal) => [
       sprite([...HEAD, ...BODY, ...LEGS[0]], pal),
@@ -135,18 +138,19 @@
       sprite([...HEAD, ...BODY, ...LEGS[2]], pal),
       sprite([...HEAD, ...JUMP], pal),
     ];
-    // Normal hero, plus two flashing palettes for the level up.
+    // Normal hero, plus two flashing palettes for the power up.
     const hero = [
       heroFrames(PAL),
-      heroFrames({ ...PAL, r: PAL.y, b: PAL.G, R: PAL.o }),
-      heroFrames({ ...PAL, r: PAL.C, b: PAL.r, R: PAL.w }),
+      heroFrames({ ...PAL, v: PAL.y, P: PAL.o, w: PAL.Y }),
+      heroFrames({ ...PAL, v: PAL.C, P: PAL.w, h: PAL.r }),
     ];
 
+    // Collectibles: a pink iced donut with sprinkles that spins.
     const coinFrames = [
-      sprite(["..kkkk..", ".kyyyyk.", "kyYyyyok", "kyYyyyok", "kyYyyyok", "kyyyyyok", ".kyyook.", "..kkkk.."]),
-      sprite(["...kk...", "..kyyk..", ".kYyyok.", ".kYyyok.", ".kYyyok.", ".kyyyok.", "..kyok..", "...kk..."]),
-      sprite(["...kk...", "...yo...", "...yo...", "...yo...", "...yo...", "...yo...", "...yo...", "...kk..."]),
-      sprite(["...kk...", "..kyyk..", ".kyyYok.", ".kyyYok.", ".kyyYok.", ".kyyyok.", "..kyok..", "...kk..."]),
+      sprite(["..kkkk..", ".kPPPPk.", "kPyPPwPk", "kPPkkPPk", "kPk..kPk", "kMPkkPMk", ".kMMMMk.", "..kkkk.."]),
+      sprite(["...kk...", "..kPwk..", ".kPkkPk.", ".kPk.Pk.", ".kMk.Mk.", ".kMkkMk.", "..kMMk..", "...kk..."]),
+      sprite(["...kk...", "...kk...", "...PP...", "...PP...", "...MM...", "...MM...", "...kk...", "...kk..."]),
+      sprite(["...kk...", "..kyPk..", ".kPkkPk.", ".kP.kPk.", ".kM.kMk.", ".kMkkMk.", "..kMMk..", "...kk..."]),
     ];
 
     const star = sprite([
@@ -170,44 +174,54 @@
       sprite(["w...w", ".....", "..w..", ".....", "w...w"]),
     ];
 
-    // Blocks, 16 by 16, drawn with a few rectangles.
+    // Blocks, 16 by 16: biscuit platforms, and gift boxes with a mark that open when bumped.
     function block(kind) {
       const [c, g] = makeCanvas(16, 16);
       const R = (col, x, y, w, h) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
       if (kind === "brick") {
+        // A square butter biscuit with a crinkled edge and docking holes.
         R(PAL.k, 0, 0, 16, 16);
-        const brick = "#c8643c", light = "#e8905c";
-        for (let row = 0; row < 4; row++) {
-          const y = row * 4;
-          const off = row % 2 ? 4 : 0;
-          for (let x = -8 + off; x < 16; x += 8) {
-            R(brick, Math.max(0, x), y, Math.min(7, x + 7) - Math.max(0, x), 3);
-            R(light, Math.max(0, x), y, Math.min(7, x + 7) - Math.max(0, x), 1);
-          }
-        }
+        R(PAL.z, 1, 1, 14, 14);
+        R(PAL.B, 2, 2, 12, 12);
+        R("#f3c987", 2, 2, 12, 1);
+        R("#f3c987", 2, 2, 1, 12);
+        for (let i = 2; i < 14; i += 3) { R(PAL.k, i, 0, 1, 1); R(PAL.k, i, 15, 1, 1); R(PAL.k, 0, i, 1, 1); R(PAL.k, 15, i, 1, 1); }
+        [[4, 4], [11, 4], [7, 7], [4, 11], [11, 11]].forEach(([x, y]) => R(PAL.z, x, y, 1, 1));
         return c;
       }
-      const used = kind === "used";
-      R(PAL.k, 0, 0, 16, 16);
-      R(used ? PAL.m : PAL.o, 1, 1, 14, 14);
-      R(used ? PAL.M : PAL.y, 1, 1, 14, 1);
-      R(used ? PAL.M : PAL.y, 1, 1, 1, 14);
-      R(used ? "#5a2e1e" : "#b8562c", 1, 14, 14, 1);
-      R(used ? "#5a2e1e" : "#b8562c", 14, 1, 1, 14);
-      // Rivets
-      [[3, 3], [11, 3], [3, 11], [11, 11]].forEach(([x, y]) => R(used ? "#5a2e1e" : PAL.k, x, y, 2, 2));
-      if (kind === "q" || kind === "star") {
-        const q = kind === "q"
-          ? [".wwww.", "ww..ww", "....ww", "...ww.", "..ww..", "......", "..ww.."]
-          : ["...w...", "..www..", "wwwwwww", ".wwwww.", "..www..", ".ww.ww.", "w.....w"];
-        const x0 = 8 - Math.ceil(q[0].length / 2);
-        q.forEach((row, y) => {
-          for (let x = 0; x < row.length; x++) if (row[x] === "w") R(PAL.k, x0 + x + 1, 5 + y, 1, 1);
-        });
-        q.forEach((row, y) => {
-          for (let x = 0; x < row.length; x++) if (row[x] === "w") R(PAL.w, x0 + x, 4 + y, 1, 1);
-        });
+      if (kind === "used") {
+        // An opened, empty box.
+        R(PAL.k, 0, 0, 16, 16);
+        R(PAL.m, 1, 1, 14, 14);
+        R(PAL.M, 1, 1, 14, 3);
+        R("#5a2e1e", 1, 4, 14, 1);
+        R("#5a2e1e", 2, 6, 12, 8);
+        R(PAL.m, 3, 7, 10, 6);
+        return c;
       }
+      // Gift box: pink (or mint for the star box), a lighter lid, a ribbon and a white mark.
+      const body = kind === "q" ? PAL.P : "#5fcdb4";
+      const lid = kind === "q" ? "#ffc2d8" : "#a8ecd9";
+      const dark = kind === "q" ? "#c2557f" : "#2e8a78";
+      R(PAL.k, 0, 0, 16, 16);
+      R(body, 1, 1, 14, 14);
+      R(lid, 1, 1, 14, 4);
+      R(PAL.w, 1, 1, 14, 1);
+      R(dark, 1, 5, 14, 1);
+      R(dark, 14, 1, 1, 14);
+      R(dark, 1, 14, 14, 1);
+      R(PAL.y, 7, 1, 2, 4);
+      R(PAL.o, 7, 4, 2, 1);
+      const q = kind === "q"
+        ? [".wwww.", "ww..ww", "....ww", "...ww.", "......", "..ww.."]
+        : ["...w...", "..www..", "wwwwwww", ".wwwww.", ".ww.ww.", "w.....w"];
+      const x0 = 8 - Math.ceil(q[0].length / 2);
+      q.forEach((row, y) => {
+        for (let x = 0; x < row.length; x++) if (row[x] === "w") R(dark, x0 + x + 1, 8 + y, 1, 1);
+      });
+      q.forEach((row, y) => {
+        for (let x = 0; x < row.length; x++) if (row[x] === "w") R(PAL.w, x0 + x, 7 + y, 1, 1);
+      });
       return c;
     }
     const blocks = { brick: block("brick"), q: block("q"), star: block("star"), used: block("used") };
@@ -533,12 +547,12 @@
       }
     }
 
-    // Parts drawn once per size: sky, clouds, hills, the ground tile, houses and palms.
+    // Parts drawn once per size: sky, clouds, hills, the cake ground, the bakery and the sweets.
     function buildBackground() {
       const { groundY, groundH } = L;
-      // Sky in four bands with dithered edges.
+      // Sky in four bands with dithered edges, warming to pink near the horizon.
       const [sky, gs] = makeCanvas(W, groundY);
-      const bands = [mix(colors.bg, "#29366f", 0.55), mix(colors.bg, "#29366f", 0.2), colors.bg, mix(colors.bg, "#73eff7", 0.45)];
+      const bands = [mix(colors.bg, "#29366f", 0.55), mix(colors.bg, "#29366f", 0.2), colors.bg, mix(colors.bg, "#ffd1e3", 0.55)];
       const bandH = groundY / bands.length;
       bands.forEach((col, i) => {
         gs.fillStyle = col;
@@ -552,45 +566,65 @@
         for (let x = 0; x < W; x += 2) gs.fillRect(x + 1, y, 1, 1);
       }
 
-      // Clouds
+      // Clouds are meringue puffs: cream with a pink shadow and a little swirl on top.
       const cloud = (w) => {
-        const [c, g] = makeCanvas(w + 4, 18);
-        const shade = mix(colors.bg, "#f4f4f4", 0.55);
-        const puffs = [[0.22, 11, 5], [0.45, 8, 7], [0.7, 10, 5], [0.88, 12, 3]];
+        const [c, g] = makeCanvas(w + 4, 20);
+        const shade = "#f7c6d9";
+        const puffs = [[0.22, 13, 5], [0.45, 10, 7], [0.7, 12, 5], [0.88, 14, 3]];
         for (const [fx, cy, r] of puffs) disc(g, Math.round(2 + fx * w), cy + 1, r, shade);
-        for (const [fx, cy, r] of puffs) disc(g, Math.round(2 + fx * w), cy, r, "#f4f4f4");
+        for (const [fx, cy, r] of puffs) disc(g, Math.round(2 + fx * w), cy, r, PAL.u);
         g.fillStyle = shade;
-        g.fillRect(2, 15, w, 2);
-        g.fillStyle = "#f4f4f4";
-        g.fillRect(2, 12, w, 3);
+        g.fillRect(2, 17, w, 2);
+        g.fillStyle = PAL.u;
+        g.fillRect(2, 14, w, 3);
+        const tx = Math.round(2 + 0.45 * w);
+        g.fillRect(tx, 1, 2, 2);
+        g.fillRect(tx - 1, 2, 1, 1);
+        g.fillStyle = "#ffffff";
+        g.fillRect(tx - 3, 6, 2, 1);
         return c;
       };
       const clouds = [cloud(30), cloud(22), cloud(36)];
 
-      // Ground tile: grass on top, earth with pebbles below.
+      // Ground tile: a slice of layer cake. Cream frosting with drips and sprinkles on top,
+      // then chocolate and vanilla sponge with cream between.
       const [tile, gt] = makeCanvas(16, groundH);
-      gt.fillStyle = "#c07038";
-      gt.fillRect(0, 0, 16, groundH);
-      gt.fillStyle = "#9a522a";
-      for (let y = 8; y < groundH; y += 8) gt.fillRect(0, y, 16, 1);
-      for (let y = 8; y < groundH; y += 8) gt.fillRect((y / 8) % 2 ? 4 : 11, y, 1, 8);
-      gt.fillStyle = "#e0925a";
-      gt.fillRect(6, 11, 2, 1);
-      gt.fillRect(13, 19, 2, 1);
-      gt.fillRect(2, 27, 2, 1);
+      const layers = [[PAL.x, 7], [PAL.u, 2], [PAL.q, 6], [PAL.u, 2]];
+      for (let y = 7, i = 0; y < groundH; i++) {
+        const [col, h] = layers[i % layers.length];
+        gt.fillStyle = col;
+        gt.fillRect(0, y, 16, h);
+        if (col === PAL.x) {
+          gt.fillStyle = PAL.X;
+          gt.fillRect(3, y + 2, 1, 1);
+          gt.fillRect(11, y + 4, 1, 1);
+        }
+        if (col === PAL.q) {
+          gt.fillStyle = "#e3bd6e";
+          gt.fillRect(7, y + 2, 1, 1);
+          gt.fillRect(13, y + 4, 1, 1);
+        }
+        y += h;
+      }
       gt.fillStyle = PAL.k;
-      gt.fillRect(0, 4, 16, 1);
-      gt.fillStyle = PAL.G;
-      gt.fillRect(0, 0, 16, 4);
-      gt.fillRect(2, 4, 3, 1);
-      gt.fillRect(9, 4, 4, 2);
-      gt.fillStyle = PAL.g;
       gt.fillRect(0, 0, 16, 1);
-      gt.fillRect(4, 1, 2, 1);
-      gt.fillRect(12, 1, 1, 1);
+      gt.fillStyle = PAL.w;
+      gt.fillRect(0, 1, 16, 6);
+      // Drips of cream over the first sponge layer.
+      gt.fillRect(2, 7, 3, 2);
+      gt.fillRect(3, 9, 1, 1);
+      gt.fillRect(9, 7, 2, 3);
+      gt.fillRect(13, 7, 2, 1);
+      gt.fillStyle = "#f3dcc4";
+      gt.fillRect(0, 6, 16, 1);
+      // Sprinkles
+      [[2, 2, PAL.P], [6, 4, PAL.C], [10, 2, PAL.y], [13, 4, PAL.P]].forEach(([x, y, col]) => {
+        gt.fillStyle = col;
+        gt.fillRect(x, y, 2, 1);
+      });
 
-      // Far hills (slow) and near hills with bushes (faster), as tall strips that repeat.
-      const farCol = mix(colors.bg, "#257179", 0.55), farEdge = mix(colors.bg, "#257179", 0.4);
+      // Far hills: soft pink frosting (slow). Near hills: whipped cream mounds in mint, pink and cream.
+      const farCol = mix(colors.bg, "#f7a8c8", 0.55), farEdge = mix(colors.bg, "#ffffff", 0.55);
       const [far, gf] = makeCanvas(256, 60);
       for (let x = 0; x < 256; x++) {
         const hh = Math.round(24 + Math.sin((x / 256) * Math.PI * 4) * 12 + Math.sin((x / 256) * Math.PI * 10 + 1) * 5);
@@ -600,95 +634,135 @@
         gf.fillRect(x, 61 - hh, 1, hh);
       }
       const [near, gn] = makeCanvas(192, 40);
-      [[24, 26, 22], [74, 32, 16], [120, 30, 24], [168, 34, 14]].forEach(([cx, cy, r]) => {
+      [[24, 26, 22, "#8fdcc0", "#5fbfa0"], [74, 32, 16, "#ffc2d8", "#e88fb3"], [120, 30, 24, PAL.u, "#e8cfa8"], [168, 34, 14, "#8fdcc0", "#5fbfa0"]].forEach(([cx, cy, r, col, dark]) => {
         disc(gn, cx, cy + 1, r, PAL.k);
-        disc(gn, cx, cy + 2, r, "#2a8a50");
-        disc(gn, cx, cy + 3, r, PAL.G);
-        gn.fillStyle = PAL.g;
-        gn.fillRect(cx - 6, cy - r + 6, 3, 1);
-        gn.fillRect(cx + 3, cy - r + 10, 2, 1);
-        gn.fillStyle = "#2a8a50";
-        gn.fillRect(cx - 3, cy - r + 14, 1, 2);
-        gn.fillRect(cx + 7, cy - r + 17, 1, 2);
+        disc(gn, cx, cy + 2, r, dark);
+        disc(gn, cx, cy + 3, r - 1, col);
+        // A cream swirl line and a shine.
+        gn.fillStyle = "#ffffff";
+        gn.fillRect(cx - 7, cy - r + 7, 4, 1);
+        gn.fillRect(cx - 8, cy - r + 8, 1, 1);
+        gn.fillStyle = dark;
+        gn.fillRect(cx - 10, cy - r + 14, 20, 1);
       });
+      // A cherry on top of the big cream mound.
+      disc(gn, 120, 5, 3, PAL.k);
+      disc(gn, 120, 5, 2, PAL.r);
+      gn.fillStyle = "#ffffff";
+      gn.fillRect(119, 4, 1, 1);
+      gn.fillStyle = PAL.k;
+      gn.fillRect(121, 0, 1, 3);
 
-      bg = { sky, clouds, tile, far, near, house: house(), palm: palm(), palmSmall: palm(0.8) };
+      bg = { sky, clouds, tile, far, near, shop: bakery(), lolly: lollipop(1), lollySmall: lollipop(0.75), cupcake: cupcake(), cane: candyCane() };
     }
 
-    // A small kampung house on stilts.
-    function house() {
-      const [c, g] = makeCanvas(48, 40);
+    // A small bakery with a striped awning and a "KEK" sign.
+    function bakery() {
+      const [c, g] = makeCanvas(48, 42);
       const R = (col, x, y, w, h) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
-      // Stilts and stairs
-      [7, 17, 29, 39].forEach((x) => { R(PAL.k, x - 1, 28, 4, 12); R(PAL.m, x, 28, 2, 12); });
-      for (let i = 0; i < 5; i++) { R(PAL.k, 40 + i * 2 - 1, 29 + i * 2, 4, 2); R(PAL.M, 40 + i * 2, 29 + i * 2, 3, 1); }
-      // Floor beam and walls
-      R(PAL.k, 3, 13, 40, 17);
-      R(PAL.M, 4, 14, 38, 13);
-      R(PAL.m, 4, 27, 38, 2);
-      for (let x = 6; x < 42; x += 3) R("#b87c46", x, 14, 1, 13);
-      // Windows with teal shutters, and a door
-      [[9, 16], [21, 16]].forEach(([x, y]) => {
-        R(PAL.k, x - 1, y - 1, 8, 9);
-        R(PAL.n, x, y, 6, 7);
-        R(PAL.y, x + 2, y + 2, 2, 3);
-        R(PAL.t, x - 3, y, 2, 7);
-        R(PAL.t, x + 7, y, 2, 7);
-      });
-      R(PAL.k, 32, 15, 8, 13);
-      R(PAL.m, 33, 16, 6, 12);
-      R(PAL.y, 37, 21, 1, 1);
-      // Roof: a long pitched roof with a decorated gable at the front.
-      for (let y = 0; y < 13; y++) {
-        const x0 = 12 - y, x1 = 36 + y;
-        R(PAL.k, x0 - 1, y + 1, x1 - x0 + 2, 1);
-        R(y % 3 === 2 ? mix(PAL.r, "#1a1c2c", 0.35) : PAL.r, x0, y + 1, x1 - x0, 1);
+      // Walls and a cream roof edge with drips
+      R(PAL.k, 3, 8, 42, 34);
+      R("#ffe4ee", 4, 9, 40, 33);
+      R(PAL.k, 1, 6, 46, 4);
+      R(PAL.u, 2, 7, 44, 2);
+      R(PAL.u, 8, 9, 3, 2);
+      R(PAL.u, 24, 9, 2, 3);
+      R(PAL.u, 37, 9, 3, 2);
+      // Sign board with KEK in tiny letters
+      R(PAL.k, 14, 0, 20, 8);
+      R(PAL.x, 15, 1, 18, 6);
+      const letters = { K: ["1.1", "11.", "1.1", "1.1"], E: ["111", "11.", "1..", "111"] };
+      "KEK".split("").forEach((ch, i) => letters[ch].forEach((row, y) => {
+        for (let x = 0; x < 3; x++) if (row[x] === "1") R(PAL.u, 18 + i * 4 + x, 2 + y, 1, 1);
+      }));
+      // Striped awning with a scalloped edge
+      R(PAL.k, 2, 13, 44, 6);
+      for (let x = 3; x < 45; x += 4) {
+        R(PAL.P, x, 14, 2, 4);
+        R(PAL.w, x + 2, 14, 2, 4);
       }
-      R(PAL.k, 11, 0, 26, 1);
-      for (let y = 2; y < 12; y++) {
-        const half = Math.floor(y / 1.2);
-        R(PAL.w, 36 + y - half - 3, y + 1, 2, 1);
-      }
-      R(PAL.k, 0, 13, 48, 1);
+      for (let x = 3; x < 45; x += 4) R(x % 8 === 3 ? PAL.P : PAL.w, x + 1, 18, 2, 1);
+      // Shop window with a cake on a stand
+      R(PAL.k, 6, 22, 20, 14);
+      R("#bfe9ff", 7, 23, 18, 12);
+      R("#e6f7ff", 8, 24, 5, 1);
+      R(PAL.k, 11, 27, 10, 6);
+      R(PAL.P, 12, 28, 8, 2);
+      R(PAL.u, 12, 30, 8, 2);
+      R(PAL.r, 15, 26, 2, 2);
+      R(PAL.s, 13, 33, 6, 1);
+      // Door with a round window
+      R(PAL.k, 31, 22, 11, 20);
+      R(PAL.m, 32, 23, 9, 19);
+      R("#bfe9ff", 34, 25, 5, 4);
+      R(PAL.y, 39, 32, 1, 2);
+      R(PAL.k, 0, 41, 48, 1);
       return c;
     }
 
-    // A coconut palm.
-    function palm(size = 1) {
-      const h = Math.round(46 * size);
-      const [c, g] = makeCanvas(40, h + 10);
-      const R = (col, x, y, w, hh) => { g.fillStyle = col; g.fillRect(x, y, w, hh); };
-      const topX = 20, topY = 8;
-      for (let y = topY; y < h + 10; y++) {
-        const u = (y - topY) / (h + 2 - topY);
-        const x = Math.round(topX + Math.sin(u * 1.6) * 5 - 2);
-        R(PAL.k, x - 1, y, 5, 1);
-        R(y % 4 < 2 ? PAL.M : PAL.m, x, y, 3, 1);
+    // A lollipop: a swirl on a stick.
+    function lollipop(size = 1) {
+      const r = Math.round(9 * size), h = Math.round(46 * size);
+      const [c, g] = makeCanvas(r * 2 + 4, h + 4);
+      const cx = r + 2, cy = r + 2;
+      g.fillStyle = PAL.k;
+      g.fillRect(cx - 2, cy, 4, h - cy + 4);
+      g.fillStyle = PAL.w;
+      g.fillRect(cx - 1, cy, 2, h - cy + 3);
+      disc(g, cx, cy, r + 1, PAL.k);
+      disc(g, cx, cy, r, PAL.P);
+      // Spiral: rings of white dots at growing distance.
+      g.fillStyle = PAL.w;
+      for (let a = 0; a < Math.PI * 6; a += 0.25) {
+        const d = (a / (Math.PI * 6)) * (r - 1);
+        g.fillRect(Math.round(cx + Math.cos(a) * d), Math.round(cy + Math.sin(a) * d), 1, 1);
       }
-      // Fronds drooping out from the top.
-      const fronds = [[-1, -0.35, 15], [1, -0.35, 15], [-1, 0.25, 13], [1, 0.25, 13], [0.35, -1, 8]];
-      for (const [dx, dy, len] of fronds) {
-        for (let i = 0; i < len; i++) {
-          const u = i / len;
-          const x = Math.round(topX + dx * i + (dx === 0 ? 0 : 0));
-          const y = Math.round(topY + dy * i + u * u * 9);
-          const thick = i < len - 3 ? 2 : 1;
-          R(PAL.k, x - 1, y - 1, 3, thick + 2);
-        }
+      g.fillStyle = "#ffffff";
+      g.fillRect(cx - Math.round(r * 0.6), cy - Math.round(r * 0.6), 2, 1);
+      return c;
+    }
+
+    // A giant cupcake "tree": striped wrapper, a swirl of frosting and a cherry.
+    function cupcake() {
+      const [c, g] = makeCanvas(36, 44);
+      const R = (col, x, y, w, h) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
+      // Wrapper, narrower at the bottom
+      for (let y = 0; y < 16; y++) {
+        const inset = Math.floor(y / 4);
+        R(PAL.k, 5 + inset, 27 + y, 26 - inset * 2, 1);
+        for (let x = 6 + inset; x < 30 - inset; x++) R(x % 4 < 2 ? PAL.v : "#8fdcc0", x, 27 + y, 1, 1);
       }
-      for (const [dx, dy, len] of fronds) {
-        for (let i = 0; i < len; i++) {
-          const u = i / len;
-          const x = Math.round(topX + dx * i);
-          const y = Math.round(topY + dy * i + u * u * 9);
-          const thick = i < len - 3 ? 2 : 1;
-          R(i % 3 ? PAL.G : PAL.g, x, y, 1, thick);
-        }
-      }
-      R(PAL.k, topX - 3, topY + 1, 7, 5);
-      R(PAL.m, topX - 2, topY + 2, 2, 2);
-      R(PAL.h, topX + 1, topY + 2, 2, 3);
-      R(PAL.G, topX - 1, topY - 1, 3, 2);
+      R(PAL.k, 5, 43, 26, 1);
+      // Frosting: three stacked rounded layers
+      [[18, 24, 13], [18, 17, 10], [18, 11, 6]].forEach(([cx, cy, r]) => {
+        disc(g, cx, cy, r + 1, PAL.k);
+        disc(g, cx, cy + 1, r, "#e88fb3");
+        disc(g, cx, cy, r, "#ffc2d8");
+      });
+      R("#ffffff", 11, 20, 3, 1);
+      R("#ffffff", 13, 14, 2, 1);
+      // Sprinkles and a cherry
+      [[22, 22, PAL.y], [9, 25, PAL.C], [25, 26, PAL.g], [16, 18, PAL.o], [21, 13, PAL.C]].forEach(([x, y, col]) => R(col, x, y, 2, 1));
+      disc(g, 18, 4, 3, PAL.k);
+      disc(g, 18, 4, 2, PAL.r);
+      R("#ffffff", 17, 3, 1, 1);
+      R(PAL.k, 19, 0, 1, 2);
+      return c;
+    }
+
+    // A red and white candy cane.
+    function candyCane() {
+      const [c, g] = makeCanvas(20, 50);
+      const pts = [];
+      for (let y = 49; y >= 10; y--) pts.push([5, y]);
+      for (let a = Math.PI; a >= 0; a -= 0.12) pts.push([Math.round(10 + Math.cos(a) * 5), Math.round(10 - Math.sin(a) * 6)]);
+      pts.push([15, 11], [15, 12], [15, 13]);
+      g.fillStyle = PAL.k;
+      for (const [x, y] of pts) g.fillRect(x - 2, y - 2, 5, 5);
+      pts.forEach(([x, y], i) => {
+        g.fillStyle = Math.floor(i / 4) % 2 ? PAL.w : PAL.r;
+        g.fillRect(x - 1, y - 1, 3, 3);
+      });
       return c;
     }
 
@@ -770,10 +844,10 @@
       const nearOff = mod(Math.round(t * SPEED * 0.35), 192);
       for (let x = -nearOff; x < W; x += 192) ctx.drawImage(bg.near, x, groundY - 40);
 
-      // Kampung houses and palms, drifting at half speed.
+      // The bakery and giant sweets, drifting at half speed.
       const backSpan = Math.max(W + 60, 300);
       const backOff = Math.round(t * SPEED * 0.5);
-      [[0.04, bg.palm], [0.2, bg.house], [0.42, bg.palmSmall], [0.62, bg.palm], [0.8, bg.palmSmall]].forEach(([fx, img]) => {
+      [[0.04, bg.lolly], [0.2, bg.shop], [0.42, bg.cupcake], [0.6, bg.cane], [0.8, bg.lollySmall]].forEach(([fx, img]) => {
         const x = mod(Math.round(fx * backSpan) - backOff, backSpan) - 50;
         ctx.drawImage(img, x, groundY - img.height + 2);
       });
@@ -1000,9 +1074,9 @@
       ctx.fillRect(p.x, p.y, p.size, p.size);
       ctx.fillStyle = colors.bg;
       ctx.fillRect(p.x + 2, p.y + 2, p.size - 4, p.size - 4);
-      ctx.fillStyle = PAL.G;
+      ctx.fillStyle = PAL.x;
       ctx.fillRect(p.x + 2, p.y + p.size - 2 - 2 * p.s, p.size - 4, 2 * p.s);
-      ctx.fillStyle = PAL.g;
+      ctx.fillStyle = PAL.w;
       ctx.fillRect(p.x + 2, p.y + p.size - 2 - 2 * p.s, p.size - 4, p.s);
       const hop = Math.floor(t * 3) % 2 ? -p.s : 0;
       ctx.drawImage(hero[0][1], p.x + 1 + p.s, p.y + p.size - 2 - 17 * p.s + hop, 16 * p.s, 16 * p.s);

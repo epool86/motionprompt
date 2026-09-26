@@ -2,20 +2,20 @@ Make my video in this style: Pixel art.
 
 Look and motion
 - Turn my product, service or self-introduction into a retro pixel game level. Draw everything at a very low resolution and scale it up so every pixel stays sharp and square. No blur, no smooth gradients.
-- Open on a "PLAYER 1" character select card: a pixel hero portrait for me or my brand, my name in big chunky pixel letters, my role or business type underneath, and three stat bars that fill up one segment at a time with stats that fit my business (for example TASTE, SPEED and LOVE for a bakery). A small "PRESS START" blinks, then the card slides away into the level.
-- The level is my offer: a bright side scrolling world with pixel clouds, rolling hills, a grassy ground strip and a few scenery props that fit my topic (for example palm trees or a small kampung house). The hero runs and jumps through it.
-- Each ? block the hero bumps pops out one of my features, services or products as a small pixel item icon, with a short chunky label in a game style box (three items). Each item then flies into an inventory slot in the top bar.
-- Coins are my proof points: each one the hero collects adds to a small counter in the top bar (for example "1,200+ HAPPY CUSTOMERS"). Keep the top bar tidy and easy to read.
+- Open on a "PLAYER 1" character select card: a cute pixel hero portrait for me or my brand (for example a girl baker in a chef hat and apron), my name in big chunky pixel letters, my role or business type underneath, and three stat bars that fill up one segment at a time with stats that fit my business (for example TASTE, SPEED and LOVE for a bakery). A small "PRESS START" blinks, then the card slides away into the level.
+- The level is my offer: a bright side scrolling world themed on my business, with slower layers behind for depth. For a bakery, for example: a layered cake ground with a cream and sprinkles top, frosting hills, meringue clouds, lollipops, cupcakes, a candy cane and a little bakery shop. Keep it original, not a copy of any real game. The hero runs and jumps through it.
+- Each ? block (for example a gift box, with biscuit blocks beside it) the hero bumps pops out one of my features, services or products as a small pixel item icon, with a short chunky label in a game style box (three items). Each item then flies into an inventory slot in the top bar.
+- Collectibles are my proof points (coins, or something that fits my topic, like donuts or cookies): each one the hero collects adds to a small counter in the top bar (for example "1,200+ HAPPY CUSTOMERS"). Keep the top bar tidy and easy to read.
 - The finale is my call to action: the hero grabs a star, flashes with a power up and sparkles, and a pixel dialog box pops in with "LEVEL UP!", then changes to my call to action (for example "ORDER NOW") with my handle or contact underneath.
 - Open with a classic circle wipe that opens on the card, and close with one that shuts on the hero, so the video loops.
 - Keep every word short and big enough to read on a phone. On small or narrow frames, use fewer or shorter words rather than tiny text.
 
 Type and colour
 - A pixel font (like Press Start 2P), all capitals, with my handle kept as I write it.
-- Use my brand colours if I give them. Otherwise use a small retro palette: sky blue #41a6f6, deep navy #1a1c2c for outlines and dialog boxes, coin yellow #ffcd75, warm orange #ef7d57, grass green #38b764, cyan #73eff7 for small labels and a red #b13e53 for the hero's cap.
+- Use my brand colours if I give them. Otherwise use a small retro palette: sky blue #41a6f6, deep navy #1a1c2c for outlines and dialog boxes, coin yellow #ffcd75, warm orange #ef7d57, grass green #38b764, cyan #73eff7 for small labels, and icing pink #f58fb6, mint #3fb8a8 and cream #fff4e0 for the hero and the sweets.
 
 Sound
-- Effects: 8-bit chip sounds timed to the action: a sweep for each circle wipe, soft ticks as my name types in, rising ticks as each stat bar fills, a blip each time PRESS START blinks and a short select jingle when it is pressed, a whoosh as the card slides away, a springy boing on every jump and a soft thud on landing, a solid bump on each block with a bright little reveal jingle for each item (one step higher each time), a bright blip for each coin with quick counter ticks, a twinkly power up, a short level up fanfare, and a "ding ding" as the call to action appears.
+- Effects: 8-bit chip sounds timed to the action: a sweep for each circle wipe, soft ticks as my name types in, rising ticks as each stat bar fills, a blip each time PRESS START blinks and a short select jingle when it is pressed, a whoosh as the card slides away, a springy boing on every jump and a soft thud on landing, a solid bump on each block with a bright little reveal jingle for each item (one step higher each time), a bright blip for each collectible with quick counter ticks, a twinkly power up, a short level up fanfare, and a "ding ding" as the call to action appears.
 - Music: an original, cheerful chiptune loop at about 120 bpm in a major key: a pulse wave lead melody, a triangle bass and simple noise drums. It steps back under the fanfare and rests for the circle wipe. It must not copy or sound like any real game theme.
 - Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
 
