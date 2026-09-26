@@ -7,7 +7,7 @@ video idea in Claude, and get back a finished MP4. No editing app, no designer.
 
 **Live site:** https://epool86.github.io/motionprompt/
 
-<!-- LAUNCH_VIDEO -->
+[![MotionPrompt gallery](assets/img/screenshot.jpg)](https://epool86.github.io/motionprompt/)
 
 ## How to use it
 
