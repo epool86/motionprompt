@@ -135,6 +135,13 @@
     "tags": ["photos", "travel", "social"]
   },
   {
+    "slug": "batik-fashion",
+    "name": "Batik fashion",
+    "summary": "Baju kurung looks in colourful batik, linked by bold batik scene transitions.",
+    "library": "GSAP",
+    "tags": ["malaysia", "product", "promo"]
+  },
+  {
     "slug": "merdeka",
     "name": "Merdeka",
     "summary": "The Jalur Gemilang waves over KL fireworks for Merdeka and Malaysia Day.",

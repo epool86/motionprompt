@@ -1,0 +1,23 @@
+Make my video in this style: Batik fashion.
+
+Look and motion
+- A colourful batik fashion showcase. Present my products, collection or brand as a few short scenes: my brand name on a rich batik background, then each product or look on its own, then a close-up of the fabric or detail, then my offer and call to action. Hold each scene long enough to read.
+- Draw clothing as elegant, modest flat fashion illustrations: graceful standing figures with simple faceless heads, standing in a softly patterned arch. If I attach product photos, use them in the scenes instead, framed in the same batik style.
+- Every scene change is a bold, full-frame batik transition, and each one is different. For example: a giant bunga raya (hibiscus) blooms from the centre to fill the screen, then its petals peel away; a canting (the batik wax pen) races across drawing a wavy wax line while dye floods in behind it; a length of batik cloth sweeps diagonally across with soft folds and pulls away; a kaleidoscope batik mandala closes in like an iris, spins and opens out; drops of dye fall and bleed outward like wet colour on cloth.
+- Transitions last about one second, with strong easing, layered motion and a slight overshoot. Keep them clean and premium, never messy, and never flash harshly.
+- Batik details throughout: cream wax outlines, bunga raya, leaves, awan larat spirals, isen dots and fine crackle lines. Labels slide up gently, the price lands with a small bounce, and the last transition returns to the first scene so the video can loop.
+- Write my text in the language I use, Malay or English.
+
+Type and colour
+- An elegant display serif (like Playfair Display, italic) for names and headlines, and a clean sans (like Jost) in spaced capitals for small labels.
+- Use my brand colours if I give them. Otherwise use deep indigo #1c1a4a, wax cream #fbefd6, magenta #d4246e, turmeric #f2a51c, emerald #0f8a64, royal blue #2a4db3 and coral #ff6b58.
+
+Sound
+- Effects: every transition gets its own signature sound: a rising swell and a soft bell chord as the flower blooms, with a flutter for each petal; a quick wax zip and a liquid dye rush with small drips; a big cloth whoosh with a fabric flap; a spinning shimmer, a soft low whomp and falling sparkles for the kaleidoscope; and wet drop sounds as the dye lands and spreads. Add soft chimes as labels appear and a rebana hit when the price lands.
+- Music: an elegant, upbeat modern Malay fashion show groove. A light rebana rhythm, a plucked gambus-like melody, a soft bass and a warm pad, quieter than the effects and looping smoothly with the video. No vocals.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP and canvas) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.
