@@ -118,8 +118,24 @@ function tile(style) {
   return link;
 }
 
+// A few broad filter chips, each covering one or more style tags.
+const FILTERS = [
+  { id: "all", label: "All", tags: [] },
+  { id: "malaysia", label: "Malaysia", tags: ["malaysia"] },
+  { id: "festive", label: "Festive", tags: ["festive"] },
+  { id: "business", label: "Business", tags: ["product", "explainer", "data", "brand"] },
+  { id: "promo", label: "Promo", tags: ["promo", "social"] },
+  { id: "3d", label: "3D", tags: ["3d"] },
+  { id: "retro", label: "Retro", tags: ["retro"] },
+  { id: "artistic", label: "Artistic", tags: ["handmade", "background", "photos", "cute", "travel"] },
+];
+
+// Styles marked "hidden" stay in styles.json (their links still work) but are left out of the list.
+const listed = () => styles.filter((s) => !s.hidden);
+
 function matches(style, query) {
-  if (activeTag !== "all" && !(style.tags ?? []).includes(activeTag)) return false;
+  const filter = FILTERS.find((f) => f.id === activeTag);
+  if (filter && filter.id !== "all" && !(style.tags ?? []).some((t) => filter.tags.includes(t))) return false;
   if (!query) return true;
   const text = [style.name, style.summary, style.library, ...(style.tags ?? [])].join(" ").toLowerCase();
   return query.split(/\s+/).every((word) => text.includes(word));
@@ -127,17 +143,17 @@ function matches(style, query) {
 
 function render() {
   const query = search.value.trim().toLowerCase();
-  const shown = styles.filter((s) => matches(s, query));
+  const shown = listed().filter((s) => matches(s, query));
   observer?.disconnect();
   grid.replaceChildren(...(shown.length ? shown.map(tile) : [el("p", { class: "empty" }, "No styles match. Try another word or tag.")]));
   count.textContent = `${shown.length} ${shown.length === 1 ? "style" : "styles"}`;
 }
 
 function renderFilters() {
-  const tags = [...new Set(styles.flatMap((s) => s.tags ?? []))].sort();
-  filters.replaceChildren(...["all", ...tags].map((tag) => {
-    const button = el("button", { class: "filter", type: "button", "aria-pressed": String(tag === activeTag), "data-tag": tag },
-      tag === "all" ? "All" : tag === "3d" ? "3D" : tag);
+  // Only show chips that have at least one listed style.
+  const used = FILTERS.filter((f) => f.id === "all" || listed().some((s) => (s.tags ?? []).some((t) => f.tags.includes(t))));
+  filters.replaceChildren(...used.map(({ id: tag, label }) => {
+    const button = el("button", { class: "filter", type: "button", "aria-pressed": String(tag === activeTag), "data-tag": tag }, label);
     button.addEventListener("click", () => {
       activeTag = tag;
       filters.querySelectorAll(".filter").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tag === tag)));

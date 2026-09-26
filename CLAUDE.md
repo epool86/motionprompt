@@ -63,7 +63,10 @@ Dark "film studio" look with a light variant; tokens live on `:root` in `site.cs
 
 `slug` must match a folder in `styles/` that has both `demo.html` and `prompt.txt`.
 
-Tags become the filter chips, so reuse the existing ones: text, 3d, product, explainer,
+`"hidden": true` keeps a style (and its #slug link) but leaves it out of the gallery list.
+
+Tags are grouped into a few filter chips in `assets/js/gallery.js` (FILTERS). Reuse the existing
+tags so a style lands in the right chip: text, 3d, product, explainer,
 background, promo, retro, photos, data, social, brand, handmade, malaysia, festive, food,
 travel, cute. The list order in
 `styles.json` is the gallery order; mix looks so neighbouring tiles differ.

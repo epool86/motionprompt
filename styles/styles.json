@@ -74,7 +74,8 @@
     "name": "Festive Raya",
     "summary": "Gold star patterns, swaying ketupat and flickering pelita for a warm Raya greeting.",
     "library": "GSAP",
-    "tags": ["festive", "malaysia", "text"]
+    "tags": ["festive", "malaysia", "text"],
+    "hidden": true
   },
   {
     "slug": "data-story",
@@ -116,7 +117,8 @@
     "name": "Kopitiam",
     "summary": "A sunny kopitiam morning: teh tarik pulled high and a chalk menu that writes itself.",
     "library": "GSAP",
-    "tags": ["food", "malaysia", "retro"]
+    "tags": ["food", "malaysia", "retro"],
+    "hidden": true
   },
   {
     "slug": "comic-pop-art",
@@ -158,7 +160,8 @@
     "name": "Kampung sunset",
     "summary": "A Malaysian kampung at golden hour, sinking into a firefly dusk.",
     "library": "GSAP",
-    "tags": ["malaysia", "background", "handmade"]
+    "tags": ["malaysia", "background", "handmade"],
+    "hidden": true
   },
   {
     "slug": "chat-story",
@@ -186,7 +189,8 @@
     "name": "Pasar malam",
     "summary": "A Malaysian night market lights up at dusk, with satay smoke and price cards popping.",
     "library": "GSAP",
-    "tags": ["food", "malaysia", "promo"]
+    "tags": ["food", "malaysia", "promo"],
+    "hidden": true
   },
   {
     "slug": "whiteboard-sketch",
@@ -263,7 +267,8 @@
     "name": "Deepavali",
     "summary": "A kolam draws itself as clay diyas light up under marigold garlands for Deepavali.",
     "library": "GSAP",
-    "tags": ["festive", "malaysia", "text"]
+    "tags": ["festive", "malaysia", "text"],
+    "hidden": true
   },
   {
     "slug": "vintage-archive",
