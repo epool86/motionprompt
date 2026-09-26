@@ -19,6 +19,19 @@ const detailTitle = document.getElementById("detail-title");
 const detailSummary = document.getElementById("detail-summary");
 const detailCopy = document.getElementById("detail-copy");
 const detailStatus = document.getElementById("detail-status");
+const copyLabel = detailCopy.querySelector(".copy-label");
+let copyTimer;
+
+// The copy button shows "Copied" for a moment, then goes back to "Copy".
+function showCopied(ok) {
+  clearTimeout(copyTimer);
+  detailCopy.classList.toggle("done", ok);
+  copyLabel.textContent = ok ? "Copied" : "Copy failed";
+  copyTimer = setTimeout(() => {
+    detailCopy.classList.remove("done");
+    copyLabel.textContent = "Copy";
+  }, 2000);
+}
 const detailPrompt = document.getElementById("detail-prompt");
 
 const baseTitle = document.title;
@@ -288,8 +301,10 @@ detailCopy.addEventListener("click", async () => {
   try {
     await copyText(await getPrompt(style));
     detailStatus.textContent = "Copied. Paste it under your video idea in Claude.";
+    showCopied(true);
   } catch {
-    detailStatus.textContent = "Could not copy. Select the style below and copy it by hand.";
+    detailStatus.textContent = "Could not copy. Select the style text and copy it by hand.";
+    showCopied(false);
   }
 });
 

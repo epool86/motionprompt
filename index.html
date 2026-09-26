@@ -96,15 +96,18 @@
             </div>
           </div>
 
-          <div class="detail-actions">
-            <button class="button" type="button" id="detail-copy">
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/></svg>
-              Copy style
-            </button>
+          <div class="prompt-box">
+            <div class="prompt-head">
+              <span class="prompt-title">Style prompt</span>
+              <button class="copy-button" type="button" id="detail-copy">
+                <svg class="icon-copy" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/></svg>
+                <svg class="icon-done" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4.5 10.5 3.5 3.5 7.5-8"/></svg>
+                <span class="copy-label">Copy</span>
+              </button>
+            </div>
+            <pre class="prompt-text" id="detail-prompt" tabindex="0" aria-label="Style prompt"></pre>
           </div>
-          <p class="status" id="detail-status" role="status" aria-live="polite"></p>
-
-          <pre class="prompt-text" id="detail-prompt" tabindex="0" aria-label="Style prompt"></pre>
+          <p class="visually-hidden" id="detail-status" role="status" aria-live="polite"></p>
           <p class="paste-tip">Add this below your video request in Claude, or paste it at the end of your prompt.</p>
         </div>
       </div>

@@ -716,6 +716,8 @@ a { color: var(--accent); }
   min-width: 0;
 }
 
+.setting[hidden] { display: none; }
+
 .setting-label {
   color: var(--field-text);
   font-size: 0.82rem;
@@ -776,34 +778,74 @@ a { color: var(--accent); }
 
 .segment[aria-pressed="true"] small { color: inherit; opacity: 0.75; }
 
-.detail-actions {
-  display: grid;
-  gap: 8px;
-}
-
-.detail-actions .button svg { width: 18px; height: 18px; }
-
-.status {
-  margin: -2px 0 0;
-  color: var(--accent);
-  font-size: 0.88rem;
-  font-weight: 600;
-}
-
-.status:empty { display: none; }
-
 .paste-tip {
   margin: 0;
   color: var(--on-stage) !important;
   font-size: 0.86rem !important;
 }
 
-.prompt-text {
-  margin: 10px 0 0;
-  padding: 14px;
+/* Prompt box: a header with the copy button, then the style text */
+.prompt-box {
   border: 1px solid var(--field-line);
-  border-radius: var(--radius-sm);
+  border-radius: 14px;
   background: var(--field);
+}
+
+/* The header sticks under the back bar, so Copy stays in reach while reading */
+.prompt-head {
+  position: sticky;
+  top: calc(56px + 52px);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 8px 8px 14px;
+  border-bottom: 1px solid var(--field-line);
+  border-radius: 14px 14px 0 0;
+  background: var(--field);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.prompt-title {
+  color: var(--field-hint);
+  font: 500 0.72rem var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.copy-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  font: 600 0.85rem var(--font);
+  cursor: pointer;
+}
+
+.copy-button svg { width: 17px; height: 17px; flex: none; }
+
+.copy-button .icon-done,
+.copy-button.done .icon-copy { display: none; }
+
+.copy-button.done .icon-done { display: block; }
+
+.copy-button.done { background: #16a34a; color: #fff; }
+
+.copy-button:hover { box-shadow: 0 0 0 4px color-mix(in srgb, var(--violet) 25%, transparent); }
+
+.prompt-text {
+  margin: 0;
+  padding: 14px;
+  border: 0;
+  border-radius: 0 0 14px 14px;
+  background: transparent;
   color: var(--field-text);
   font: 0.78rem/1.65 var(--font-mono);
   white-space: pre-wrap;
@@ -831,7 +873,6 @@ a { color: var(--accent); }
     border-radius: 18px;
   }
 
-  .detail-actions { justify-content: start; }
 }
 
 /* Footer */
@@ -907,7 +948,7 @@ a { color: var(--accent); }
 
 /* Motion (off when the viewer asks for reduced motion) */
 @media (prefers-reduced-motion: no-preference) {
-  .button, .filter, .back, .segment, .site-nav a { transition: box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease, color 0.2s ease; }
+  .button, .copy-button, .filter, .back, .segment, .site-nav a { transition: box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease, color 0.2s ease; }
   .tile { transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
   .tile::before { transition: opacity 0.25s ease; }
   .tile:hover { transform: translateY(-3px); }
