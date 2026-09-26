@@ -1,6 +1,7 @@
-// Video settings on a style page: format, size and length. Never the visitor's content.
-// Remembered in this browser and shared by every style.
-import { FORMATS, QUALITIES, DURATIONS, DEFAULT_SETTINGS } from "./prompt.js";
+// Video settings on a style page: format, size, length and sound. Never the visitor's content.
+// Remembered in this browser and shared by every style, except sound: it starts at Off
+// on every style page, because the preview only plays after the visitor picks a sound.
+import { FORMATS, QUALITIES, DURATIONS, SOUNDS, DEFAULT_SETTINGS } from "./prompt.js";
 
 const STORAGE_KEY = "motionprompt:settings";
 
@@ -37,7 +38,10 @@ function segmented(container, options, key) {
     button.addEventListener("click", () => {
       settings[key] = value;
       for (const b of buttons) b.setAttribute("aria-pressed", String(b === button));
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch {}
+      try {
+        const { sound, ...saved } = settings;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+      } catch {}
       listener(key);
     });
     return button;
@@ -48,3 +52,17 @@ function segmented(container, options, key) {
 segmented(document.getElementById("formats"), FORMATS, "ratio");
 segmented(document.getElementById("qualities"), QUALITIES, "quality");
 segmented(document.getElementById("durations"), DURATIONS.map((d) => ({ value: d, label: `${d}s` })), "duration");
+segmented(document.getElementById("sounds"), SOUNDS, "sound");
+
+// Put sound back to Off (used each time a style page opens).
+export function resetSound() {
+  settings.sound = "off";
+  for (const b of document.querySelectorAll("#sounds .segment")) {
+    b.setAttribute("aria-pressed", String(b === document.querySelector("#sounds .segment")));
+  }
+}
+
+// Only styles whose prompt has a Sound section show the sound setting.
+export function showSoundSetting(visible) {
+  document.getElementById("sound-setting").hidden = !visible;
+}

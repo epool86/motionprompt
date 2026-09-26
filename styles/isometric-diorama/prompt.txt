@@ -12,6 +12,11 @@ Type and colour
 - Keep text to a minimum. If my message needs words, show a short line in a clean, bold, rounded sans serif font above or below the disc, in the dark colour.
 - Use my brand colours if I give them (two colours only, plus white and greys). Otherwise use teal #1fb5a8 and dark slate #263238.
 
+Sound
+- Effects: a soft bubbly pop with a tiny rise in pitch as each object pops in (a different note for each), light wooden taps as small pieces drop or stack, a gentle whoosh on each camera move, soft clicks as a screen fills in, a friendly two-note chime on the key object, and soft reversed pops as everything pops out at the end.
+- Music: a light, cheerful bed in a major key, about 100 bpm: a soft marimba arpeggio over a warm pad, a gentle bass and a quiet shaker. Keep it quieter than the effects and let it loop cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

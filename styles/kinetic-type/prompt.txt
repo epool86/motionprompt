@@ -10,6 +10,11 @@ Type and colour
 - A heavy, condensed font (like Anton), all capitals, filling most of the frame.
 - Use my brand colours if I give them. Otherwise use deep navy #10131f, warm white #f6f3ea, coral #ff5a4e and sunny yellow #ffd23f.
 
+Sound
+- Effects: a punchy kick with a short snap on every phrase that punches in, quick ticks as letters spin or drop in (one per letter), a sharp hit on each colour cut, a rising whoosh into the final stacked line that lands on a deep boom, and a sweeping whoosh for the colour wipe.
+- Music: a tight electronic beat at the same tempo as the animation, with a kick on every beat, crisp closed hi-hats and a simple bass line. Phrases land on the kicks, the beat drops out for the wipe and it loops cleanly.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

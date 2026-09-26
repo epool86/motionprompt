@@ -763,6 +763,467 @@
       Promise.all([document.fonts.load("700 1em Cinzel"), document.fonts.load("700 1em Nunito")]),
       new Promise((resolve) => setTimeout(resolve, 1500)),
     ]).finally(() => { build(); apply(); });
+
+    // ---------- Sound: off until the page asks for it ----------
+    // Every sound is made here with the Web Audio API (no audio files) and is
+    // scheduled against the timeline clock, so it stays in step with the picture.
+    (() => {
+      const q = params.get("sound");
+      let want = q === "1" || q === "effects";
+      let music = q !== "effects";
+      const MASTER = 0.7, MUSIC = 0.24;
+      let ctx = null, master, fx, mus, verb, echo, noiseBuf, timer = 0, offTimer = 0;
+      const plucks = new Map();
+
+      // Timeline clock, sampled on every animation frame.
+      let lastT = 0, lastPerf = 0, wraps = 0, synced = false, offset = 0, until = 0;
+      gsap.ticker.add(() => {
+        if (!tl) return;
+        const t = tl.time();
+        if (t < lastT - LOOP / 2) wraps++;
+        lastT = t;
+        lastPerf = performance.now() / 1000;
+      });
+
+      const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+      const rnd = (a, b) => a + Math.random() * (b - a);
+
+      function init() {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -14;
+        comp.knee.value = 12;
+        comp.ratio.value = 4;
+        comp.attack.value = 0.005;
+        comp.release.value = 0.25;
+        comp.connect(ctx.destination);
+        master = ctx.createGain();
+        master.gain.value = 0;
+        master.connect(comp);
+        fx = ctx.createGain();
+        fx.connect(master);
+        mus = ctx.createGain();
+        mus.gain.value = music ? MUSIC : 0;
+        mus.connect(master);
+
+        // White noise, shared by wind, brushes, drums and swishes.
+        const sr = ctx.sampleRate;
+        noiseBuf = ctx.createBuffer(1, sr * 2, sr);
+        const nd = noiseBuf.getChannelData(0);
+        for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+
+        // Warm room reverb from a generated, softened impulse.
+        verb = ctx.createConvolver();
+        const len = Math.floor(sr * 2.6), ir = ctx.createBuffer(2, len, sr);
+        for (let c = 0; c < 2; c++) {
+          const d = ir.getChannelData(c);
+          let lp = 0;
+          for (let i = 0; i < len; i++) {
+            lp += 0.35 * (Math.random() * 2 - 1 - lp);
+            d[i] = lp * Math.pow(1 - i / len, 3.2) * (i < sr * 0.012 ? i / (sr * 0.012) : 1);
+          }
+        }
+        verb.buffer = ir;
+        const vOut = ctx.createGain();
+        vOut.gain.value = 0.55;
+        verb.connect(vOut).connect(master);
+
+        // A soft echo for the music only.
+        echo = ctx.createDelay(1);
+        echo.delayTime.value = 0.5625;
+        const fb = ctx.createGain(), eLp = ctx.createBiquadFilter(), eOut = ctx.createGain();
+        fb.gain.value = 0.28;
+        eLp.type = "lowpass";
+        eLp.frequency.value = 2200;
+        eOut.gain.value = 0.5;
+        echo.connect(eLp).connect(fb).connect(echo);
+        eLp.connect(eOut).connect(mus);
+
+        // Low drone on D and A, breathing slowly. It runs all the time under the music bus.
+        const dLp = ctx.createBiquadFilter(), dG = ctx.createGain(), breath = ctx.createOscillator(), bG = ctx.createGain();
+        dLp.type = "lowpass";
+        dLp.frequency.value = 520;
+        dG.gain.value = 0.1;
+        dLp.connect(dG).connect(mus);
+        [[hz(38), "sine", 1], [hz(38) * 1.003, "sine", 0.6], [hz(45), "triangle", 0.35], [hz(50), "sine", 0.22]].forEach(([f, type, v]) => {
+          const o = ctx.createOscillator(), g = ctx.createGain();
+          o.type = type;
+          o.frequency.value = f;
+          g.gain.value = v;
+          o.connect(g).connect(dLp);
+          o.start();
+        });
+        breath.frequency.value = 1 / 6;
+        bG.gain.value = 0.03;
+        breath.connect(bG).connect(dG.gain);
+        breath.start();
+      }
+
+      // ---- Small building blocks ----
+      // A voice output: dry to a bus, some of it to the reverb, optional pan.
+      function route(bus, wet, pan = 0) {
+        const g = ctx.createGain();
+        let head = g;
+        if (pan) {
+          const p = ctx.createStereoPanner();
+          p.pan.value = pan;
+          g.connect(p);
+          head = p;
+        }
+        head.connect(bus);
+        if (wet) {
+          const w = ctx.createGain();
+          w.gain.value = wet;
+          head.connect(w).connect(verb);
+        }
+        return g;
+      }
+      function osc(type, f, at, end, dest) {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.value = f;
+        o.frequency.setValueAtTime(f, at);
+        o.connect(dest);
+        o.start(at);
+        o.stop(end);
+        return o;
+      }
+      function amp(dest, v = 0) {
+        const g = ctx.createGain();
+        g.gain.value = v;
+        g.connect(dest);
+        return g;
+      }
+      function filter(type, f, Q, dest) {
+        const b = ctx.createBiquadFilter();
+        b.type = type;
+        b.frequency.value = f;
+        b.Q.value = Q;
+        b.connect(dest);
+        return b;
+      }
+      function noise(at, dur, dest) {
+        const s = ctx.createBufferSource();
+        s.buffer = noiseBuf;
+        s.loop = true;
+        s.connect(dest);
+        s.start(at, rnd(0, 1.5));
+        s.stop(at + dur);
+        return s;
+      }
+      // Hit: quick rise then an exponential fall.
+      function hit(g, at, peak, att, dec) {
+        g.gain.setValueAtTime(0, at);
+        g.gain.linearRampToValueAtTime(peak, at + att);
+        g.gain.exponentialRampToValueAtTime(0.0001, at + att + dec);
+      }
+      // Swell: rise to a peak at `pk` (0 to 1 of the length), then fall away.
+      function swell(g, at, dur, peak, pk = 0.5) {
+        g.gain.setValueAtTime(0, at);
+        g.gain.linearRampToValueAtTime(peak, at + dur * pk);
+        g.gain.linearRampToValueAtTime(0, at + dur);
+      }
+
+      // ---- Instruments ----
+      // Tetawak-like gong: low, warm, slightly beating, soft mallet.
+      function gong(at, f, level, pan = 0) {
+        const lp = filter("lowpass", 1800, 0.5, route(fx, 0.45, pan));
+        [[1, 1, 5.5], [1.0045, 0.55, 5], [0.5, 0.28, 3.5], [2.01, 0.3, 2.4], [2.76, 0.13, 1.3], [4.13, 0.05, 0.7]].forEach(([r, v, d]) => {
+          const g = amp(lp), o = osc("sine", f * r * 1.015, at, at + d + 0.1, g);
+          o.frequency.exponentialRampToValueAtTime(f * r, at + 0.3);
+          hit(g, at, v * level * 0.26, 0.02, d);
+        });
+        const th = amp(filter("lowpass", 320, 0.7, lp));
+        noise(at, 0.2, th);
+        hit(th, at, level * 0.5, 0.004, 0.12);
+      }
+      // Gendang / rebana taps. "dung" is the open low stroke, "tak" the dry slap.
+      function drum(at, kind, level, pan = 0, bus = fx) {
+        const out = route(bus, 0.16, pan);
+        if (kind === "dung") {
+          const g = amp(out), o = osc("sine", 165, at, at + 0.6, g);
+          o.frequency.exponentialRampToValueAtTime(92, at + 0.12);
+          hit(g, at, level, 0.004, 0.42);
+          const c = amp(filter("bandpass", 1100, 1, out));
+          noise(at, 0.06, c);
+          hit(c, at, level * 0.12, 0.002, 0.03);
+        } else {
+          const n = amp(filter("bandpass", 2300, 1.3, out));
+          noise(at, 0.12, n);
+          hit(n, at, level * 0.55, 0.002, 0.07);
+          const g = amp(out), o = osc("triangle", 540, at, at + 0.2, g);
+          o.frequency.exponentialRampToValueAtTime(430, at + 0.06);
+          hit(g, at, level * 0.3, 0.002, 0.09);
+        }
+      }
+      // Band-passed noise that moves between two pitches: puppet swish, cloth, air.
+      function swish(at, dur, f0, f1, level, pk = 0.5, Q = 0.9, pan = 0, wet = 0.3) {
+        const b = filter("bandpass", f0, Q, route(fx, wet, pan));
+        b.frequency.setValueAtTime(f0, at);
+        b.frequency.exponentialRampToValueAtTime(f1, at + dur);
+        const g = ctx.createGain();
+        g.connect(b);
+        noise(at, dur + 0.05, g);
+        swell(g, at, dur, level, pk);
+      }
+      // Airy wind swell, two layers.
+      function wind(at, dur, level, pk = 0.45) {
+        const lp = filter("lowpass", 1400, 0.3, route(fx, 0.4));
+        const b = filter("bandpass", 380, 0.6, lp);
+        b.frequency.setValueAtTime(380, at);
+        b.frequency.exponentialRampToValueAtTime(1100, at + dur * pk);
+        b.frequency.exponentialRampToValueAtTime(480, at + dur);
+        const g = ctx.createGain();
+        g.connect(b);
+        noise(at, dur + 0.05, g);
+        swell(g, at, dur, level, pk);
+        const hp = filter("highpass", 3200, 0.5, route(fx, 0.3, 0.2));
+        const g2 = ctx.createGain();
+        g2.connect(hp);
+        noise(at, dur + 0.05, g2);
+        swell(g2, at, dur, level * 0.18, pk + 0.1);
+      }
+      // The busur hum of a wau bulan: a buzzy drone that rises with the kite and wavers in the wind.
+      function hum(at, dur, f, level, pan) {
+        const out = route(fx, 0.35, pan);
+        const env = amp(out);
+        env.gain.setValueAtTime(0, at);
+        env.gain.linearRampToValueAtTime(level, at + 0.9);
+        env.gain.setValueAtTime(level, at + dur - 1.4);
+        env.gain.linearRampToValueAtTime(0, at + dur);
+        const trem = amp(env, 0.75);
+        const l1 = osc("sine", rnd(4.6, 5.6), at, at + dur, amp(trem.gain, 0.2));
+        const l2 = osc("sine", rnd(0.6, 0.9), at, at + dur, amp(trem.gain, 0.12));
+        const lp = filter("lowpass", 1900, 0.4, trem);
+        const bp = filter("bandpass", f * 3, 1.4, lp);
+        const vib = ctx.createGain();
+        vib.gain.value = f * 0.012;
+        const wob = osc("sine", 0.35, at, at + dur, vib);
+        [1, 1.007].forEach((r) => {
+          const o = osc("sawtooth", f * r * 0.93, at, at + dur, bp);
+          o.frequency.exponentialRampToValueAtTime(f * r, at + 1.7);
+          vib.connect(o.frequency);
+        });
+        return [l1, l2, wob];
+      }
+      // Paper flutter: noise chopped by a fast wobble.
+      function flutter(at, dur, level, pan) {
+        const env = amp(filter("bandpass", 1600, 0.8, route(fx, 0.25, pan)));
+        swell(env, at, dur, level, 0.35);
+        const chop = amp(env, 0.5);
+        osc("triangle", rnd(11, 14), at, at + dur, amp(chop.gain, 0.5));
+        noise(at, dur, chop);
+      }
+      // Canting stroke: a soft hiss of wax on cloth.
+      function brush(at, dur, level, f, pan) {
+        const b = filter("bandpass", f, 0.9, route(fx, 0.2, pan));
+        b.frequency.setValueAtTime(f * 0.8, at);
+        b.frequency.linearRampToValueAtTime(f * 1.15, at + dur);
+        const g = amp(filter("highpass", 900, 0.5, b));
+        noise(at, dur + 0.05, g);
+        g.gain.setValueAtTime(0, at);
+        g.gain.linearRampToValueAtTime(level, at + 0.1);
+        g.gain.linearRampToValueAtTime(level * 0.7, at + dur * 0.7);
+        g.gain.linearRampToValueAtTime(0, at + dur);
+      }
+      // Small bell, bonang-like: used for the dye shimmer and the gold glint.
+      function chime(at, f, level, dur = 1.6, pan = 0, wet = 0.55) {
+        const out = route(fx, wet, pan);
+        [[1, 1, dur], [2.01, 0.22, dur * 0.5], [3.93, 0.07, dur * 0.25]].forEach(([r, v, d]) => {
+          const g = amp(out);
+          osc("sine", f * r, at, at + d + 0.05, g);
+          hit(g, at, level * v, 0.004, d);
+        });
+      }
+      // Metallic shimmer: a high airy sweep with a few tiny bells on top.
+      function shimmer(at, dur, level) {
+        const b = filter("bandpass", 4200, 2.5, route(fx, 0.6));
+        b.frequency.setValueAtTime(4200, at);
+        b.frequency.exponentialRampToValueAtTime(9000, at + dur);
+        const g = ctx.createGain();
+        g.connect(b);
+        noise(at, dur + 0.05, g);
+        swell(g, at, dur, level, 0.5);
+        [86, 90, 93, 95, 98].forEach((m, i) => chime(at + i * dur * 0.16, hz(m), level * 0.45, 1.1, -0.5 + i * 0.25, 0.7));
+      }
+      // Bamboo flute: soft sine with a breath and a slow vibrato.
+      function flute(at, m, dur, level) {
+        const f = hz(m), end = at + dur;
+        const out = route(mus, 0.35, 0.12);
+        const e = ctx.createGain();
+        e.connect(out);
+        e.connect(echo);
+        const env = amp(filter("lowpass", 2600, 0.5, e));
+        env.gain.setValueAtTime(0, at);
+        env.gain.linearRampToValueAtTime(level, at + 0.09);
+        env.gain.setValueAtTime(level, end - 0.05);
+        env.gain.exponentialRampToValueAtTime(0.0001, end + 0.35);
+        const vib = ctx.createGain();
+        vib.gain.setValueAtTime(0, at);
+        vib.gain.linearRampToValueAtTime(f * 0.007, at + Math.min(0.5, dur));
+        osc("sine", 5.2, at, end + 0.4, vib);
+        [["sine", 1, 1], ["triangle", 2, 0.08], ["sine", 3, 0.04]].forEach(([type, r, v]) => {
+          const o = osc(type, f * r * 0.975, at, end + 0.4, amp(env, v));
+          o.frequency.exponentialRampToValueAtTime(f * r, at + 0.07);
+          vib.connect(o.frequency);
+        });
+        const br = amp(filter("bandpass", f * 2, 1.5, e));
+        noise(at, dur + 0.3, br);
+        br.gain.setValueAtTime(0, at);
+        br.gain.linearRampToValueAtTime(level * 0.3, at + 0.05);
+        br.gain.linearRampToValueAtTime(level * 0.08, at + 0.25);
+        br.gain.linearRampToValueAtTime(0, end + 0.3);
+      }
+      // Plucked string (Karplus-Strong), rendered once per note and cached.
+      function pluckBuf(m) {
+        if (plucks.has(m)) return plucks.get(m);
+        const sr = ctx.sampleRate, n = Math.floor(sr * 1.8), N = Math.round(sr / hz(m));
+        const b = ctx.createBuffer(1, n, sr), d = b.getChannelData(0);
+        let lp = 0;
+        for (let i = 0; i < N; i++) { lp += 0.5 * (Math.random() * 2 - 1 - lp); d[i] = lp; }
+        for (let i = N; i < n; i++) d[i] = 0.4985 * (d[i - N] + d[i - N + 1]);
+        plucks.set(m, b);
+        return b;
+      }
+      function pluck(at, m, level, pan) {
+        const s = ctx.createBufferSource();
+        s.buffer = pluckBuf(m);
+        const g = amp(filter("lowpass", 2400, 0.6, route(mus, 0.3, pan)), level);
+        s.connect(g);
+        s.start(at);
+      }
+
+      // ---- What plays when (loop seconds). Effects follow the picture. ----
+      const FX = [
+        // Wayang kulit: the lamp comes up with a gong, the tree rises, puppets step in on the drum.
+        [0, (a) => gong(a, hz(38), 1)],
+        [0.05, (a) => swish(a, 1.0, 220, 700, 0.05, 0.3, 0.8, 0, 0.3)],
+        [0.9, (a) => drum(a, "dung", 0.5, -0.3)],
+        [1.05, (a) => drum(a, "dung", 0.42, 0.3)],
+        [1.2, (a) => drum(a, "tak", 0.4, -0.2)],
+        [1.35, (a) => drum(a, "tak", 0.34, 0.2)],
+        [1.65, (a) => drum(a, "dung", 0.3, 0)],
+        // The tree of life turns over and back: two leather swishes.
+        [2.0, (a) => swish(a, 0.32, 700, 1500, 0.1, 0.55, 1.1, -0.2)],
+        [2.3, (a) => swish(a, 0.32, 1500, 650, 0.09, 0.45, 1.1, 0.2)],
+        // The light floods out into the sky: wind.
+        [2.6, (a) => wind(a, 2.6, 0.17, 0.4)],
+        // Wau bulan rise: busur hum and a paper flutter each.
+        [3.2, (a) => { hum(a, 4.8, hz(50), 0.03, -0.35); flutter(a, 1.8, 0.035, -0.35); }],
+        [3.55, (a) => { hum(a, 4.3, hz(57), 0.022, 0.4); flutter(a, 1.6, 0.028, 0.4); }],
+        // Batik: canting strokes on the clouds, then the flowers.
+        [3.5, (a) => brush(a, 0.7, 0.05, 2600, -0.3)],
+        [3.72, (a) => brush(a, 0.6, 0.035, 3200, 0.4)],
+        [4.1, (a) => brush(a, 0.7, 0.06, 2400, -0.5)],
+        [4.32, (a) => brush(a, 0.7, 0.05, 2900, 0.5)],
+        [4.55, (a) => brush(a, 0.75, 0.055, 2200, -0.4)],
+        [4.9, (a) => brush(a, 0.7, 0.045, 3100, 0.45)],
+        [5.1, (a) => brush(a, 0.6, 0.04, 2700, -0.2)],
+        // Dye soaks in: a watery swell and a rising pentatonic shimmer.
+        [5.1, (a) => swish(a, 1.5, 300, 1300, 0.05, 0.5, 0.6, 0, 0.5)],
+        [5.15, (a) => chime(a, hz(81), 0.05, 1.6, -0.4)],
+        [5.35, (a) => chime(a, hz(83), 0.045, 1.6, 0.3)],
+        [5.55, (a) => chime(a, hz(86), 0.045, 1.6, -0.2)],
+        [5.8, (a) => chime(a, hz(88), 0.04, 1.6, 0.4)],
+        [6.05, (a) => chime(a, hz(90), 0.035, 1.8, 0)],
+        // Kites glide up to make room for the title.
+        [6.4, (a) => wind(a, 1.5, 0.08, 0.5)],
+        // Songket unrolls, the pucuk rebung rise with a gold chime sweep, the title lands on a gong.
+        [6.8, (a) => { swish(a, 0.7, 380, 2400, 0.16, 0.22, 0.9, 0, 0.3); drum(a + 0.1, "dung", 0.18, 0); }],
+        [7.15, (a) => {
+          const steps = [...new Set(R.panel.tris.map((t) => Math.abs(t.i - (t.n - 1) / 2)))].sort((x, y) => x - y);
+          steps.forEach((s, i) => chime(a + s * 0.05, hz([86, 88, 90, 93, 95, 98, 100, 102][Math.min(i, 7)]), 0.03, 0.9, 0, 0.6));
+        }],
+        [7.45, (a) => gong(a, hz(45), 0.6)],
+        [8.05, (a) => R.panel.subEls.length && chime(a, hz(86), 0.035, 1.8, 0, 0.7)],
+        // The second gold glint crosses the cloth.
+        [10.05, (a) => shimmer(a, 0.9, 0.035)],
+        // The songket folds away and the shadow screen returns.
+        [10.7, (a) => { swish(a, 0.5, 2200, 320, 0.13, 0.8, 0.9, 0, 0.3); drum(a + 0.48, "dung", 0.14, 0); }],
+        [11.0, (a) => swish(a, 1.0, 250, 800, 0.06, 0.85, 0.6, 0, 0.4)],
+      ];
+
+      // Music: 80 bpm, 16 beats = one 12 s loop. D major pentatonic.
+      const B = 0.75, MU = [];
+      [[0, 69, 1.5], [1.5, 71, 0.5], [2, 69, 1], [3, 66, 1], [4, 64, 1], [5, 66, 0.5], [5.5, 69, 0.5], [6, 62, 2],
+        [8, 66, 1], [9, 69, 1], [10, 71, 1], [11, 74, 0.5], [11.5, 71, 0.5], [12, 69, 2], [14, 66, 1], [15, 64, 1]]
+        .forEach(([b, m, d]) => MU.push([b * B, (a) => flute(a, m, d * B - 0.04, 0.16)]));
+      [[50, 57, 62, 57, 54], [45, 52, 57, 52, 50], [47, 54, 59, 54, 50], [45, 52, 57, 54, 52]].forEach((notes, bar) => {
+        [0, 1, 1.5, 2.5, 3].forEach((b, i) => MU.push([(bar * 4 + b) * B, (a) => pluck(a, notes[i], i ? 0.28 : 0.36, i % 2 ? 0.25 : -0.25)]));
+      });
+      // Gendang on an eighth-note grid. The first bar stays light for the wayang drum.
+      for (let bar = 0; bar < 4; bar++) {
+        const pat = bar ? ["dung", 0, "tak", 0, "dung", "dung", "tak", bar === 3 ? "tak" : 0] : [0, 0, 0, 0, 0, 0, "tak", 0];
+        pat.forEach((k, i) => k && MU.push([(bar * 8 + i) * B / 2, (a) => drum(a, k, k === "dung" ? 0.26 : 0.2, 0, mus)]));
+      }
+
+      // ---- Scheduler: every 25 ms, queue what falls in the next ~100 ms ----
+      function tick() {
+        if (!ctx || ctx.state !== "running") return;
+        const now = performance.now() / 1000;
+        if (!tl || tl.paused() || reduce.matches || document.hidden || now - lastPerf > 0.2) { synced = false; return; }
+        const o = wraps * LOOP + lastT - lastPerf;
+        if (!synced || Math.abs(o - offset) > 0.06) { offset = o; until = o + now; synced = true; }
+        else offset += (o - offset) * 0.1;
+        let ts = ctx.getOutputTimestamp ? ctx.getOutputTimestamp() : {};
+        if (!ts.performanceTime) ts = { contextTime: ctx.currentTime, performanceTime: performance.now() };
+        const lag = Math.max(0, ctx.currentTime - ts.contextTime);
+        const from = Math.max(until, offset + now - 0.02), to = offset + now + 0.1 + lag;
+        if (to <= from) return;
+        const at = (u) => Math.max(ctx.currentTime, ts.contextTime + (u - offset) - ts.performanceTime / 1000);
+        for (let n = Math.floor(from / LOOP); n <= Math.floor(to / LOOP); n++) {
+          for (const list of music ? [FX, MU] : [FX]) {
+            for (const [t, fn] of list) {
+              const u = n * LOOP + t;
+              if (u > from && u <= to) fn(at(u));
+            }
+          }
+        }
+        until = to;
+      }
+
+      function fade(v, time) {
+        const g = master.gain, t = ctx.currentTime;
+        g.cancelScheduledValues(t);
+        g.setValueAtTime(g.value, t);
+        g.linearRampToValueAtTime(v, t + time);
+      }
+      function update() {
+        const active = want && !reduce.matches && !document.hidden;
+        if (active) {
+          if (!ctx) init();
+          clearTimeout(offTimer);
+          if (ctx.state !== "running") ctx.resume().catch(() => {});
+          fade(MASTER, 0.3);
+          if (!timer) timer = setInterval(tick, 25);
+        } else if (ctx) {
+          fade(0, 0.15);
+          clearTimeout(offTimer);
+          offTimer = setTimeout(() => {
+            clearInterval(timer);
+            timer = 0;
+            synced = false;
+            ctx.suspend().catch(() => {});
+          }, 180);
+        }
+        if (ctx) mus.gain.setTargetAtTime(music ? MUSIC : 0, ctx.currentTime, 0.05);
+      }
+
+      addEventListener("message", (e) => {
+        const d = e.data;
+        if (e.origin !== location.origin || !d || d.type !== "motionprompt-sound") return;
+        if (typeof d.music === "boolean") music = d.music;
+        want = !!d.on;
+        update();
+      });
+      reduce.addEventListener("change", update);
+      document.addEventListener("visibilitychange", update);
+      // Browsers may hold audio until a click or key press.
+      const unlock = () => { if (ctx && ctx.state === "suspended" && want && !reduce.matches && !document.hidden) ctx.resume().catch(() => {}); };
+      addEventListener("pointerdown", unlock);
+      addEventListener("keydown", unlock);
+      if (want) update();
+    })();
   </script>
 </body>
 </html>

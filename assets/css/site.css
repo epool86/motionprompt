@@ -628,6 +628,47 @@ a { color: var(--accent); }
   box-shadow: 0 20px 50px -26px rgba(20, 10, 60, 0.6);
 }
 
+.preview-stage { position: absolute; inset: 0; }
+
+/* Speaker toggle on the preview: sound is off until the visitor turns it on */
+.speaker {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(10, 8, 24, 0.62);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #fff;
+  font: 600 0.8rem var(--font);
+  cursor: pointer;
+}
+
+.speaker[hidden] { display: none; }
+
+.speaker svg { width: 18px; height: 18px; flex: none; }
+
+.speaker .icon-on,
+.speaker[aria-pressed="true"] .icon-off { display: none; }
+
+.speaker[aria-pressed="true"] .icon-on { display: block; }
+
+.speaker[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--violet);
+}
+
+.speaker:hover { border-color: rgba(255, 255, 255, 0.5); }
+
+.speaker:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
 .detail-preview iframe {
   position: absolute;
   inset: 0;

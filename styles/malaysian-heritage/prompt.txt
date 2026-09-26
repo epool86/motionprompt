@@ -13,6 +13,11 @@ Type and colour
 - An elegant, classic display font (like Cinzel) in gold for the headline, and a friendly sans font (like Nunito) in spaced capitals for small text.
 - Use my brand colours if I give them, with songket gold as the accent. Otherwise use deep maroon #6e1129, royal blue #1f3f8f, emerald #0f6b4a, turmeric yellow #f2b431, bunga raya red #c42a3e and songket gold #d9a53a on a warm sky of #f8d894.
 
+Sound
+- Effects: a soft, low gong as the shadow screen lights up, gentle gendang taps as the puppets step in, an airy wind swell and a light buzzing hum (like the bow on a wau bulan) as the kites rise, soft brushy strokes as the batik lines draw and a gentle chime shimmer as the colour soaks in, a bright gold chime sweep as the songket opens, and a soft gong accent when my headline lands.
+- Music: a calm, warm traditional feel. A simple pentatonic melody on a bamboo flute and a plucked string, over a slow gendang rhythm and a low drone. Gentle and dignified, quieter than the effects, and it loops smoothly. No chanting or vocals.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

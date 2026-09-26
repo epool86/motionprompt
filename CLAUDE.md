@@ -78,6 +78,19 @@ to fit any message. It asks for the final MP4 only.
 Placeholders, filled from the page's video settings by `assets/js/prompt.js`:
 `{size}` (for example "1080 x 1920 pixels (vertical 9:16)") and `{duration}` ("8 seconds").
 
+Optional sound: a prompt may have a "Sound" section between "Type and colour" and "Output",
+in exactly this form (the site parses it):
+
+```
+Sound
+- Effects: <style-specific effects, timed to the motion>
+- Music: <style-specific simple background music or ambience>
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+```
+
+The Sound setting (Off, Effects, Effects + music) removes the section or the Music line.
+It starts at Off on every style page and is not remembered.
+
 Keep prompts in plain language with a one-line build hint. Claude knows how to render video, so
 do not spell out the technical steps.
 
@@ -86,6 +99,11 @@ do not spell out the technical steps.
 Each `demo.html` must fit any window shape, because the preview is reshaped to the chosen format
 (9:16, 4:5, 1:1, 16:9). Demos also accept `?text=` and colours `?bg= &ink= &accent= &accent2=`
 (hex, no `#`) in the URL; the site does not use these at the moment.
+
+Demos with sound make it with Web Audio (no files) and stay silent until the parent page sends
+`postMessage({ type: "motionprompt-sound", on, music }, origin)`; `?sound=1` or `?sound=effects`
+also turns it on for testing. Grid tiles never get the message, so they are always silent.
+Sound must follow the animation clock and stop with reduced motion.
 
 ## Verify
 

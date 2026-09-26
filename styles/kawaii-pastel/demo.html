@@ -494,6 +494,7 @@
       tl.to(clouds, { scale: 0, duration: 0.35, ease: "back.in(2)", stagger: 0.1 }, 9.2);
       tl.to(blobs, { scale: 0, duration: 0.45, ease: "back.in(1.6)", stagger: 0.06 }, 9.3);
       tl.set({}, {}, LOOP);
+      sfx = makeSfx(letters.length, Math.min(0.07, 1 / letters.length));
 
       tl.time(keep % LOOP);
       if (reduce.matches) tl.pause(STILL);
@@ -502,10 +503,340 @@
 
     // Reduced motion: one still frame with everything in place.
     reduce.addEventListener("change", () => {
+      applySound();
       if (!tl) return;
       if (reduce.matches) tl.pause(STILL);
       else tl.play();
     });
+
+    /* ---------- Sound: all made with Web Audio, off until the page asks for it ---------- */
+
+    const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
+    const BEAT = LOOP / 18; // 108 bpm, six bars of 3/4 fill the 10 second loop exactly
+
+    // The mixer: effects and music buses, a soft reverb, then a compressor so nothing clips.
+    function makeGraph(ctx) {
+      const G = { ctx };
+      const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 4;
+      comp.attack.value = 0.004; comp.release.value = 0.2;
+      comp.connect(ctx.destination);
+      G.master = ctx.createGain();
+      G.master.connect(comp);
+      G.fx = ctx.createGain(); G.fx.gain.value = 0.9; G.fx.connect(G.master);
+      G.music = ctx.createGain(); G.music.gain.value = 0.34; G.music.connect(G.master);
+      // Reverb from a generated impulse: stereo noise with a smooth decay.
+      const len = Math.floor(ctx.sampleRate * 1.8), ir = ctx.createBuffer(2, len, ctx.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const d = ir.getChannelData(ch);
+        for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.5);
+      }
+      const verb = ctx.createConvolver();
+      verb.buffer = ir;
+      G.verb = ctx.createGain(); G.verb.gain.value = 0.5;
+      const tone = ctx.createBiquadFilter(); tone.type = "lowpass"; tone.frequency.value = 5000;
+      G.verb.connect(tone); tone.connect(verb); verb.connect(G.master);
+      // One second of white noise for claps, puffs and shimmer.
+      G.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const nd = G.noise.getChannelData(0);
+      for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+      return G;
+    }
+
+    // Small building blocks: an output with pan and reverb send, an envelope, a source.
+    function outTo(G, bus, pan = 0, wet = 0) {
+      const p = G.ctx.createStereoPanner();
+      p.pan.value = pan;
+      p.connect(bus);
+      if (wet) { const s = G.ctx.createGain(); s.gain.value = wet; p.connect(s); s.connect(G.verb); }
+      return p;
+    }
+    function env(G, t, peak, a, d, dest) {
+      const g = G.ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(peak, t + a);
+      g.gain.setTargetAtTime(0, t + a, d / 5);
+      g.connect(dest);
+      return g;
+    }
+    function osc(G, t, type, f, dest, stop) {
+      const o = G.ctx.createOscillator();
+      o.type = type;
+      o.frequency.setValueAtTime(f, t);
+      o.connect(dest);
+      o.start(t); o.stop(t + stop);
+      return o;
+    }
+    function noise(G, t, dur, dest) {
+      const s = G.ctx.createBufferSource();
+      s.buffer = G.noise;
+      s.connect(dest);
+      s.start(t, Math.random() * 0.5, dur);
+      return s;
+    }
+
+    // A bell-like note: a pure tone plus a quick bright overtone.
+    function bell(G, t, f, peak, d, { ratio = 3.93, over = 0.3, bus = G.fx, pan = 0, wet = 0.3 } = {}) {
+      const out = outTo(G, bus, pan, wet);
+      osc(G, t, "sine", f, env(G, t, peak, 0.003, d, out), d * 1.3);
+      osc(G, t, "sine", f * ratio, env(G, t, peak * over, 0.002, d * 0.25, out), d * 0.4);
+    }
+    // Bubbly pop: a tone that swoops up fast.
+    function pop(G, t, f, peak, pan = 0, len = 0.09) {
+      const out = outTo(G, G.fx, pan, 0.2);
+      const o = osc(G, t, "sine", f * 0.45, env(G, t, peak, 0.004, len, out), len * 1.5);
+      o.frequency.exponentialRampToValueAtTime(f * 1.4, t + len * 0.5);
+    }
+    // Toy boop: a soft tone that drops a little.
+    function boop(G, t, f, peak, pan = 0, len = 0.13) {
+      const out = outTo(G, G.fx, pan, 0.2);
+      const lp = G.ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = f * 3; lp.connect(out);
+      const o = osc(G, t, "triangle", f, env(G, t, peak, 0.005, len, lp), len * 1.5);
+      o.frequency.exponentialRampToValueAtTime(f * 0.62, t + len);
+    }
+    // Spring boing: a wobbling tone that settles.
+    function boing(G, t, base, peak, len) {
+      const out = outTo(G, G.fx, 0, 0.15);
+      const o = osc(G, t, "sine", base, env(G, t, peak, 0.005, len, out), len * 1.3);
+      o.frequency.exponentialRampToValueAtTime(base * 1.7, t + len * 0.18);
+      o.frequency.exponentialRampToValueAtTime(base * 1.35, t + len);
+      const lfo = G.ctx.createOscillator(), depth = G.ctx.createGain();
+      lfo.frequency.value = 15;
+      depth.gain.setValueAtTime(base * 0.45, t);
+      depth.gain.exponentialRampToValueAtTime(1, t + len);
+      lfo.connect(depth); depth.connect(o.frequency);
+      lfo.start(t); lfo.stop(t + len * 1.3);
+    }
+    // Soft landing thump.
+    function thump(G, t, peak) {
+      const o = osc(G, t, "sine", 150, env(G, t, peak, 0.003, 0.16, outTo(G, G.fx)), 0.25);
+      o.frequency.exponentialRampToValueAtTime(48, t + 0.14);
+    }
+    // Slide whistle, used for the fall in and the jump out.
+    function slide(G, t, f1, f2, dur, peak) {
+      const out = outTo(G, G.fx, 0, 0.25);
+      const g = G.ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(peak, t + 0.04);
+      g.gain.setValueAtTime(peak, t + dur - 0.06);
+      g.gain.linearRampToValueAtTime(0, t + dur);
+      g.connect(out);
+      const o = osc(G, t, "sine", f1, g, dur + 0.02);
+      o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+      const lfo = G.ctx.createOscillator(), depth = G.ctx.createGain();
+      lfo.frequency.value = 7; depth.gain.value = f1 * 0.025;
+      lfo.connect(depth); depth.connect(o.frequency);
+      lfo.start(t); lfo.stop(t + dur + 0.02);
+    }
+    // Filtered noise: a puff of air or a shimmer.
+    function hiss(G, t, type, f, q, peak, a, d, wet = 0.2, pan = 0) {
+      const flt = G.ctx.createBiquadFilter(); flt.type = type; flt.frequency.value = f; flt.Q.value = q;
+      flt.connect(env(G, t, peak, a, d, outTo(G, G.fx, pan, wet)));
+      noise(G, t, a + d * 1.3, flt);
+      return flt;
+    }
+    // Blink: two tiny ticks, eyes shut then open.
+    function blink(G, t) {
+      for (const [dt, f, p] of [[0, 2900, 0.07], [0.09, 3400, 0.05]]) {
+        const o = osc(G, t + dt, "sine", f, env(G, t + dt, p, 0.002, 0.03, outTo(G, G.fx, 0.1)), 0.06);
+        o.frequency.exponentialRampToValueAtTime(f * 0.7, t + dt + 0.025);
+      }
+    }
+    // Sparkle burst: a quick rising run of bells over a shimmer.
+    function sparkle(G, t) {
+      const notes = [84, 86, 88, 91, 93, 96, 98, 100, 103, 105, 108];
+      notes.forEach((m, i) => bell(G, t + i * 0.034, mtof(m), 0.075, 0.9, { ratio: 2.76, over: 0.25, pan: i % 2 ? 0.4 : -0.4, wet: 0.55 }));
+      const f = hiss(G, t, "highpass", 5000, 0.7, 0.05, 0.08, 1.0, 0.5);
+      f.frequency.exponentialRampToValueAtTime(9000, t + 0.6);
+    }
+    // Music voices: music box, ukulele pluck, bass pluck and a soft clap.
+    function musicBox(G, t, m) {
+      const f = mtof(m), out = outTo(G, G.music, 0.15, 0.4);
+      osc(G, t, "sine", f, env(G, t, 0.2, 0.003, 1.3, out), 1.6);
+      osc(G, t, "sine", f * 2, env(G, t, 0.04, 0.003, 0.4, out), 0.5);
+      osc(G, t, "sine", f * 5.4, env(G, t, 0.03, 0.001, 0.07, out), 0.1);
+    }
+    function uke(G, t, m, peak, pan) {
+      const f = mtof(m), out = outTo(G, G.music, pan, 0.2);
+      const lp = G.ctx.createBiquadFilter();
+      lp.type = "lowpass"; lp.Q.value = 1.5;
+      lp.frequency.setValueAtTime(f * 7, t);
+      lp.frequency.exponentialRampToValueAtTime(f * 1.6, t + 0.25);
+      lp.connect(env(G, t, peak, 0.003, 0.5, out));
+      osc(G, t, "sawtooth", f, lp, 0.65);
+      osc(G, t, "triangle", f * 1.003, lp, 0.65);
+    }
+    function bass(G, t, m) {
+      osc(G, t, "sine", mtof(m), env(G, t, 0.28, 0.006, 0.55, outTo(G, G.music)), 0.75);
+      osc(G, t, "triangle", mtof(m) * 2, env(G, t, 0.05, 0.004, 0.2, outTo(G, G.music)), 0.3);
+    }
+    function clap(G, t, peak) {
+      const out = outTo(G, G.music, -0.1, 0.3);
+      const bp = G.ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 1500; bp.Q.value = 0.9;
+      const g = G.ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      for (const dt of [0, 0.011, 0.022]) { g.gain.setValueAtTime(peak, t + dt); g.gain.setTargetAtTime(0, t + dt + 0.001, 0.004); }
+      g.gain.setValueAtTime(peak * 0.7, t + 0.033); g.gain.setTargetAtTime(0, t + 0.034, 0.035);
+      bp.connect(g); g.connect(out);
+      noise(G, t, 0.25, bp);
+    }
+
+    // Music: a sweet 3/4 tune in C over ukulele strums, looped exactly with the animation.
+    const MUSIC = (() => {
+      const E = [], at = (b, fn) => E.push({ t: b * BEAT, fn });
+      const chords = [[60, 64, 67], [59, 62, 67], [57, 60, 64], [57, 60, 65], [60, 64, 67], [59, 62, 67]];
+      const roots = [48, 43, 45, 41, 48, 43];
+      chords.forEach((ch, bar) => {
+        const b0 = bar * 3;
+        at(b0, (G, t) => bass(G, t, roots[bar]));
+        at(b0 + 1, (G, t) => ch.forEach((m, i) => uke(G, t + i * 0.014, m, 0.07, -0.25)));
+        at(b0 + 2, (G, t) => ch.slice().reverse().forEach((m, i) => uke(G, t + i * 0.012, m, 0.055, -0.25)));
+        at(b0 + 2, (G, t) => clap(G, t, bar % 2 ? 0.14 : 0.1));
+      });
+      const tune = [[0, 79], [1, 76], [1.5, 79], [2, 84], [3, 86], [4, 83], [5, 79], [6, 81], [7, 84], [7.5, 83], [8, 81],
+        [9, 77], [10, 81], [11, 84], [12, 88], [13, 86], [13.5, 84], [14, 79], [15, 83], [16, 81], [16.5, 83], [17, 86]];
+      tune.forEach(([b, m]) => at(b, (G, t) => musicBox(G, t, m)));
+      return E.sort((a, b) => a.t - b.t);
+    })();
+
+    // Effects, at the same loop times as the timeline in build().
+    let sfx = [];
+    function makeSfx(nLetters, stagger) {
+      const E = [], at = (t, fn) => E.push({ t, fn });
+      // Background blobs and clouds pop in
+      [0, 0.08, 0.16, 0.24].forEach((t, i) => at(t + 0.02, (G, w) => pop(G, w, [330, 392, 440, 523][i], 0.1, [-0.5, 0.5, 0.5, -0.5][i], 0.14)));
+      [0.2, 0.35].forEach((t, i) => at(t + 0.03, (G, w) => hiss(G, w, "lowpass", 900, 1, 0.1, 0.03, 0.22, 0.2, i ? 0.5 : -0.5)));
+      // She drops in and lands with a boing
+      at(0.45, (G, w) => slide(G, w, 1500, 520, 0.45, 0.05));
+      at(0.9, (G, w) => { thump(G, w, 0.4); boing(G, w, 140, 0.32, 0.7); });
+      // Waves: a little wind chime, one note per wiggle
+      const chime = [96, 100, 103, 98, 105, 101];
+      at(1.22, (G, w) => bell(G, w, mtof(91), 0.07, 1.2, { ratio: 2.76, over: 0.3, pan: 0.3, wet: 0.5 }));
+      for (let i = 0; i < 6; i++) at(1.5 + i * 0.17, (G, w) => bell(G, w, mtof(chime[i]), 0.055, 1.0, { ratio: 2.76, over: 0.25, pan: i % 2 ? 0.45 : 0.15, wet: 0.5 }));
+      for (let i = 0; i < 4; i++) at(7.05 + i * 0.17, (G, w) => bell(G, w, mtof(chime[i + 1]), 0.04, 0.9, { ratio: 2.76, over: 0.25, pan: 0.35, wet: 0.5 }));
+      // Floating shapes and stickers pop in
+      for (let i = 0; i < 10; i += 2) at(1.5 + i * 0.12 + 0.02, (G, w) => pop(G, w, [880, 988, 1175, 1319, 1568][i / 2], 0.06, i % 4 ? 0.6 : -0.6, 0.06));
+      [[1.7, 523, -0.35], [1.88, 659, 0.35], [2.06, 784, -0.3]].forEach(([t, f, p]) => at(t + 0.02, (G, w) => pop(G, w, f, 0.24, p)));
+      // Blinks
+      for (const t of [2.2, 4.1, 5.95]) at(t + 0.04, (G, w) => blink(G, w));
+      // Speech bubble, then a plink per letter up a C major scale
+      at(3.0, (G, w) => { pop(G, w, 392, 0.26, 0.2, 0.12); hiss(G, w, "bandpass", 1800, 0.8, 0.05, 0.02, 0.15, 0.2, 0.2); });
+      const scale = [0, 2, 4, 5, 7, 9, 11];
+      for (let i = 0; i < nLetters; i++) {
+        const step = nLetters > 15 ? Math.round((i * 14) / (nLetters - 1)) : i;
+        const m = 72 + 12 * Math.floor(step / 7) + scale[step % 7];
+        at(3.25 + i * stagger + 0.03, (G, w) => bell(G, w, mtof(m), 0.13, 0.45, { pan: 0.25, wet: 0.25 }));
+      }
+      // Three happy hops: a springy take off and a soft bouncy landing
+      [[4.6, 1], [5.35, 1.12], [6.7, 1.26]].forEach(([t, k]) => {
+        at(t + 0.1, (G, w) => { const o = osc(G, w, "sine", 330 * k, env(G, w, 0.12, 0.004, 0.14, outTo(G, G.fx, 0, 0.1)), 0.2); o.frequency.exponentialRampToValueAtTime(760 * k, w + 0.13); });
+        at(t + 0.56, (G, w) => { thump(G, w, 0.22); boing(G, w, 190 * k, 0.14, 0.32); });
+      });
+      // Sparkle burst with happy eyes
+      at(6.8, (G, w) => sparkle(G, w));
+      // Everything bounces out: letters, stickers, bubble, then she jumps away
+      for (let j = 0; j < nLetters; j++) at(8.45 + j * 0.025, (G, w) => boop(G, w, mtof(84 - Math.round((j * 12) / Math.max(1, nLetters - 1))), 0.05, 0.25, 0.06));
+      [[8.55, 784], [8.63, 659], [8.71, 523]].forEach(([t, f], i) => at(t, (G, w) => boop(G, w, f, 0.16, i % 2 ? 0.35 : -0.35)));
+      at(8.8, (G, w) => boop(G, w, 440, 0.2, 0.2, 0.18));
+      at(8.95, (G, w) => boing(G, w, 170, 0.12, 0.2));
+      at(9.05, (G, w) => slide(G, w, 480, 1600, 0.42, 0.05));
+      [9.2, 9.3].forEach((t, i) => at(t, (G, w) => hiss(G, w, "lowpass", 800, 1, 0.08, 0.02, 0.2, 0.2, i ? 0.5 : -0.5)));
+      [9.3, 9.36, 9.42, 9.48].forEach((t, i) => at(t + 0.05, (G, w) => boop(G, w, [392, 330, 262, 196][i], 0.13, [-0.5, 0.5, 0.5, -0.5][i], 0.16)));
+      return E.sort((a, b) => a.t - b.t);
+    }
+
+    // Player state and a look ahead scheduler locked to the GSAP timeline clock.
+    const AHEAD = 0.1;
+    let actx = null, G = null, soundWanted = false, musicOn = true, until = null, offset = null, token = 0;
+    let frameTT = 0, frameWall = 0;
+    gsap.ticker.add(() => { if (tl) { frameTT = tl.totalTime(); frameWall = performance.now(); } });
+
+    function scheduleRange(a, b) {
+      const lists = musicOn ? [sfx, MUSIC] : [sfx];
+      for (let k = Math.floor(a / LOOP); k * LOOP < b; k++) {
+        for (const list of lists) {
+          for (const e of list) {
+            const T = k * LOOP + e.t;
+            if (T < a || T >= b) continue;
+            const when = Math.max(actx.currentTime, T + offset);
+            e.fn(G, when);
+            if (window.kpSoundLog) window.kpSoundLog.push({ loopT: e.t, total: T, when, music: list === MUSIC });
+          }
+        }
+      }
+    }
+
+    function tick() {
+      if (!actx || actx.state !== "running" || !soundWanted || !tl) return;
+      if (document.hidden || reduce.matches || tl.paused()) { until = null; return; }
+      // Timeline time right now, extrapolated from the last animation frame.
+      const tt = frameTT + Math.min(0.05, (performance.now() - frameWall) / 1000);
+      const est = actx.currentTime - (actx.outputLatency || actx.baseLatency || 0) - tt;
+      if (offset === null || Math.abs(est - offset) > 0.03) offset = est;
+      else offset += (est - offset) * 0.05;
+      // After a pause, a jump or a rebuild, start again from now without catching up.
+      if (until === null || tt < until - 0.25 || tt > until + 0.25) until = tt;
+      const end = tt + AHEAD;
+      if (end > until) { scheduleRange(until, end); until = end; }
+    }
+
+    function fadeMaster(to, secs) {
+      const g = G.master.gain, now = actx.currentTime;
+      g.cancelScheduledValues(now);
+      g.setValueAtTime(g.value, now);
+      g.linearRampToValueAtTime(to, now + secs);
+    }
+
+    function setMusic(on) {
+      musicOn = on;
+      if (G) {
+        const g = G.music.gain, now = actx.currentTime;
+        g.cancelScheduledValues(now);
+        g.setValueAtTime(g.value, now);
+        g.linearRampToValueAtTime(on ? 0.34 : 0, now + 0.15);
+      }
+    }
+
+    function applySound() {
+      const active = soundWanted && !reduce.matches;
+      const my = ++token;
+      if (active) {
+        if (!actx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return;
+          actx = new AC({ latencyHint: "interactive" });
+          G = makeGraph(actx);
+          G.master.gain.value = 0;
+          G.music.gain.value = musicOn ? 0.34 : 0;
+          setInterval(tick, 25);
+        }
+        until = null;
+        actx.resume().then(() => { if (my === token) { until = null; fadeMaster(0.75, 0.1); } }).catch(() => {});
+      } else if (actx) {
+        fadeMaster(0, 0.15);
+        setTimeout(() => { if (my === token) actx.suspend(); }, 200);
+      }
+    }
+
+    addEventListener("message", (e) => {
+      if (e.origin !== location.origin) return;
+      const d = e.data;
+      if (!d || d.type !== "motionprompt-sound") return;
+      if (typeof d.music === "boolean") setMusic(d.music);
+      if (typeof d.on === "boolean") { soundWanted = d.on; applySound(); }
+    });
+
+    // ?sound=1 turns on sound with music, ?sound=effects only the effects.
+    const soundParam = params.get("sound");
+    if (soundParam === "1" || soundParam === "effects") {
+      musicOn = soundParam === "1";
+      soundWanted = true;
+      applySound();
+    }
+    // Browsers may hold audio until the first tap or key press.
+    const unlock = () => { if (actx && soundWanted && !reduce.matches && actx.state === "suspended") actx.resume(); };
+    addEventListener("pointerdown", unlock);
+    addEventListener("keydown", unlock);
 
     let resizeTimer;
     addEventListener("resize", () => {

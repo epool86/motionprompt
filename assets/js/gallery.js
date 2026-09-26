@@ -1,8 +1,8 @@
 // The style directory on the home page: search, tag filters and a grid of live tiles.
 // Tapping a tile slides the list away and slides in a full detail view for that style.
 // Each style has its own link (#slug), so the browser back button and shared links work.
-import { loadStyles, loadPrompt, fillPrompt, copyText } from "./prompt.js";
-import { settings, onChange } from "./settings.js";
+import { loadStyles, loadPrompt, fillPrompt, hasSound, copyText } from "./prompt.js";
+import { settings, onChange, showSoundSetting, resetSound } from "./settings.js";
 
 const grid = document.getElementById("gallery");
 const search = document.getElementById("search");
@@ -13,6 +13,8 @@ const listView = document.getElementById("list-view");
 const detailView = document.getElementById("detail-view");
 const detailPreview = document.getElementById("detail-preview");
 const previewDock = document.querySelector(".preview-dock");
+const speaker = document.getElementById("speaker");
+const speakerLabel = speaker.querySelector(".speaker-label");
 const detailTitle = document.getElementById("detail-title");
 const detailSummary = document.getElementById("detail-summary");
 const detailCopy = document.getElementById("detail-copy");
@@ -46,6 +48,37 @@ const demoUrl = (style) => `styles/${style.slug}/demo.html`;
 
 function frame(style) {
   return el("iframe", { src: demoUrl(style), title: `${style.name} demo`, tabindex: "-1" });
+}
+
+// Preview sound: off until the visitor presses the speaker or picks a Sound option.
+// The demo makes its own sound with Web Audio and listens for this message.
+// The preview always plays what the video will have: Off is silent, Effects has no music.
+let soundOn = false;
+
+function sendSound() {
+  const win = detailPreview.querySelector("iframe")?.contentWindow;
+  const on = soundOn && settings.sound !== "off";
+  win?.postMessage({ type: "motionprompt-sound", on, music: settings.sound === "music" }, location.origin);
+}
+
+function setSound(on) {
+  soundOn = on && settings.sound !== "off";
+  speaker.setAttribute("aria-pressed", String(soundOn));
+  speakerLabel.textContent = settings.sound === "off" ? "No sound" : soundOn ? "Sound on" : "Sound off";
+  sendSound();
+}
+
+speaker.addEventListener("click", () => {
+  // With Sound set to Off, the speaker switches it back to Effects.
+  if (settings.sound === "off") document.querySelector('#sounds .segment:nth-child(2)')?.click();
+  else setSound(!soundOn);
+});
+
+function detailFrame(style) {
+  const iframe = frame(style);
+  iframe.setAttribute("allow", "autoplay");
+  iframe.addEventListener("load", () => { if (soundOn) sendSound(); });
+  return iframe;
 }
 
 // Tiles play their demo only while on screen, so a long list stays light.
@@ -126,6 +159,8 @@ onChange((key) => {
   if (!style) return;
   detailStatus.textContent = "";
   if (key === "ratio") setPreviewShape();
+  // Picking a Sound option plays that choice in the preview (Off silences it).
+  if (key === "sound") setSound(settings.sound !== "off");
   showPrompt(style);
 });
 
@@ -135,9 +170,21 @@ async function fillDetail(style) {
   detailStatus.textContent = "";
   detailPrompt.textContent = "Loading style...";
   setPreviewShape();
-  detailPreview.replaceChildren(frame(style));
+  resetSound();
+  setSound(false);
+  speaker.hidden = true;
+  showSoundSetting(false);
+  detailPreview.replaceChildren(detailFrame(style));
   document.title = `${style.name} · ${baseTitle}`;
   showPrompt(style);
+  // Styles with a Sound section get the speaker and the Sound setting.
+  try {
+    const withSound = hasSound(await prompts.get(style.slug));
+    if (current === style.slug) {
+      speaker.hidden = !withSound;
+      showSoundSetting(withSound);
+    }
+  } catch {}
 }
 
 // Slide one view out and the other in. The outgoing view is lifted out of the page flow
@@ -213,6 +260,7 @@ function showList() {
   current = null;
   cameFromList = false;
   document.title = baseTitle;
+  setSound(false);
   slide(detailView, listView, "back", listScroll);
   // Stop the big demo once the detail is off screen (unless another style opened meanwhile).
   setTimeout(() => { if (current === null) detailPreview.replaceChildren(); }, 500);

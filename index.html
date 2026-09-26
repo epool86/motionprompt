@@ -61,7 +61,14 @@
       </div>
       <div class="wrap detail-body">
         <div class="preview-dock">
-          <div class="detail-preview" id="detail-preview"></div>
+          <div class="detail-preview">
+            <div class="preview-stage" id="detail-preview"></div>
+            <button class="speaker" type="button" id="speaker" aria-pressed="false" hidden>
+              <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="m22 9-6 6M16 9l6 6"/></svg>
+              <svg class="icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+              <span class="speaker-label">Sound off</span>
+            </button>
+          </div>
         </div>
         <div class="detail-info">
           <h2 id="detail-title" tabindex="-1"></h2>
@@ -82,6 +89,10 @@
                 <span class="setting-label" id="durations-label">Length</span>
                 <div class="segmented" id="durations" role="group" aria-labelledby="durations-label"></div>
               </div>
+            </div>
+            <div class="setting" id="sound-setting" hidden>
+              <span class="setting-label" id="sounds-label">Sound</span>
+              <div class="segmented" id="sounds" role="group" aria-labelledby="sounds-label"></div>
             </div>
           </div>
 

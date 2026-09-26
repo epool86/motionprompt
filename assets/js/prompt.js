@@ -31,7 +31,26 @@ export const QUALITIES = [
 
 export const DURATIONS = [6, 8, 10, 15, 30];
 
-export const DEFAULT_SETTINGS = { ratio: "9:16", quality: 1080, duration: 8 };
+export const SOUNDS = [
+  { value: "off", label: "Off" },
+  { value: "effects", label: "Effects" },
+  { value: "music", label: "Effects + music" },
+];
+
+export const DEFAULT_SETTINGS = { ratio: "9:16", quality: 1080, duration: 8, sound: "off" };
+
+// A style with sound has a "Sound" section with "- Effects:" and "- Music:" bullets.
+export function hasSound(template) {
+  return /^Sound\n- Effects:/m.test(template);
+}
+
+// Off drops the whole Sound section, Effects drops the music bullet.
+function applySound(template, sound) {
+  if (!hasSound(template)) return template;
+  if (sound === "off") return template.replace(/^Sound\n(?:- .*\n?)+\n*/m, "");
+  if (sound === "effects") return template.replace(/^- Music:.*\n/m, "");
+  return template;
+}
 
 // For example 9:16 at 1080p is 1080 x 1920 pixels.
 export function videoSize({ ratio, quality }) {
@@ -44,7 +63,7 @@ export function videoSize({ ratio, quality }) {
 }
 
 export function fillPrompt(template, settings) {
-  return template
+  return applySound(template, settings.sound)
     .replace("{size}", videoSize(settings))
     .replace("{duration}", `${settings.duration} seconds`);
 }

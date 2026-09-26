@@ -13,6 +13,11 @@ Type and colour
 - A big, bubbly, rounded font (like Mochiy Pop One or Fredoka), with letters in a few cheerful colours on the white bubble.
 - Use my brand colours if I give them, softened into pastels. Otherwise use creamy pink #fff0f4 for the background, soft pink #ff9cbf, lilac #c3a8f5, mint #a8e6cf, butter yellow #ffe07a and peach #ffc4a8, with dark plum #4b2a3a for outlines.
 
+Sound
+- Effects: cute, bubbly, toy-like sounds timed to the motion. A springy boing when the mascot lands and soft cartoon bounces for each hop, a little wind chime twinkle when she waves, a tiny tick when she blinks, bubbly pops in different pitches as each sticker and shape appears, soft xylophone plinks for each letter that rise up a scale across the message, a magical sparkle run for the sparkle burst, and playful boops as everything bounces out.
+- Music: a sweet, playful loop in a happy major key, about 110 bpm: a toy piano or music box melody over light ukulele plucks and soft claps. Keep it quieter than the effects and make it loop smoothly.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}

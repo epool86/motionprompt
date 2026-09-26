@@ -740,6 +740,8 @@
       gsap.set(tabIcons[0], { color: "var(--accent)" });
 
       const tl = gsap.timeline({ repeat: -1, defaults: { ease: "power3.inOut" } });
+      const cues = []; // sound cues, added next to the motion they belong to
+      const pan = (p) => Math.max(-0.6, Math.min(0.6, (p.x / 380 - 0.5) * 0.9));
       // Each step applies its start values only when it begins, not when it is created.
       const fromTo = tl.fromTo.bind(tl);
       tl.fromTo = (targets, from, to, at) => fromTo(targets, from, { ...to, immediateRender: false }, at);
@@ -757,6 +759,7 @@
 
       // A card pops out of the screen towards the viewer, bobs, then sinks back.
       function pop(el, at, until, { x = 0, y = 0, z = 130, turn = 0 } = {}) {
+        cues.push({ t: at, fx: "pop", id: el.id }, { t: until, fx: "sink", id: el.id });
         tl.fromTo(el, { autoAlpha: 0, x: 0, y: 0, z: 0, scale: 0.82, rotationY: 0 },
           { autoAlpha: 1, x, y, z, scale: 1, rotationY: turn, duration: 0.75, ease: "back.out(1.5)" }, at)
           .to(el, { y: y - 8, duration: (until - at - 0.75) / 2, ease: "sine.inOut", yoyo: true, repeat: 1 }, at + 0.75)
@@ -767,6 +770,7 @@
       function tap(el, at, { fx = 0.5, fy = 0.5, from = { x: 60, y: 90 }, stay = false } = {}) {
         const p = spot(el, fx, fy);
         const r = { x: p.x - 12, y: p.y - 12 }; // screen sits 12 units inside the phone
+        cues.push({ t: at + 0.62, fx: "tap", pan: pan(p) });
         tl.fromTo(finger, { autoAlpha: 0, x: p.x + from.x, y: p.y + from.y, z: 40, scale: 1.1 },
           { autoAlpha: 1, x: p.x, y: p.y, scale: 1, duration: 0.55, ease: "power2.out" }, at)
           .to(finger, { scale: 0.8, duration: 0.12, ease: "power2.in" }, at + 0.6)
@@ -780,6 +784,7 @@
       // Push the next screen in from the right (or back in from the left).
       function slide(from, to, at, back = false) {
         const a = [viewA, viewB, viewC].indexOf(from), b = [viewA, viewB, viewC].indexOf(to);
+        cues.push({ t: at, fx: "swipe", back });
         if (back) {
           tl.fromTo(from, { xPercent: 0 }, { xPercent: 100, duration: 0.7 }, at)
             .fromTo(to, { xPercent: -30 }, { xPercent: 0, duration: 0.7 }, at)
@@ -820,6 +825,7 @@
       tl.to(knob, { left: 21, duration: 0.3, ease: "power2.out" }, 8.12)
         .to(sw, { backgroundColor: "var(--accent)", duration: 0.3 }, 8.12);
       const home = spot(tabIcons[0]);
+      cues.push({ t: 9.07, fx: "tap", pan: pan(home) });
       tl.to(finger, { x: home.x, y: home.y, duration: 0.6, ease: "power2.inOut" }, 8.45)
         .to(finger, { scale: 0.8, duration: 0.12, ease: "power2.in" }, 9.05)
         .to(finger, { scale: 1, duration: 0.2, ease: "power2.out" }, 9.17)
@@ -838,7 +844,377 @@
       const apply = () => (reduce.matches ? tl.pause(2.3) : tl.play());
       apply();
       reduce.addEventListener("change", apply);
+      sound.attach(tl, L, cues);
     }
+
+    // Sound: every note is made with the Web Audio API, nothing is loaded.
+    // Off by default. The parent page turns it on with postMessage, or use ?sound=1 / ?sound=effects.
+    const sound = (() => {
+      const MASTER = 0.9, MUSIC = 0.16, AHEAD = 0.2;
+      const BEAT = 10.8 / 20; // 20 beats per loop, about 111 bpm
+      const BAR = BEAT * 4;
+      const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+      const mtof = (m) => 440 * 2 ** ((m - 69) / 12);
+      let tl = null, L = 10.8, cues = [];
+      let want = false, music = true;
+      let ctx = null, bus = null, noise = null;
+      let timer = 0, stopTimer = 0, cursor = null, offset = null, lastTick = null;
+
+      // Five bars in C major: pad voicing, bass note and a light pluck motif (eighth, note).
+      const bars = [
+        { pad: [52, 55, 59, 62], bass: 36, riff: [[0, 76], [3, 79], [4, 74], [6, 72]] },
+        { pad: [55, 57, 60, 64], bass: 33, riff: [[0, 76], [3, 72], [4, 79], [6, 76]] },
+        { pad: [53, 57, 60, 64], bass: 41, riff: [[0, 77], [3, 76], [4, 72], [6, 69]] },
+        { pad: [53, 57, 62, 64], bass: 38, riff: [[0, 74], [3, 77], [4, 76], [6, 72]] },
+        { pad: [53, 55, 60, 62], bass: 43, riff: [[0, 74], [3, 79], [4, 77], [6, 71]] },
+      ];
+      const tones = { notif: 659, growth: 784, person: 587, toast: 880, follow: 698 };
+      const pans = { notif: 0, growth: 0.15, person: -0.25, toast: 0.2, follow: 0.2 };
+
+      // ---- Audio graph ----
+      function gain(v, to) {
+        const g = ctx.createGain();
+        g.gain.value = v;
+        if (to) g.connect(to);
+        return g;
+      }
+      function filter(type, freq, q, to) {
+        const f = ctx.createBiquadFilter();
+        f.type = type;
+        f.frequency.value = freq;
+        if (q) f.Q.value = q;
+        if (to) f.connect(to);
+        return f;
+      }
+      function panner(p, to) {
+        const n = ctx.createStereoPanner();
+        n.pan.value = p;
+        n.connect(to);
+        return n;
+      }
+      // A soft room: stereo noise that fades out, used as a reverb impulse.
+      function room(seconds) {
+        const len = Math.round(ctx.sampleRate * seconds);
+        const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+        for (let c = 0; c < 2; c++) {
+          const d = buf.getChannelData(c);
+          let lp = 0;
+          for (let i = 0; i < len; i++) {
+            lp += 0.35 * (Math.random() * 2 - 1 - lp);
+            d[i] = lp * (1 - i / len) ** 3;
+          }
+        }
+        return buf;
+      }
+      function reverb(level, to) {
+        const conv = ctx.createConvolver();
+        conv.buffer = room(1.8);
+        conv.connect(gain(level, to));
+        return conv;
+      }
+      function graph() {
+        ctx = new AudioContext();
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -14;
+        comp.knee.value = 8;
+        comp.ratio.value = 4;
+        comp.attack.value = 0.004;
+        comp.release.value = 0.2;
+        comp.connect(ctx.destination);
+        const master = gain(0, comp);
+        const fx = gain(1, master);
+        const mus = gain(music ? MUSIC : 0, master);
+        // Pluck echo, three eighths long, darker on each repeat.
+        const echo = ctx.createDelay(1);
+        echo.delayTime.value = BEAT * 0.75;
+        const dark = filter("lowpass", 2400, 0, gain(0.3, echo));
+        echo.connect(dark);
+        dark.connect(gain(0.6, mus));
+        bus = { master, fx, mus, echo, fxVerb: reverb(0.5, fx), musVerb: reverb(0.45, mus) };
+        noise = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+        const d = noise.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      }
+
+      // ---- Small building blocks ----
+      // Gain envelope: quick attack to peak, then an exponential fall.
+      function env(g, t, a, peak, d) {
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(peak, t + a);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + a + d);
+        return t + a + d;
+      }
+      function osc(type, freq, t, end, to) {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.setValueAtTime(freq, t);
+        o.connect(to);
+        o.start(t);
+        o.stop(end + 0.05);
+        return o;
+      }
+      function hiss(t, end, to) {
+        const s = ctx.createBufferSource();
+        s.buffer = noise;
+        s.loop = true;
+        s.connect(to);
+        s.start(t, Math.random() * 1.5);
+        s.stop(end + 0.05);
+        return s;
+      }
+      function send(node, level, verb) {
+        node.connect(gain(level, verb));
+      }
+
+      // ---- Effects ----
+      // Finger tap: a crisp soft click plus a tiny water drop for the ripple.
+      function tap(t, p = 0) {
+        const out = panner(p, bus.fx);
+        const g1 = gain(0, out);
+        hiss(t, env(g1, t, 0.001, 0.32, 0.028), filter("bandpass", 3400, 1.1, g1));
+        const g2 = gain(0, out);
+        send(g2, 0.35, bus.fxVerb);
+        const end = env(g2, t + 0.015, 0.004, 0.22, 0.14);
+        const o = osc("sine", 620, t + 0.015, end, g2);
+        o.frequency.exponentialRampToValueAtTime(1500, t + 0.075);
+      }
+      // Screen slide: an airy noise whoosh that travels across the stereo field.
+      function swipe(t, back) {
+        const p = ctx.createStereoPanner();
+        p.pan.setValueAtTime(back ? -0.5 : 0.5, t);
+        p.pan.linearRampToValueAtTime(back ? 0.5 : -0.5, t + 0.75);
+        p.connect(bus.fx);
+        const g = gain(0, p);
+        send(g, 0.25, bus.fxVerb);
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(0.24, t + 0.36);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.85);
+        const bp = filter("bandpass", 350, 0.8, filter("highpass", 220, 0, g));
+        bp.frequency.setValueAtTime(350, t);
+        bp.frequency.exponentialRampToValueAtTime(2300, t + 0.38);
+        bp.frequency.exponentialRampToValueAtTime(800, t + 0.85);
+        hiss(t, t + 0.85, bp);
+      }
+      // Card pops out: a soft pop and a small rising tone. Sinking back is the same, reversed and softer.
+      function pop(t, id, out = true) {
+        const f = tones[id] || 700;
+        const dest = panner(pans[id] || 0, bus.fx);
+        const g1 = gain(0, dest);
+        const g2 = gain(0, dest);
+        send(g2, 0.4, bus.fxVerb);
+        if (out) {
+          const o1 = osc("sine", f * 1.6, t, env(g1, t, 0.002, 0.26, 0.09), g1);
+          o1.frequency.exponentialRampToValueAtTime(f * 0.7, t + 0.07);
+          const o2 = osc("triangle", f, t + 0.02, env(g2, t + 0.02, 0.03, 0.075, 0.32), g2);
+          o2.frequency.exponentialRampToValueAtTime(f * 1.5, t + 0.26);
+        } else {
+          const o2 = osc("triangle", f * 1.5, t, env(g2, t, 0.05, 0.045, 0.28), g2);
+          o2.frequency.exponentialRampToValueAtTime(f, t + 0.3);
+          const o1 = osc("sine", f * 0.9, t + 0.3, env(g1, t + 0.3, 0.003, 0.12, 0.08), g1);
+          o1.frequency.exponentialRampToValueAtTime(f * 0.5, t + 0.37);
+        }
+      }
+      // A soft bell: a few sine partials with a long, gentle decay.
+      function bell(t, freq, peak, decay, parts, p = 0) {
+        const dest = panner(p, bus.fx);
+        send(dest, 0.5, bus.fxVerb);
+        parts.forEach(([ratio, level]) => {
+          const g = gain(0, dest);
+          osc("sine", freq * ratio, t, env(g, t, 0.004, peak * level, decay / Math.sqrt(ratio)), g);
+        });
+      }
+      // Notification: a pleasant two note chime, rising.
+      function chime(t) {
+        const parts = [[1, 1], [2, 0.25], [3, 0.08]];
+        bell(t, 784, 0.16, 0.9, parts);
+        bell(t + 0.13, 1046.5, 0.16, 1.2, parts);
+      }
+      // Task done: a bright success ding, a quick climb to a shimmering top note.
+      function ding(t) {
+        const parts = [[1, 1], [2, 0.3], [3.01, 0.12], [4.2, 0.05]];
+        bell(t, 1046.5, 0.1, 0.5, parts, 0.2);
+        bell(t + 0.06, 1318.5, 0.1, 0.6, parts, 0.2);
+        bell(t + 0.12, 1568, 0.17, 1.4, parts, 0.2);
+      }
+
+      // ---- Music ----
+      function kick(t) {
+        const g = gain(0, bus.mus);
+        const o = osc("sine", 120, t, env(g, t, 0.003, 0.4, 0.3), g);
+        o.frequency.exponentialRampToValueAtTime(46, t + 0.14);
+      }
+      function hat(t, level) {
+        const g = gain(0, bus.mus);
+        hiss(t, env(g, t, 0.002, level, 0.045), filter("highpass", 7500, 0, g));
+      }
+      function snap(t) {
+        const g = gain(0, bus.mus);
+        send(g, 0.6, bus.musVerb);
+        hiss(t, env(g, t, 0.002, 0.1, 0.1), filter("bandpass", 1900, 1.4, g));
+      }
+      function bass(t, m, len) {
+        const g = gain(0, bus.mus);
+        const end = env(g, t, 0.01, 0.2, len);
+        osc("sine", mtof(m), t, end, g);
+        osc("sawtooth", mtof(m), t, end, filter("lowpass", 420, 0.7, gain(0.35, g)));
+      }
+      // Warm pad: two slightly detuned saws per note through a soft low pass filter.
+      function pad(t, notes, len, attack = 0.4) {
+        const g = gain(0, bus.mus);
+        send(g, 0.8, bus.musVerb);
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(0.05, t + attack);
+        g.gain.setValueAtTime(0.05, t + len);
+        g.gain.linearRampToValueAtTime(0, t + len + 0.9);
+        const lp = filter("lowpass", 1100, 0.4, g);
+        for (const m of notes) {
+          for (const cents of [-7, 7]) {
+            const o = osc("sawtooth", mtof(m), t, t + len + 0.9, lp);
+            o.detune.value = cents;
+          }
+        }
+      }
+      function pluck(t, m) {
+        const g = gain(0, bus.mus);
+        g.connect(bus.echo);
+        send(g, 0.5, bus.musVerb);
+        const end = env(g, t, 0.003, 0.11, 0.42);
+        const lp = filter("lowpass", 3200, 2, g);
+        lp.frequency.setValueAtTime(3200, t);
+        lp.frequency.exponentialRampToValueAtTime(650, t + 0.25);
+        osc("sawtooth", mtof(m), t, end, gain(0.5, lp));
+        osc("triangle", mtof(m + 12), t, end, gain(0.5, lp));
+      }
+
+      // One loop of music, as timed events.
+      const song = [];
+      for (let k = 0; k < 20; k++) {
+        const t = k * BEAT, bar = bars[Math.floor(k / 4)];
+        song.push({ t, play: kick }, { t: t + BEAT / 2, play: (w) => hat(w, 0.07) });
+        song.push({ t: t + BEAT / 4, play: (w) => hat(w, 0.025) }, { t: t + BEAT * 0.75, play: (w) => hat(w, 0.03) });
+        song.push({ t: t + BEAT / 2, play: (w) => bass(w, bar.bass, BEAT * 0.45) });
+        if (k % 2 === 1) song.push({ t, play: snap });
+        if (k % 4 === 0) song.push({ t, play: (w) => pad(w, bar.pad, BAR) });
+        if (k % 4 === 0) for (const [e, m] of bar.riff) song.push({ t: t + (e * BEAT) / 2, play: (w) => pluck(w, m) });
+      }
+
+      function play(c, when) {
+        if (c.play) return c.play(when);
+        if (c.fx === "tap") tap(when, c.pan);
+        else if (c.fx === "swipe") swipe(when - 0.03, c.back);
+        else if (c.fx === "pop") {
+          pop(when + 0.02, c.id);
+          if (c.id === "notif") chime(when + 0.12);
+          if (c.id === "toast") ding(when + 0.12);
+        } else if (c.fx === "sink") pop(when + 0.04, c.id, false);
+      }
+
+      // If music starts mid bar, bring the current chord in gently.
+      function padNow(now) {
+        const lt = ((now % L) + L) % L, i = Math.floor(lt / BAR), left = (i + 1) * BAR - lt;
+        if (bars[i] && left > 0.4) pad(ctx.currentTime + 0.02, bars[i].pad, left - 0.02, 0.3);
+      }
+
+      // ---- Scheduler, locked to the GSAP timeline clock ----
+      function tick() {
+        if (!tl || !ctx || !lastTick) return;
+        const perf = performance.now();
+        if (ctx.state !== "running" || document.hidden || tl.paused() || reduce.matches || perf - lastTick.perf > 1000) {
+          cursor = null; // paused or hidden: stop, and re-sync on return
+          return;
+        }
+        // offset turns timeline time into audio time, so a sound is heard with the frame it belongs to.
+        if (perf - lastTick.perf < 100) {
+          const ts = ctx.getOutputTimestamp ? ctx.getOutputTimestamp() : {};
+          const measured = ts.performanceTime > 0
+            ? ts.contextTime + (lastTick.perf - ts.performanceTime) / 1000 - lastTick.total
+            : ctx.currentTime + (lastTick.perf - perf) / 1000 - lastTick.total;
+          if (offset === null || Math.abs(measured - offset) > 0.05) offset = measured; // a jump: re-sync
+          else offset += (measured - offset) * 0.05; // small drift: follow it gently
+        }
+        if (offset === null) return;
+        // Between frames the audio clock keeps the time, so a slow frame does not drop sounds.
+        const start = ctx.currentTime - offset, end = start + AHEAD;
+        if (cursor === null || cursor < start - 0.3 || cursor > end + 0.3) {
+          if (music && cursor === null) padNow(start);
+          cursor = start; // fresh start or a jump: nothing piles up
+        }
+        if (end <= cursor) return;
+        // Each event fires once: windows are half open [cursor, end) on the ever growing total time.
+        for (let k = Math.floor(cursor / L); k * L < end; k++) {
+          for (const list of music ? [cues, song] : [cues]) {
+            for (const c of list) {
+              const T = k * L + c.t;
+              if (T < cursor || T >= end) continue;
+              const when = T + offset;
+              if (when < ctx.currentTime - 0.05) continue;
+              play(c, Math.max(when, ctx.currentTime));
+            }
+          }
+        }
+        cursor = end;
+      }
+
+      function ramp(param, v, secs) {
+        const t = ctx.currentTime;
+        param.cancelScheduledValues(t);
+        param.setValueAtTime(param.value, t);
+        param.linearRampToValueAtTime(v, t + secs);
+      }
+
+      function update() {
+        const active = want && !reduce.matches;
+        if (active) {
+          if (!ctx) graph();
+          clearTimeout(stopTimer);
+          ctx.resume().catch(() => {});
+          ramp(bus.master.gain, MASTER, 0.08);
+          ramp(bus.mus.gain, music ? MUSIC : 0, 0.15);
+          if (!timer) {
+            cursor = offset = null;
+            timer = setInterval(tick, 25);
+          }
+        } else if (ctx) {
+          clearInterval(timer);
+          timer = 0;
+          cursor = null;
+          ramp(bus.master.gain, 0, 0.15);
+          clearTimeout(stopTimer);
+          stopTimer = setTimeout(() => ctx.suspend().catch(() => {}), 200);
+        }
+      }
+
+      addEventListener("message", (e) => {
+        const d = e.data;
+        if (e.origin !== location.origin || !d || d.type !== "motionprompt-sound") return;
+        const had = music;
+        if (typeof d.music === "boolean") music = d.music;
+        want = !!d.on;
+        update();
+        if (want && music && !had && cursor !== null && offset !== null) padNow(ctx.currentTime - offset);
+      });
+      reduce.addEventListener("change", update);
+      // Browsers may block audio until the first click or key press.
+      const unlock = () => { if (want && ctx && ctx.state === "suspended" && !reduce.matches) ctx.resume().catch(() => {}); };
+      addEventListener("pointerdown", unlock, true);
+      addEventListener("keydown", unlock, true);
+
+      const param = new URLSearchParams(location.search).get("sound");
+      if (param === "1" || param === "effects") {
+        want = true;
+        music = param === "1";
+      }
+
+      return {
+        attach(timeline, loop, list) {
+          tl = timeline;
+          L = loop;
+          cues = list;
+          gsap.ticker.add(() => { lastTick = { total: tl.totalTime(), perf: performance.now() }; });
+          if (want) update();
+        },
+      };
+    })();
 
     // Wait briefly for the font so the headline is measured in the right face.
     Promise.race([

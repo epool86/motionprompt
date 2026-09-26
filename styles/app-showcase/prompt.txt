@@ -13,6 +13,11 @@ Type and colour
 - A clean, modern sans serif font (like Plus Jakarta Sans or Inter), extra bold for the headline, with the key word in a soft colour gradient.
 - Use my brand colours if I give them. Otherwise use a soft lilac backdrop #f3f1ff with gentle indigo #5b5bf6 and peach #ff8a65 glows, deep ink #151632 text, indigo for buttons and charts and peach for highlights.
 
+Sound
+- Effects: a crisp soft click with a tiny water drop for each tap and ripple, a smooth airy whoosh for each screen slide, a soft pop with a small rising tone as each card comes out and a softer falling one as it sinks back, a gentle two note chime for a notification and a bright ding for a success message. Time each sound to its moment on screen.
+- Music: a light, optimistic tech launch beat at about 110 bpm: a soft four on the floor pulse, warm pad chords and a small plucked synth tune. Keep it clean, quiet under the effects, and loop it smoothly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
 Output
 - Size: {size}
 - Length: about {duration}
