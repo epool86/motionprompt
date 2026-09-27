@@ -1,0 +1,25 @@
+Make my video in this style: Floating 3D icons.
+
+Look and motion
+- A bright, soft 3D scene on a smooth pink to purple to blue gradient, with a warm coral glow in one corner, tiny white stars and dots, and a soft coloured shadow on the floor.
+- In the middle, a glossy 3D device floats and gently bobs: a desktop monitor by default, or a phone, laptop or my product if that fits my topic better. It is tilted so it clearly looks 3D.
+- Chunky, rounded 3D icons and cards burst out of its screen one by one, each with a springy pop and a few little sparkle stars, then float around it at different depths and angles. Pick icons that match my topic. For a cafe: a coffee cup, a cake, a map pin and a star rating. For social media: a photo card, a heart in a speech bubble, a play button, a chart and a music note.
+- Make them look like soft "Blender style" 3D: rounded bevels, glossy clearcoat, gentle gradients, a soft rim light and no hard edges. Make one of them frosted glass, a little see through.
+- While they float, the camera drifts slowly around the scene so the depth shows.
+- My headline rises in word by word in a big, bold, rounded font, with the key word in a pink to purple gradient, then a short tagline appears in a frosted glass pill. Keep the headline clear of the icons.
+- At the end the icons swirl back into the screen and the device floats away, so the video can loop.
+- Keep every line of text short and easy to read in a second.
+
+Type and colour
+- A bold, rounded sans serif font (like Nunito Black) for the headline and a lighter weight for the tagline.
+- Use my brand colours if I give them. Otherwise use a lavender background #ecc8ff, deep purple text #2b1055, hot pink #ff3fb4 and violet #7b5cff, with soft coral #ff8f7a and sky blue #8fb6ff in the glow.
+
+Sound
+- Effects: a warm rising swell as the device floats in and a soft round "boop" as it settles, a bubbly pop as each icon bursts out, a quick sparkle chime as each one lands, light ticks as the headline words appear, a glassy whoosh as the icons swirl back into the screen, and a soft falling blip as the device floats away.
+- Music: an upbeat, modern pop bed at about 120 bpm: a soft four on the floor kick, claps on 2 and 4, off beat hi hats, a bouncy bass and a plucky synth arpeggio over a bright major chord loop. Keep it under the effects and let it loop cleanly.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as a 3D scene (for example with Three.js and HTML text on top) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

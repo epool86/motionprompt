@@ -1,0 +1,998 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Floating 3D icons demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/nunito@5.3.0/900.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/nunito@5.3.0/700.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=ecc8ff&ink=2b1055&accent=ff3fb4&accent2=7b5cff */
+    :root {
+      --bg: #ecc8ff;
+      --ink: #2b1055;
+      --accent: #ff3fb4;
+      --accent2: #7b5cff;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .copy {
+      position: fixed;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0.5em;
+      pointer-events: none;
+      font-family: "Nunito", "Arial Rounded MT Bold", system-ui, sans-serif;
+      color: var(--ink);
+    }
+
+    .copy h1 {
+      margin: 0;
+      font-size: 1em;
+      font-weight: 900;
+      line-height: 1.02;
+      letter-spacing: -0.02em;
+      text-wrap: balance;
+    }
+
+    .copy .w {
+      display: inline-block;
+      will-change: transform, opacity;
+    }
+
+    /* The last word gets the brand gradient. */
+    .copy .accent {
+      background: linear-gradient(100deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      padding-right: 0.04em;
+    }
+
+    .pill {
+      align-self: var(--pill-align, center);
+      margin: 0;
+      padding: 0.55em 1.1em;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 0.34em;
+      letter-spacing: 0.01em;
+      background: rgba(255, 255, 255, 0.42);
+      border: 1px solid rgba(255, 255, 255, 0.75);
+      box-shadow: 0 0.4em 1.4em rgba(90, 40, 160, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      white-space: nowrap;
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="scene" role="img"></canvas>
+  <div class="copy" id="copy" aria-hidden="true">
+    <h1 id="headline"></h1>
+    <p class="pill" id="pill">Posts, videos and ads people love</p>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script type="module">
+    import * as THREE from "three";
+    import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+    import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+    const params = new URLSearchParams(location.search);
+    const root = document.documentElement;
+    const pick = (key, fallback) => {
+      const v = params.get(key);
+      const ok = /^[0-9a-f]{6}$/i.test(v ?? "");
+      if (ok) root.style.setProperty(`--${key}`, `#${v}`);
+      return `#${ok ? v : fallback}`;
+    };
+    const C = { bg: pick("bg", "ecc8ff"), ink: pick("ink", "2b1055"), accent: pick("accent", "ff3fb4"), accent2: pick("accent2", "7b5cff") };
+    const text = (params.get("text") || "Grow your brand online").trim().slice(0, 60);
+
+    const col = (c) => new THREE.Color(c);
+    const mix = (a, b, k) => col(a).lerp(col(b), k);
+    const css = (c) => `#${c.getHexString()}`;
+    // The palette, all mixed from the four URL colours.
+    const P = {
+      pink: col(C.accent),
+      pinkLight: mix(C.accent, "#ffffff", 0.42),
+      magenta: mix(C.accent, C.accent2, 0.3),
+      violet: col(C.accent2),
+      violetDeep: mix(C.accent2, "#1b0840", 0.35),
+      lilac: mix(C.accent2, "#ffffff", 0.6),
+      mist: mix(C.accent2, "#ffffff", 0.84),
+      white: col("#ffffff"),
+    };
+
+    const LOOP = 10; // seconds: five bars at 120 bpm
+    const BEAT = 0.5;
+    const TAU = Math.PI * 2;
+    const LAUNCH = [1.5, 2, 2.5, 3, 3.5, 4, 4.5]; // an icon bursts out of the screen on each beat
+    const FLIGHT = 0.5; // and lands on the next beat
+    const WORDS_AT = 5, PILL_AT = 5.8, SWIRL = 8.2, OUT = 9.25, STILL = 7.4;
+
+    const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+    const prog = (t, t0, dur) => clamp((t - t0) / dur);
+    const bump = (x) => (x <= 0 || x >= 1 ? 0 : Math.sin(Math.PI * x));
+    const ease = (name) => gsap.parseEase(name);
+    const backOut = ease("back.out(1.7)"), popOut = ease("back.out(2.6)"), p3out = ease("power3.out"), p2in = ease("power2.in"), p3in = ease("power3.in");
+    const wave = (t, k, ph = 0) => Math.sin((TAU * k * t) / LOOP + ph); // whole cycles per loop, so the loop is seamless
+
+    // Small seeded random, so every build looks the same.
+    let seed = 11;
+    function rand() {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let r = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+      return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+    }
+
+    const canvas = document.getElementById("scene");
+    canvas.setAttribute("aria-label", `Glossy 3D app icons burst out of a floating monitor on a pink and purple gradient: ${text}`);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.toneMapping = THREE.NeutralToneMapping;
+    renderer.toneMappingExposure = 1.05;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 200);
+    const TARGET = new THREE.Vector3(0, 0.25, 0);
+
+    // Soft studio light: a room reflection for the gloss, a sky and bounce fill, a key and a violet rim.
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environmentIntensity = 0.75;
+    scene.add(new THREE.HemisphereLight(0xfff0fb, css(P.lilac), 1.3));
+    const key = new THREE.DirectionalLight(0xffffff, 1.7);
+    key.position.set(-4, 7, 8);
+    scene.add(key);
+    const rim = new THREE.DirectionalLight(css(mix(C.accent2, "#9fd0ff", 0.5)), 2.6);
+    rim.position.set(6, 3, -6);
+    scene.add(rim);
+    const coral = new THREE.PointLight(0xff8f7a, 30, 20, 2);
+    coral.position.set(-6, -3, 4);
+    scene.add(coral);
+
+    // ---- Backdrop: a soft gradient with a warm coral glow, redrawn to the window shape ----
+    const bgCanvas = document.createElement("canvas");
+    const bgTex = new THREE.CanvasTexture(bgCanvas);
+    bgTex.colorSpace = THREE.SRGBColorSpace;
+    scene.background = bgTex;
+    function paintBackdrop(aspect) {
+      const w = 512, h = Math.round(512 / aspect);
+      bgCanvas.width = w;
+      bgCanvas.height = h;
+      const g = bgCanvas.getContext("2d");
+      const lin = g.createLinearGradient(0, 0, w, h);
+      lin.addColorStop(0, css(mix(C.accent, "#ffffff", 0.55)));
+      lin.addColorStop(0.5, css(col(C.bg)));
+      lin.addColorStop(1, css(mix(C.accent2, "#8fb6ff", 0.55).lerp(col("#ffffff"), 0.18)));
+      g.fillStyle = lin;
+      g.fillRect(0, 0, w, h);
+      const glow = (x, y, r, c, a) => {
+        const rg = g.createRadialGradient(x, y, 0, x, y, r);
+        rg.addColorStop(0, `rgba(${c}, ${a})`);
+        rg.addColorStop(1, `rgba(${c}, 0)`);
+        g.fillStyle = rg;
+        g.fillRect(0, 0, w, h);
+      };
+      glow(w * 0.02, h * 1.02, Math.max(w, h) * 0.62, "255, 128, 112", 0.8);
+      glow(w * 0.5, h * 0.48, Math.max(w, h) * 0.45, "255, 255, 255", 0.35);
+      glow(w * 1.0, h * 0.85, Math.max(w, h) * 0.5, "120, 150, 255", 0.35);
+      bgTex.needsUpdate = true;
+    }
+
+    // ---- Building blocks ----
+    // A diagonal gradient baked into vertex colours, so a card goes from one colour to another.
+    function gradient(geo, from, to, diag = 0.5) {
+      geo.computeBoundingBox();
+      const b = geo.boundingBox, pos = geo.attributes.position;
+      const cols = new Float32Array(pos.count * 3), c = new THREE.Color();
+      const sx = b.max.x - b.min.x || 1, sy = b.max.y - b.min.y || 1;
+      for (let i = 0; i < pos.count; i++) {
+        const k = clamp((1 - diag) * ((pos.getY(i) - b.min.y) / sy) + diag * (1 - (pos.getX(i) - b.min.x) / sx));
+        c.copy(to).lerp(from, k);
+        cols.set([c.r, c.g, c.b], i * 3);
+      }
+      geo.setAttribute("color", new THREE.BufferAttribute(cols, 3));
+      return geo;
+    }
+    const softMat = (opts = {}) => new THREE.MeshPhysicalMaterial({
+      color: 0xffffff, vertexColors: true, roughness: 0.34, metalness: 0,
+      clearcoat: 1, clearcoatRoughness: 0.16, sheen: 0.7, sheenRoughness: 0.45, sheenColor: new THREE.Color(0xffffff), ...opts,
+    });
+    const whiteMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.3, clearcoat: 0.7, clearcoatRoughness: 0.25, sheen: 0.4, sheenColor: new THREE.Color(0xffe6f6) });
+    const tintMat = (c) => new THREE.MeshPhysicalMaterial({ color: c, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.2 });
+    const box = (w, h, d, r, from, to, mat) => new THREE.Mesh(gradient(new RoundedBoxGeometry(w, h, d, 5, r), from, to), mat || softMat());
+    function extrude(shape, depth = 0.08, bevel = 0.035) {
+      const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel * 0.8, bevelSegments: 4, curveSegments: 24 });
+      g.center();
+      return g;
+    }
+    function roundRect(s, x, y, w, h, r) {
+      s.moveTo(x + r, y);
+      s.lineTo(x + w - r, y);
+      s.quadraticCurveTo(x + w, y, x + w, y + r);
+      s.lineTo(x + w, y + h - r);
+      s.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      s.lineTo(x + r, y + h);
+      s.quadraticCurveTo(x, y + h, x, y + h - r);
+      s.lineTo(x, y + r);
+      s.quadraticCurveTo(x, y, x + r, y);
+      return s;
+    }
+    const on = (mesh, x, y, z, parent) => { mesh.position.set(x, y, z); parent.add(mesh); return mesh; };
+
+    // ---- The monitor ----
+    const monitor = new THREE.Group();
+    scene.add(monitor);
+    const MON_REST = new THREE.Euler(0.12, -0.55, 0.1);
+    on(box(4.3, 2.9, 0.34, 0.2, P.magenta, P.violetDeep), 0, 0.3, 0, monitor);
+    const screenCanvas = document.createElement("canvas");
+    screenCanvas.width = 512;
+    screenCanvas.height = 340;
+    {
+      const g = screenCanvas.getContext("2d");
+      const lin = g.createLinearGradient(0, 0, 512, 340);
+      lin.addColorStop(0, css(mix(C.accent, "#ffffff", 0.2)));
+      lin.addColorStop(0.55, css(P.magenta));
+      lin.addColorStop(1, css(mix(C.accent2, "#2a0a5a", 0.2)));
+      g.fillStyle = lin;
+      g.fillRect(0, 0, 512, 340);
+      const rg = g.createRadialGradient(230, 150, 0, 230, 150, 300);
+      rg.addColorStop(0, "rgba(255, 235, 250, 0.85)");
+      rg.addColorStop(1, "rgba(255, 235, 250, 0)");
+      g.fillStyle = rg;
+      g.fillRect(0, 0, 512, 340);
+      // A diagonal sheen, like light across glass.
+      g.fillStyle = "rgba(255, 255, 255, 0.14)";
+      g.beginPath();
+      g.moveTo(300, 0); g.lineTo(390, 0); g.lineTo(230, 340); g.lineTo(140, 340);
+      g.fill();
+    }
+    const screenTex = new THREE.CanvasTexture(screenCanvas);
+    screenTex.colorSpace = THREE.SRGBColorSpace;
+    const screenMat = new THREE.MeshBasicMaterial({ map: screenTex, toneMapped: false });
+    on(new THREE.Mesh(new THREE.PlaneGeometry(3.9, 2.5), screenMat), 0, 0.3, 0.176, monitor);
+    on(box(0.6, 1.2, 0.3, 0.12, P.mist, P.lilac), 0, -1.55, -0.1, monitor);
+    on(box(2.1, 0.18, 1.2, 0.08, P.white, P.lilac), 0, -2.18, 0.02, monitor);
+
+    // A flare on the screen each time an icon bursts out.
+    const glowCanvas = document.createElement("canvas");
+    glowCanvas.width = glowCanvas.height = 128;
+    {
+      const g = glowCanvas.getContext("2d");
+      const rg = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+      rg.addColorStop(0, "rgba(255, 255, 255, 1)");
+      rg.addColorStop(0.35, "rgba(255, 210, 245, 0.55)");
+      rg.addColorStop(1, "rgba(255, 180, 240, 0)");
+      g.fillStyle = rg;
+      g.fillRect(0, 0, 128, 128);
+    }
+    const glowTex = new THREE.CanvasTexture(glowCanvas);
+    const flareMat = new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+    const flare = on(new THREE.Mesh(new THREE.PlaneGeometry(3.2, 3.2), flareMat), 0, 0.3, 0.22, monitor);
+
+    // A soft coloured shadow on the floor under everything.
+    const shadowCanvas = document.createElement("canvas");
+    shadowCanvas.width = shadowCanvas.height = 128;
+    {
+      const g = shadowCanvas.getContext("2d");
+      const c = mix(C.accent, C.accent2, 0.35);
+      const rgb = `${Math.round(c.r * 255)}, ${Math.round(c.g * 255)}, ${Math.round(c.b * 255)}`;
+      const rg = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+      rg.addColorStop(0, `rgba(${rgb}, 0.55)`);
+      rg.addColorStop(1, `rgba(${rgb}, 0)`);
+      g.fillStyle = rg;
+      g.fillRect(0, 0, 128, 128);
+    }
+    const shadowTex = new THREE.CanvasTexture(shadowCanvas);
+    shadowTex.colorSpace = THREE.SRGBColorSpace;
+    const floorShadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
+    floorShadow.rotation.x = -Math.PI / 2;
+    floorShadow.position.set(0, -3.4, 0.4);
+    scene.add(floorShadow);
+
+    // ---- The icons, each drawn around its own centre with the face toward +z ----
+    function photoCard() {
+      const g = new THREE.Group();
+      g.add(box(2.2, 1.6, 0.26, 0.18, P.pinkLight, P.pink));
+      const m = new THREE.Shape();
+      m.moveTo(-0.78, -0.5); m.lineTo(-0.28, 0.2); m.lineTo(0.02, -0.12); m.lineTo(0.36, 0.32); m.lineTo(0.84, -0.5); m.closePath();
+      on(new THREE.Mesh(extrude(m, 0.05, 0.03), whiteMat), 0.04, -0.12, 0.17, g);
+      const sun = new THREE.Shape();
+      sun.absarc(0, 0, 0.17, 0, TAU, false);
+      on(new THREE.Mesh(extrude(sun, 0.05, 0.03), whiteMat), -0.55, 0.38, 0.17, g);
+      return g;
+    }
+    function chartCard() {
+      const g = new THREE.Group();
+      g.add(box(2.05, 1.55, 0.24, 0.18, P.lilac, mix(C.accent2, C.accent, 0.25)));
+      [0.55, 1.0, 0.72, 0.92].forEach((h, i) => {
+        const bar = new THREE.Mesh(new RoundedBoxGeometry(0.26, h, 0.14, 4, 0.08), whiteMat);
+        on(bar, -0.6 + i * 0.4, -0.52 + h / 2, 0.16, g);
+      });
+      return g;
+    }
+    function envelope() {
+      const g = new THREE.Group();
+      const letter = new THREE.Mesh(new RoundedBoxGeometry(1.2, 0.95, 0.05, 3, 0.04), whiteMat);
+      on(letter, 0, 0.32, -0.02, g);
+      [0.55, 0.4, 0.25].forEach((y, i) => on(new THREE.Mesh(new RoundedBoxGeometry(i === 2 ? 0.5 : 0.8, 0.06, 0.03, 2, 0.02), tintMat(P.lilac)), i === 2 ? -0.15 : 0, y, 0.02, g));
+      g.add(box(1.5, 1.0, 0.22, 0.12, P.white, P.lilac));
+      const flap = new THREE.Shape();
+      flap.moveTo(-0.7, 0.46); flap.lineTo(0.7, 0.46); flap.lineTo(0, -0.08); flap.closePath();
+      on(new THREE.Mesh(extrude(flap, 0.03, 0.025), tintMat(mix(C.accent2, "#ffffff", 0.45))), 0, 0.2, 0.14, g);
+      return g;
+    }
+    function heartBubble() {
+      const g = new THREE.Group();
+      const b = new THREE.Shape();
+      const w = 1.25, h = 1.0, r = 0.32, x = -w / 2, y = -h / 2;
+      b.moveTo(x + r, y);
+      b.lineTo(-0.1, y); b.lineTo(-0.42, y - 0.3); b.lineTo(-0.3, y);
+      b.lineTo(x + w - r, y);
+      b.quadraticCurveTo(x + w, y, x + w, y + r);
+      b.lineTo(x + w, y + h - r);
+      b.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      b.lineTo(x + r, y + h);
+      b.quadraticCurveTo(x, y + h, x, y + h - r);
+      b.lineTo(x, y + r);
+      b.quadraticCurveTo(x, y, x + r, y);
+      g.add(new THREE.Mesh(gradient(extrude(b, 0.22, 0.08), P.pink, P.magenta), softMat()));
+      const heart = new THREE.Shape();
+      heart.moveTo(0.25, 0.25);
+      heart.bezierCurveTo(0.25, 0.25, 0.2, 0, 0, 0);
+      heart.bezierCurveTo(-0.3, 0, -0.3, 0.35, -0.3, 0.35);
+      heart.bezierCurveTo(-0.3, 0.55, -0.1, 0.77, 0.25, 0.95);
+      heart.bezierCurveTo(0.6, 0.77, 0.8, 0.55, 0.8, 0.35);
+      heart.bezierCurveTo(0.8, 0.35, 0.8, 0, 0.5, 0);
+      heart.bezierCurveTo(0.35, 0, 0.25, 0.25, 0.25, 0.25);
+      const hg = extrude(heart, 0.06, 0.04);
+      hg.rotateZ(Math.PI);
+      hg.scale(0.6, 0.6, 1);
+      on(new THREE.Mesh(hg, whiteMat), 0, 0.02, 0.2, g);
+      return g;
+    }
+    function musicTile() {
+      const g = new THREE.Group();
+      g.add(box(1.05, 1.05, 0.3, 0.22, mix(C.accent2, C.accent, 0.35), P.violetDeep));
+      const note = new THREE.Group();
+      for (const [x, y] of [[-0.2, -0.24], [0.2, -0.16]]) {
+        const head = new THREE.Shape();
+        head.absellipse(0, 0, 0.12, 0.09, 0, TAU, false, 0.4);
+        on(new THREE.Mesh(extrude(head, 0.04, 0.025), whiteMat), x, y, 0, note);
+        on(new THREE.Mesh(new RoundedBoxGeometry(0.05, 0.46, 0.06, 2, 0.02), whiteMat), x + 0.1, y + 0.22, 0, note);
+      }
+      const beam = new THREE.Shape();
+      beam.moveTo(-0.13, 0.4); beam.lineTo(0.33, 0.48); beam.lineTo(0.33, 0.36); beam.lineTo(-0.13, 0.28); beam.closePath();
+      on(new THREE.Mesh(extrude(beam, 0.04, 0.02), whiteMat), 0.1, 0.44, 0, note);
+      note.position.set(-0.04, 0.02, 0.19);
+      g.add(note);
+      return g;
+    }
+    function playCard() {
+      const g = new THREE.Group();
+      g.add(box(2.3, 1.55, 0.26, 0.2, mix(C.accent, "#ff9ad0", 0.25), mix(C.accent, C.accent2, 0.45)));
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.1, 48), whiteMat);
+      disc.rotation.x = Math.PI / 2;
+      on(disc, 0, 0.02, 0.17, g);
+      const tri = new THREE.Shape();
+      tri.moveTo(-0.1, -0.14); tri.lineTo(0.16, 0); tri.lineTo(-0.1, 0.14); tri.closePath();
+      on(new THREE.Mesh(extrude(tri, 0.04, 0.025), tintMat(P.pink)), 0.03, 0.02, 0.24, g);
+      return g;
+    }
+    function glassFolder() {
+      const g = new THREE.Group();
+      on(new THREE.Mesh(new RoundedBoxGeometry(1.1, 0.8, 0.04, 2, 0.02), whiteMat), 0.05, 0.12, -0.05, g);
+      const f = new THREE.Shape();
+      const r = 0.1;
+      f.moveTo(-0.7 + r, -0.5);
+      f.lineTo(0.7 - r, -0.5); f.quadraticCurveTo(0.7, -0.5, 0.7, -0.5 + r);
+      f.lineTo(0.7, 0.38 - r); f.quadraticCurveTo(0.7, 0.38, 0.7 - r, 0.38);
+      f.lineTo(-0.1, 0.38); f.lineTo(-0.22, 0.52);
+      f.lineTo(-0.7 + r, 0.52); f.quadraticCurveTo(-0.7, 0.52, -0.7, 0.52 - r);
+      f.lineTo(-0.7, -0.5 + r); f.quadraticCurveTo(-0.7, -0.5, -0.7 + r, -0.5);
+      const glass = new THREE.MeshPhysicalMaterial({
+        color: css(P.mist), transmission: 1, thickness: 0.5, roughness: 0.3, ior: 1.35,
+        clearcoat: 1, clearcoatRoughness: 0.1, attenuationColor: css(P.lilac), attenuationDistance: 2, specularIntensity: 1,
+      });
+      on(new THREE.Mesh(extrude(f, 0.14, 0.06), glass), 0, 0, 0.08, g);
+      return g;
+    }
+
+    // Where each icon settles (world units, the monitor at the middle), its rest angle and its size.
+    const ICONS = [
+      { make: photoCard, pos: [-2.75, 2.05, 1.0], rot: [0.12, 0.4, -0.14], s: 1 },
+      { make: chartCard, pos: [2.7, 1.75, 0.5], rot: [0.08, -0.38, 0.1], s: 1 },
+      { make: envelope, pos: [0.15, 3.25, -0.9], rot: [0.2, 0.15, -0.08], s: 0.95 },
+      { make: heartBubble, pos: [-3.35, -0.35, 0.9], rot: [0.05, 0.45, 0.12], s: 0.95 },
+      { make: musicTile, pos: [2.2, -0.55, 1.5], rot: [-0.05, -0.35, -0.12], s: 1 },
+      { make: playCard, pos: [-1.2, -2.25, 2.2], rot: [-0.1, 0.32, 0.08], s: 1 },
+      { make: glassFolder, pos: [3.05, -2.0, 0.4], rot: [0.05, -0.45, -0.1], s: 1.05 },
+    ];
+    const icons = ICONS.map((d, i) => {
+      const g = d.make();
+      scene.add(g);
+      return { ...d, g, rest: new THREE.Vector3(...d.pos), restRot: new THREE.Euler(...d.rot), ph: i * 1.7, spin: (i % 2 ? 1 : -1) * (2.2 + (i % 3) * 0.5) };
+    });
+
+    // ---- Sparkles: four point stars, a few around each icon as it lands, and a field in the back ----
+    const starShape = new THREE.Shape();
+    {
+      const R = 0.5, r = 0.1;
+      starShape.moveTo(0, R);
+      starShape.quadraticCurveTo(r, r, R, 0);
+      starShape.quadraticCurveTo(r, -r, 0, -R);
+      starShape.quadraticCurveTo(-r, -r, -R, 0);
+      starShape.quadraticCurveTo(-r, r, 0, R);
+    }
+    const starGeo = new THREE.ShapeGeometry(starShape, 8);
+    const dotGeo = new THREE.CircleGeometry(0.5, 16);
+    const starMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, toneMapped: false, depthWrite: false });
+    const billboards = [];
+    const field = [];
+    seed = 11;
+    for (let i = 0; i < 46; i++) {
+      const star = i < 16;
+      const m = new THREE.Mesh(star ? starGeo : dotGeo, starMat);
+      const a = rand() * TAU, rr = 5.2 + rand() * 4.5;
+      m.position.set(Math.cos(a) * rr * 1.25, Math.sin(a) * rr * 0.85 + 0.4, -3 - rand() * 5 + (rand() < 0.25 ? 5 : 0));
+      scene.add(m);
+      billboards.push(m);
+      field.push({ m, base: star ? 0.28 + rand() * 0.22 : 0.07 + rand() * 0.07, k: 1 + Math.floor(rand() * 3), ph: rand() * TAU });
+    }
+    const bursts = icons.map((ic) => [0, 1, 2].map((j) => {
+      const m = new THREE.Mesh(starGeo, starMat);
+      scene.add(m);
+      billboards.push(m);
+      const a = (j / 3) * TAU + ic.ph;
+      return { m, off: new THREE.Vector3(Math.cos(a) * 1.25, Math.sin(a) * 0.95, 0.5), s: j === 0 ? 0.46 : 0.3 };
+    }));
+
+    // ---- Pose: everything is a function of the loop time t ----
+    const screenLocal = new THREE.Vector3(0, 0.3, 0.45);
+    const screenC = new THREE.Vector3();
+    const tmp = new THREE.Vector3();
+    const zAxis = new THREE.Vector3(0, 0, 1);
+    let dist = 20;
+
+    function pose(t) {
+      // Monitor: floats in, bobs gently, sinks away at the end of the loop.
+      const mIn = backOut(prog(t, 0, 1.1)), mOut = p3in(prog(t, OUT, LOOP - OUT));
+      const ms = Math.max(0.001, mIn * (1 - mOut));
+      monitor.scale.setScalar(ms);
+      monitor.position.set(0, 0.1 * wave(t, 2) - 1.3 * (1 - mIn) - 0.9 * mOut, 0);
+      monitor.rotation.set(MON_REST.x + 0.03 * wave(t, 1, 1), MON_REST.y + 0.7 * (1 - mIn) + 0.06 * wave(t, 1), MON_REST.z + 0.02 * wave(t, 2, 2));
+      monitor.updateMatrixWorld();
+      screenC.copy(screenLocal).applyMatrix4(monitor.matrixWorld);
+      screenMat.color.setScalar(0.35 + 0.65 * clamp(t / 0.8) * (1 - mOut));
+
+      // The screen flares as each icon bursts out, and as they swirl back in.
+      let fl = 0;
+      LAUNCH.forEach((l) => { fl += bump(prog(t, l - 0.05, 0.4)); });
+      fl += 0.8 * bump(prog(t, SWIRL + 0.4, 0.9));
+      flareMat.opacity = Math.min(1, fl) * 0.85;
+      floorShadow.scale.set(9 * ms + 0.001, 4.2 * ms + 0.001, 1);
+
+      icons.forEach((ic, i) => {
+        const g = ic.g;
+        const l = LAUNCH[i];
+        if (t < l || t > SWIRL + 1.3) { g.visible = false; return; }
+        g.visible = true;
+        // Resting place, with a slow float and sway.
+        const rest = tmp.copy(ic.rest);
+        rest.y += 0.14 * wave(t, 2, ic.ph);
+        rest.x += 0.06 * wave(t, 1, ic.ph + 1);
+        const rx = ic.restRot.x + 0.08 * wave(t, 1, ic.ph + 2);
+        const ry = ic.restRot.y + 0.12 * wave(t, 1, ic.ph);
+        const rz = ic.restRot.z + 0.05 * wave(t, 2, ic.ph + 3);
+        // Burst: out of the screen along an arc toward the camera, with a springy pop.
+        const f = prog(t, l, FLIGHT);
+        const k = backOut(f);
+        const pos = new THREE.Vector3().lerpVectors(screenC, rest, k);
+        pos.z += 1.4 * bump(f);
+        pos.y += 0.5 * bump(f);
+        let scale = ic.s * (0.05 + 0.95 * popOut(f));
+        let spin = (1 - p3out(f)) * ic.spin;
+        // Swirl: spiral back into the screen at the end.
+        const w = p2in(prog(t, SWIRL + i * 0.07, 0.85));
+        if (w > 0) {
+          const rel = pos.sub(screenC);
+          rel.applyAxisAngle(zAxis, w * 2.6).multiplyScalar(1 - w);
+          pos.copy(screenC).add(rel);
+          scale *= 1 - w;
+          spin += w * 3;
+        }
+        g.position.copy(pos);
+        g.rotation.set(rx, ry + spin * 0.6, rz + spin * 0.2);
+        g.scale.setScalar(Math.max(0.001, scale));
+        g.visible = scale > 0.004;
+
+        // Three little stars flash around it as it lands.
+        bursts[i].forEach((b, j) => {
+          const s = bump(prog(t, l + FLIGHT * 0.55 + j * 0.05, 0.55));
+          b.m.visible = s > 0.01;
+          b.m.position.copy(ic.rest).add(b.off);
+          b.m.scale.setScalar(Math.max(0.001, s * b.s));
+          b.m.userData.spin = (t - l) * 2.5 + j;
+        });
+      });
+
+      // Camera: a slow orbit and a small rise and fall.
+      const az = 0.13 * wave(t, 1), el = 0.08 + 0.03 * wave(t, 2, 1);
+      camera.position.set(TARGET.x + dist * Math.sin(az) * Math.cos(el), TARGET.y + dist * Math.sin(el), TARGET.z + dist * Math.cos(az) * Math.cos(el));
+      camera.lookAt(TARGET);
+      camera.updateMatrixWorld();
+
+      // Background stars twinkle; every star and dot turns to face the camera.
+      const fieldIn = clamp(t / 0.8) * (1 - 0.6 * mOut);
+      field.forEach((s) => s.m.scale.setScalar(Math.max(0.001, s.base * fieldIn * (0.55 + 0.45 * wave(t, s.k * 3, s.ph)))));
+      billboards.forEach((m) => {
+        m.quaternion.copy(camera.quaternion);
+        if (m.userData.spin) m.rotateZ(m.userData.spin);
+      });
+
+      // Headline words rise in, then slip away before the swirl.
+      words.forEach((el, j) => {
+        const a = backOut(prog(t, WORDS_AT + j * 0.1, 0.5));
+        const o = p2in(prog(t, SWIRL + 0.1 + j * 0.04, 0.4));
+        const vis = prog(t, WORDS_AT + j * 0.1, 0.15) * (1 - o);
+        el.style.opacity = String(vis);
+        el.style.transform = `translateY(${((1 - a) * 0.55 - o * 0.3).toFixed(3)}em) scale(${(0.86 + 0.14 * a).toFixed(3)})`;
+      });
+      const pa = backOut(prog(t, PILL_AT, 0.5)), po = p2in(prog(t, SWIRL + 0.25, 0.35));
+      pill.style.opacity = String(prog(t, PILL_AT, 0.15) * (1 - po));
+      pill.style.transform = `translateY(${((1 - pa) * 0.8 + po * 0.4).toFixed(3)}em) scale(${(0.8 + 0.2 * pa).toFixed(3)})`;
+    }
+
+    // ---- Layout: where the words go and where the 3D scene sits, by window shape ----
+    const copyEl = document.getElementById("copy");
+    const h1 = document.getElementById("headline");
+    const pill = document.getElementById("pill");
+    const parts = text.split(/\s+/);
+    h1.replaceChildren(...parts.flatMap((w, i) => {
+      const span = document.createElement("span");
+      span.className = `w${i === parts.length - 1 && parts.length > 1 ? " accent" : ""}`;
+      span.textContent = w;
+      return i ? [" ", span] : [span];
+    }));
+    const words = [...h1.querySelectorAll(".w")];
+    const SCENE_W = 8.8, SCENE_H = 7.6;
+
+    function layout() {
+      const W = innerWidth, H = innerHeight, a = W / H;
+      renderer.setSize(W, H, false);
+      paintBackdrop(a);
+      let copy, area, align;
+      if (a >= 1.3) {
+        copy = { x: W * 0.06, y: H * 0.14, w: W * 0.36, h: H * 0.72 };
+        area = { x: W * 0.4, y: H * 0.04, w: W * 0.58, h: H * 0.92 };
+        align = "left";
+      } else if (a <= 0.85) {
+        copy = { x: W * 0.08, y: H * 0.055, w: W * 0.84, h: H * 0.25 };
+        area = { x: W * 0.01, y: H * 0.29, w: W * 0.98, h: H * 0.62 };
+        align = "center";
+      } else {
+        copy = { x: W * 0.1, y: H * 0.035, w: W * 0.8, h: H * 0.27 };
+        area = { x: W * 0.06, y: H * 0.3, w: W * 0.88, h: H * 0.68 };
+        align = "center";
+      }
+      Object.assign(copyEl.style, { left: `${copy.x}px`, top: `${copy.y}px`, width: `${copy.w}px`, height: `${copy.h}px`, textAlign: align });
+      copyEl.style.setProperty("--pill-align", align === "left" ? "flex-start" : "center");
+      // Largest headline that fits its box (the pill scales with it).
+      let size = Math.min(copy.h * 0.42, copy.w * (align === "left" ? 0.26 : 0.28));
+      for (let i = 0; i < 40; i++) {
+        copyEl.style.fontSize = `${size}px`;
+        const lines = h1.offsetHeight / (size * 1.02);
+        if (lines < 3.5 && copyEl.scrollHeight <= copy.h + 1 && h1.scrollWidth <= copy.w + 1 && pill.scrollWidth <= copy.w + 1) break;
+        size *= 0.95;
+      }
+      // Camera distance so the scene fills its area, then shift the picture so the scene sits in it.
+      const tanH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+      dist = Math.max((SCENE_H * H) / (2 * tanH * area.h), (SCENE_W * H) / (2 * tanH * area.w));
+      camera.aspect = a;
+      camera.setViewOffset(W, H, W / 2 - (area.x + area.w / 2), H / 2 - (area.y + area.h / 2), W, H);
+      camera.updateProjectionMatrix();
+    }
+
+    // ---- Clock: a GSAP timeline that loops; every frame is drawn from its time ----
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    const draw = () => { pose(tl.time()); renderer.render(scene, camera); };
+    const tl = gsap.timeline({ repeat: -1, paused: true, onUpdate: draw });
+    tl.to({}, { duration: LOOP, ease: "none" });
+    window.seekDemo = (t) => {
+      tl.pause();
+      tl.time(((t % LOOP) + LOOP) % LOOP);
+      draw();
+    };
+
+    function applyMotion() {
+      if (reduce.matches) {
+        tl.pause();
+        tl.time(STILL);
+        draw();
+      } else tl.play();
+    }
+    reduce.addEventListener("change", applyMotion);
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => { layout(); draw(); }, 100);
+    });
+
+    // Sound: every sound is made with the Web Audio API. It is off until the
+    // parent page (or ?sound=1 / ?sound=effects) turns it on, and it follows the
+    // GSAP timeline clock, so each pop lands on the frame its icon bursts out.
+    const sound = (() => {
+      const LEVEL = 1.0, MUSIC = 0.16;
+      const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+      const clock = () => (!tl.paused() ? tl.totalTime() : null);
+      // Five bars of a bright pop loop: C  G  Am  F  C.
+      const CHORDS = [[60, 64, 67], [59, 62, 67], [57, 60, 64], [57, 60, 65], [60, 64, 67]];
+      const ROOTS = [36, 43, 45, 41, 36];
+      let ctx = null, master, impulse, noiseBuf, session = null, fxBus, musicBus, verbSend;
+      let wantOn = false, wantMusic = true, playing = false;
+      let timer = 0, sleepTimer = 0, anchor = null, doneUpTo = 0;
+
+      function plan() {
+        const list = [];
+        const add = (t, type, extra = {}, music = false) => list.push({ t, type, music, ...extra });
+        add(0, "swell", { dur: 1.1 });
+        add(1.02, "settle");
+        const pops = [72, 76, 79, 84, 81, 86, 88];
+        LAUNCH.forEach((l, i) => {
+          add(l, "pop", { f: hz(pops[i]), p: Math.max(-0.6, Math.min(0.6, ICONS[i].pos[0] / 5)) });
+          add(l + FLIGHT * 0.6, "chime", { base: 91 + (i % 3) * 2, p: Math.max(-0.6, Math.min(0.6, ICONS[i].pos[0] / 5)) });
+        });
+        words.forEach((w, j) => add(WORDS_AT + j * 0.1, "tick", { f: hz(84 + (j % 3) * 3) }));
+        add(PILL_AT, "pop", { f: hz(91), p: 0, soft: true });
+        add(SWIRL, "whoosh", { dur: 1.1 });
+        add(OUT, "blipDown");
+
+        // Music: four on the floor, claps on 2 and 4, off beat hats, a bouncy bass and a plucky arpeggio.
+        CHORDS.forEach((notes, bar) => {
+          const t0 = bar * 4 * BEAT;
+          for (let b = 0; b < 4; b++) {
+            add(t0 + b * BEAT, "kick", {}, true);
+            if (b % 2) add(t0 + b * BEAT, "clap", {}, true);
+            add(t0 + (b + 0.5) * BEAT, "hat", { v: 1 }, true);
+            add(t0 + (b + 0.5) * BEAT, "bass", { f: hz(ROOTS[bar] + (b === 3 ? 7 : 0)), dur: BEAT * 0.42 }, true);
+          }
+          const arp = [0, 1, 2, 1, 2, 0, 1, 2];
+          arp.forEach((n, s) => add(t0 + s * BEAT / 2, "pluck", { f: hz(notes[n] + 12 + (s === 6 ? 12 : 0)), v: s % 2 ? 0.7 : 1 }, true));
+        });
+        return list.sort((a, b) => a.t - b.t);
+      }
+      const events = plan();
+
+      function makeGraph() {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -14;
+        comp.knee.value = 8;
+        comp.ratio.value = 4;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.2;
+        master = ctx.createGain();
+        master.gain.value = LEVEL;
+        master.connect(comp).connect(ctx.destination);
+        const len = Math.floor(ctx.sampleRate * 1.6);
+        impulse = ctx.createBuffer(2, len, ctx.sampleRate);
+        for (let ch = 0; ch < 2; ch++) {
+          const d = impulse.getChannelData(ch);
+          for (let s = 0; s < len; s++) d[s] = (Math.random() * 2 - 1) * Math.pow(1 - s / len, 3.2);
+        }
+        noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+        const nd = noiseBuf.getChannelData(0);
+        for (let s = 0; s < nd.length; s++) nd[s] = Math.random() * 2 - 1;
+      }
+
+      // Each time sound is turned on it gets fresh buses, so sounds queued before a
+      // stop can never leak out later.
+      function openSession() {
+        const t = ctx.currentTime;
+        session = ctx.createGain();
+        session.gain.setValueAtTime(0, t);
+        session.gain.linearRampToValueAtTime(1, t + 0.05);
+        session.connect(master);
+        fxBus = ctx.createGain();
+        fxBus.connect(session);
+        musicBus = ctx.createGain();
+        musicBus.gain.value = wantMusic ? MUSIC : 0;
+        musicBus.connect(session);
+        const verb = ctx.createConvolver();
+        verb.buffer = impulse;
+        const verbOut = ctx.createGain();
+        verbOut.gain.value = 0.35;
+        verbSend = ctx.createGain();
+        verbSend.connect(verb).connect(filter("lowpass", 5000)).connect(verbOut).connect(session);
+      }
+      function closeSession() {
+        const old = session, t = ctx.currentTime;
+        session = null;
+        old.gain.cancelScheduledValues(t);
+        old.gain.setValueAtTime(old.gain.value, t);
+        old.gain.linearRampToValueAtTime(0, t + 0.15);
+        setTimeout(() => old.disconnect(), 250);
+      }
+
+      // Small building blocks.
+      function amp(when, peak, attack, decay, out) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, when);
+        g.gain.exponentialRampToValueAtTime(peak, when + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay);
+        g.connect(out);
+        return g;
+      }
+      function osc(type, freq, when, dur) {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.setValueAtTime(freq, when);
+        o.start(when);
+        o.stop(when + dur + 0.05);
+        return o;
+      }
+      function noise(when, dur) {
+        const s = ctx.createBufferSource();
+        s.buffer = noiseBuf;
+        s.loop = true;
+        s.start(when, Math.random() * 1.5);
+        s.stop(when + dur + 0.05);
+        return s;
+      }
+      function filter(type, freq, q = 0.7) {
+        const f = ctx.createBiquadFilter();
+        f.type = type;
+        f.frequency.value = freq;
+        f.Q.value = q;
+        return f;
+      }
+      function pan(value, out) {
+        const p = ctx.createStereoPanner();
+        p.pan.value = value;
+        p.connect(out);
+        return p;
+      }
+      function send(node, amount) {
+        const g = ctx.createGain();
+        g.gain.value = amount;
+        node.connect(g).connect(verbSend);
+      }
+
+      const voices = {
+        swell(when, e) {
+          // A warm chord that rises and opens up as the monitor floats in.
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.0001, when);
+          g.gain.exponentialRampToValueAtTime(0.14, when + e.dur * 0.8);
+          g.gain.exponentialRampToValueAtTime(0.0001, when + e.dur + 0.5);
+          g.connect(fxBus);
+          const lp = filter("lowpass", 300, 1.2);
+          lp.frequency.setValueAtTime(300, when);
+          lp.frequency.exponentialRampToValueAtTime(3200, when + e.dur);
+          lp.connect(g);
+          [48, 55, 60, 64, 67].forEach((m, i) => {
+            const o = osc("sawtooth", hz(m), when, e.dur + 0.5);
+            o.detune.value = (i - 2) * 6;
+            o.connect(lp);
+          });
+          send(g, 0.6);
+        },
+        settle(when) {
+          // A soft round "boop" as the monitor lands.
+          const g = amp(when, 0.35, 0.004, 0.25, fxBus);
+          const o = osc("sine", 190, when, 0.3);
+          o.frequency.exponentialRampToValueAtTime(95, when + 0.22);
+          o.connect(g);
+        },
+        pop(when, e) {
+          // A bubbly pop: a quick upward blip with a tiny click.
+          const out = pan(e.p, fxBus);
+          const g = amp(when, e.soft ? 0.16 : 0.28, 0.003, 0.14, out);
+          const o = osc("sine", e.f * 0.6, when, 0.16);
+          o.frequency.exponentialRampToValueAtTime(e.f * 1.5, when + 0.05);
+          o.frequency.exponentialRampToValueAtTime(e.f * 1.2, when + 0.14);
+          o.connect(g);
+          noise(when, 0.02).connect(filter("highpass", 4000)).connect(amp(when, 0.06, 0.001, 0.015, out));
+          send(g, 0.3);
+        },
+        chime(when, e) {
+          // Sparkle: three bright bell notes, one after another.
+          const out = pan(e.p, fxBus);
+          [0, 4, 7].forEach((d, k) => {
+            const t = when + k * 0.045;
+            const g = amp(t, 0.07, 0.002, 0.45, out);
+            osc("sine", hz(e.base + d), t, 0.5).connect(g);
+            osc("sine", hz(e.base + d) * 2.01, t, 0.2).connect(amp(t, 0.02, 0.001, 0.15, out));
+            send(g, 0.7);
+          });
+        },
+        tick(when, e) {
+          const g = amp(when, 0.06, 0.002, 0.07, fxBus);
+          osc("triangle", e.f, when, 0.08).connect(g);
+        },
+        whoosh(when, e) {
+          // Glassy whoosh as the icons swirl back into the screen.
+          const d = e.dur;
+          const p = ctx.createStereoPanner();
+          p.pan.setValueAtTime(-0.5, when);
+          p.pan.linearRampToValueAtTime(0.5, when + d);
+          p.connect(fxBus);
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.0001, when);
+          g.gain.exponentialRampToValueAtTime(0.3, when + d * 0.7);
+          g.gain.exponentialRampToValueAtTime(0.0001, when + d);
+          g.connect(p);
+          const bp = filter("bandpass", 500, 1.4);
+          bp.frequency.setValueAtTime(500, when);
+          bp.frequency.exponentialRampToValueAtTime(3800, when + d * 0.75);
+          noise(when, d).connect(bp).connect(g);
+          [96, 100, 103, 108].forEach((m, k) => {
+            const t = when + d * (0.35 + k * 0.1);
+            const sg = amp(t, 0.03, 0.002, 0.3, p);
+            osc("sine", hz(m), t, 0.35).connect(sg);
+            send(sg, 0.8);
+          });
+        },
+        blipDown(when) {
+          // The monitor sinks away: a soft falling glassy blip.
+          const g = amp(when, 0.14, 0.005, 0.4, fxBus);
+          const o = osc("triangle", hz(84), when, 0.45);
+          o.frequency.exponentialRampToValueAtTime(hz(67), when + 0.4);
+          o.connect(g);
+          send(g, 0.5);
+        },
+        kick(when) {
+          const g = amp(when, 0.8, 0.002, 0.28, musicBus);
+          const o = osc("sine", 130, when, 0.3);
+          o.frequency.exponentialRampToValueAtTime(45, when + 0.12);
+          o.connect(g);
+        },
+        clap(when) {
+          const g = ctx.createGain();
+          g.connect(musicBus);
+          const bp = filter("bandpass", 1400, 1.1);
+          bp.connect(g);
+          [0, 0.01, 0.021].forEach((dt, k) => noise(when + dt, 0.14).connect(amp(when + dt, k === 2 ? 0.34 : 0.2, 0.002, k === 2 ? 0.12 : 0.012, bp)));
+          send(g, 0.5);
+        },
+        hat(when, e) {
+          noise(when, 0.05).connect(filter("highpass", 7500)).connect(amp(when, 0.12 * e.v, 0.002, 0.035, musicBus));
+        },
+        bass(when, e) {
+          const g = amp(when, 0.5, 0.005, e.dur, musicBus);
+          const lp = filter("lowpass", 700, 2);
+          lp.frequency.setValueAtTime(900, when);
+          lp.frequency.exponentialRampToValueAtTime(220, when + e.dur);
+          lp.connect(g);
+          osc("sawtooth", e.f, when, e.dur + 0.02).connect(lp);
+        },
+        pluck(when, e) {
+          const g = amp(when, 0.2 * e.v, 0.003, 0.2, musicBus);
+          const lp = filter("lowpass", 3200, 3);
+          lp.frequency.setValueAtTime(4200, when);
+          lp.frequency.exponentialRampToValueAtTime(900, when + 0.18);
+          lp.connect(g);
+          osc("square", e.f, when, 0.22).connect(lp);
+          send(g, 0.25);
+        },
+      };
+
+      // Look-ahead scheduler: every 25 ms, schedule sounds due in the next 100 ms.
+      // Animation time is mapped to audio time by an anchor that is re-set after any jump
+      // (a pause, a hidden tab, a restart), so missed sounds never pile up.
+      function tick() {
+        const now = playing && ctx.state === "running" && !document.hidden && !reduce.matches ? clock() : null;
+        if (now === null) { anchor = null; return; }
+        const at = ctx.currentTime;
+        if (anchor) {
+          const err = now - (anchor.tl + (at - anchor.audio));
+          if (Math.abs(err) > 0.08) anchor = null;
+          else anchor.tl += err * 0.05;
+        }
+        if (!anchor) {
+          anchor = { tl: now, audio: at };
+          doneUpTo = now;
+        }
+        const cur = anchor.tl + (at - anchor.audio);
+        const from = Math.max(doneUpTo, cur - 0.05);
+        const to = cur + 0.1;
+        if (to <= from) return;
+        for (let k = Math.floor(from / LOOP); k <= Math.floor(to / LOOP); k++) {
+          for (const e of events) {
+            const t = k * LOOP + e.t;
+            if (t < from || t >= to) continue;
+            if (e.music && !wantMusic) continue;
+            voices[e.type](Math.max(at, anchor.audio + (t - anchor.tl)), e);
+          }
+        }
+        doneUpTo = to;
+      }
+
+      function update() {
+        const on = wantOn && !reduce.matches;
+        if (on) {
+          if (!ctx) makeGraph();
+          clearTimeout(sleepTimer);
+          if (ctx.state !== "running") ctx.resume().catch(() => {});
+          if (!playing) {
+            playing = true;
+            anchor = null;
+            openSession();
+            clearInterval(timer);
+            timer = setInterval(tick, 25);
+          }
+          const t = ctx.currentTime;
+          musicBus.gain.cancelScheduledValues(t);
+          musicBus.gain.setTargetAtTime(wantMusic ? MUSIC : 0, t, 0.03);
+        } else if (playing) {
+          playing = false;
+          clearInterval(timer);
+          closeSession();
+          sleepTimer = setTimeout(() => ctx.suspend(), 200);
+        }
+      }
+      reduce.addEventListener("change", update);
+
+      // Browsers may block audio until the first click or key press.
+      const unlock = () => { if (playing && ctx && ctx.state !== "running") ctx.resume().catch(() => {}); };
+      addEventListener("pointerdown", unlock);
+      addEventListener("keydown", unlock);
+
+      addEventListener("message", (event) => {
+        if (event.origin !== location.origin) return;
+        const data = event.data;
+        if (!data || data.type !== "motionprompt-sound") return;
+        if (typeof data.on === "boolean") wantOn = data.on;
+        if (typeof data.music === "boolean") wantMusic = data.music;
+        update();
+      });
+
+      const fromUrl = params.get("sound");
+      if (fromUrl === "1" || fromUrl === "effects") {
+        wantOn = true;
+        wantMusic = fromUrl === "1";
+        update();
+      }
+      return {};
+    })();
+
+    // Wait briefly for the font so the headline is measured in the right face.
+    Promise.race([
+      Promise.all([document.fonts.load('900 1em "Nunito"'), document.fonts.load('700 1em "Nunito"')]),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(() => {
+      layout();
+      draw();
+      applyMotion();
+    });
+  </script>
+</body>
+</html>
