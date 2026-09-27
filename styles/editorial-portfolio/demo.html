@@ -1,0 +1,1069 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Editorial portfolio demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/playfair-display@5.3.0/400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/playfair-display@5.3.0/400-italic.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/playfair-display@5.3.0/900.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/manrope@5.3.0/500.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/manrope@5.3.0/700.css">
+  <style>
+    /* Colours can be set from the URL: ?text=Your+Name&bg=f4efe6&ink=151515&accent=c8341f&accent2=d9ccba
+       bg is the paper, ink the type, accent the one spot colour, accent2 the cover backdrop. */
+    :root {
+      --paper: #f4efe6;
+      --ink: #151515;
+      --accent: #c8341f;
+      --stone: #d9ccba;
+      --desk: #2b2622;
+      --deskhi: #4a423a;
+      --blazer: #ece2d3;
+      --blazer2: #cbbca7;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--desk);
+    }
+
+    /* The desk, lit from above, and the camera looking down at the magazine. */
+    #scene {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      background: radial-gradient(85% 70% at 50% 42%, var(--deskhi), var(--desk));
+    }
+    #cam, #book, .leaf { position: absolute; left: 0; top: 0; transform-style: preserve-3d; }
+    #cam { left: 50%; top: 50%; width: 0; height: 0; }
+    .leaf { transform-origin: 0 50%; }
+    .bsh {
+      position: absolute;
+      top: 0;
+      box-shadow: 0 34px 70px rgba(0, 0, 0, 0.5), 0 8px 18px rgba(0, 0, 0, 0.32);
+    }
+
+    .face {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: var(--paper);
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+    }
+    .face.back { transform: rotateY(180deg); }
+    .fx { position: absolute; inset: 0; pointer-events: none; }
+    .grain {
+      opacity: 0.2;
+      mix-blend-mode: multiply;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='260' height='260'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.3 0 0 0 0 0.25 0 0 0 0 0.2 0 0 0 0.55 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    }
+    .front .gut { background: linear-gradient(to right, rgba(40, 30, 20, 0.2), rgba(40, 30, 20, 0) 7%); }
+    .back .gut { background: linear-gradient(to left, rgba(40, 30, 20, 0.2), rgba(40, 30, 20, 0) 7%); }
+    .front .shade { opacity: 0; background: linear-gradient(to left, rgba(25, 18, 12, 0.6), rgba(25, 18, 12, 0.12)); }
+    .back .shade { opacity: 0; background: linear-gradient(to right, rgba(25, 18, 12, 0.5), rgba(25, 18, 12, 0.08)); }
+    .front .cast { opacity: 0; background: linear-gradient(to right, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0) 62%); }
+    .back .cast { opacity: 0; background: linear-gradient(to left, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0) 55%); }
+
+    #flash { position: fixed; inset: 0; background: #fffdf8; pointer-events: none; }
+
+    /* Page type. Pages are 800 units wide and scaled as one piece. */
+    .page {
+      position: absolute;
+      inset: 0;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      padding: 44px 48px 40px;
+      color: var(--ink);
+      background: var(--paper);
+    }
+    .sans { font-family: Manrope, system-ui, sans-serif; }
+    .rh {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      padding-bottom: 11px;
+      border-bottom: 1px solid var(--ink);
+      font: 700 11px/1 Manrope, system-ui, sans-serif;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+    }
+    .rh b { color: var(--accent); }
+    .kick {
+      font: 700 12px/1.5 Manrope, system-ui, sans-serif;
+      letter-spacing: 0.26em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    .caps {
+      font: 700 11px/1.6 Manrope, system-ui, sans-serif;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+    }
+    .num {
+      font: 400 188px/0.78 "Playfair Display", Georgia, serif;
+      letter-spacing: -0.05em;
+      color: var(--accent);
+    }
+    .line { overflow: hidden; padding-bottom: 0.1em; }
+    .line > span { display: inline-block; white-space: pre; }
+    .ttl { font: italic 400 76px/1.02 "Playfair Display", Georgia, serif; letter-spacing: -0.015em; }
+    .sub { font: italic 400 25px/1.3 "Playfair Display", Georgia, serif; }
+    .body {
+      font: 500 14.5px/1.62 Manrope, system-ui, sans-serif;
+      column-count: 2;
+      column-gap: 30px;
+      text-align: justify;
+      hyphens: auto;
+      -webkit-hyphens: auto;
+    }
+    .body::first-letter {
+      float: left;
+      font: 400 68px/0.74 "Playfair Display", Georgia, serif;
+      padding: 9px 10px 0 0;
+    }
+    .quote { font: italic 400 40px/1.14 "Playfair Display", Georgia, serif; letter-spacing: -0.01em; }
+    .quote::before { content: "\201C"; color: var(--accent); margin-right: 2px; }
+    .hair { height: 1px; background: var(--ink); transform-origin: 0 50%; }
+    .cred { display: flex; gap: 34px; font: 500 11px/1.55 Manrope, system-ui, sans-serif; letter-spacing: 0.16em; text-transform: uppercase; }
+    .cred span { display: block; color: var(--accent); font-weight: 700; }
+    .art { position: relative; overflow: hidden; background: var(--stone); }
+    .art > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .mast { font: 900 100px/0.86 "Playfair Display", Georgia, serif; letter-spacing: -0.012em; text-transform: uppercase; }
+    .toc { display: flex; align-items: baseline; gap: 14px; padding: 13px 0; border-bottom: 1px solid rgba(21, 21, 21, 0.25); }
+    .toc .n { font: 700 12px/1 Manrope, system-ui, sans-serif; letter-spacing: 0.2em; color: var(--accent); width: 26px; }
+    .toc .t { font: italic 400 30px/1 "Playfair Display", Georgia, serif; }
+    .toc .d { flex: 1; border-bottom: 2px dotted rgba(21, 21, 21, 0.35); transform: translateY(-6px); }
+    .toc .p { font: 700 11px/1 Manrope, system-ui, sans-serif; letter-spacing: 0.2em; text-transform: uppercase; }
+    .row { display: flex; align-items: baseline; gap: 18px; padding: 12px 0; border-bottom: 1px solid rgba(21, 21, 21, 0.22); }
+    .row .caps { color: var(--accent); width: 118px; flex: none; }
+    .row .v { font: italic 400 27px/1.1 "Playfair Display", Georgia, serif; overflow-wrap: anywhere; }
+    svg [data-a] { transform-box: fill-box; transform-origin: 50% 50%; }
+  </style>
+</head>
+<body>
+  <div id="scene" role="img"><div id="cam"><div id="book"></div></div></div>
+  <div id="flash"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const root = document.documentElement;
+
+    // Colours: from the URL, with the rest of the palette mixed from them.
+    const COL = { bg: "f4efe6", ink: "151515", accent: "c8341f", accent2: "d9ccba" };
+    for (const key of Object.keys(COL)) {
+      const value = params.get(key);
+      if (/^[0-9a-f]{6}$/i.test(value ?? "")) COL[key] = value.toLowerCase();
+    }
+    const rgb = (h) => [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+    const mix = (a, b, k) => "#" + rgb(a).map((v, i) => Math.round(v + (rgb(b)[i] - v) * k).toString(16).padStart(2, "0")).join("");
+    root.style.setProperty("--paper", `#${COL.bg}`);
+    root.style.setProperty("--ink", `#${COL.ink}`);
+    root.style.setProperty("--accent", `#${COL.accent}`);
+    root.style.setProperty("--stone", `#${COL.accent2}`);
+    root.style.setProperty("--desk", mix(COL.ink, COL.accent2, 0.16));
+    root.style.setProperty("--deskhi", mix(COL.ink, COL.accent2, 0.34));
+    root.style.setProperty("--blazer", mix(COL.bg, COL.accent2, 0.3));
+    root.style.setProperty("--blazer2", mix(COL.accent2, COL.ink, 0.14));
+
+    // The person: their name is the masthead. Everything else is sample content.
+    const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+    const NAME = (params.get("text") || "Aisha Rahman").trim().replace(/\s+/g, " ").slice(0, 40);
+    const WORDS = NAME.split(" ");
+    const FIRST = esc(WORDS[0]);
+    const HANDLE = (WORDS[0] + (WORDS.length > 1 ? WORDS[WORDS.length - 1] : "")).toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 18) || "studio";
+
+    const PROJECTS = [
+      {
+        num: "01", page: "04", art: "brand", kicker: "Brand identity · 2025", title: "Kopi &amp; Co.",
+        sub: "A neighbourhood café, redrawn by hand.",
+        body: "A small kopitiam in Bangsar wanted to feel new without losing the regulars who have come every morning for thirty years. We kept the hand painted sign and redrew its letters, then built a warm system of kraft, cream and ink that works on cups, bags and the menu board. Nothing shouts. Everything feels like it was always there.",
+        body2: "The new sign went up on a Sunday. By Monday the uncles had stopped noticing it, which was exactly the point, and the takeaway cups started turning up on Instagram all over the neighbourhood.",
+        quote: "Keep the soul. Lose the clutter.",
+        credits: [["Client", "Kopi &amp; Co."], ["Role", "Identity"], ["Year", "2025"]],
+        caption: "Fig. 01 · Cups, bags and cards in kraft, cream and ink",
+      },
+      {
+        num: "02", page: "10", art: "posters", kicker: "Poster series · 2024", title: "Hujan Jazz",
+        sub: "Three nights, three posters, one storm.",
+        body: "Hujan Jazz happens in the rainy season, so the rain became the idea. Each night got its own poster: a red sun for the opening, rings of sound for the big band night and a pattern of drops for the late set. Printed in three spot colours on thick uncoated paper, they were pasted across the city a month before the first note.",
+        body2: "People took them home. By the last night most of the posters on the street had gone, so we printed a small run for the gate and it sold out before the headline act.",
+        quote: "Music you can see from across the street.",
+        credits: [["Client", "Hujan Jazz"], ["Role", "Posters, type"], ["Year", "2024"]],
+        caption: "Fig. 02 · The three festival posters, pasted up in Brickfields",
+      },
+    ];
+
+    // Clock: 100 bpm, five bars fill one 12 s loop. Pages turn on bar lines.
+    const BEAT = 0.6, LOOP = 12;
+    const TURN = [2.4, 5.4, 8.2], TD = 1.0;
+    const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+    const prog = (t, a, b) => clamp((t - a) / (b - a));
+    const lerp = (a, b, k) => a + (b - a) * k;
+    const bump = (x) => (x <= 0 || x >= 1 ? 0 : Math.sin(Math.PI * x));
+    const easeCache = new Map();
+    const E = (name) => {
+      if (!easeCache.has(name)) easeCache.set(name, gsap.parseEase(name));
+      return easeCache.get(name);
+    };
+
+    // An animation attribute: start time, effect, duration, and an optional sound.
+    const A = (t, fx = "rise", d = 0.7, s = "") => ` data-a="${t.toFixed(3)}|${fx}|${d}|${s}"`;
+    // Words that rise out of a clipped line, one after another.
+    const riseWords = (text, t, gap = 0.07, sound = "tick") =>
+      text.split(" ").map((w, i) => `<span${A(t + i * gap, "up", 0.8, i < 4 ? sound : "")}>${w}${i < text.split(" ").length - 1 ? " " : ""}</span>`).join("");
+
+    // ---- Drawings: the portrait, the two project shots, a barcode, a signature. ----
+
+    // An editorial fashion portrait in flat shapes, drawn in an 800 x 1000 box.
+    function figure(id) {
+      const ink = `#${COL.ink}`, fold = mix(COL.ink, COL.bg, 0.12), band = mix(COL.ink, COL.bg, 0.08);
+      const face = "M400 210C340 210 306 262 306 334C306 414 350 474 400 488C450 474 494 414 494 334C494 262 460 210 400 210Z";
+      return `
+        <path d="M40 1000C52 850 120 748 250 712C300 698 340 690 400 700C460 690 500 698 550 712C680 748 748 850 760 1000Z" fill="var(--blazer)"/>
+        <path d="M258 712L350 930L400 760L330 700Z M542 712L450 930L400 760L470 700Z" fill="var(--blazer2)"/>
+        <path d="M400 118C290 118 240 205 238 322C236 418 262 492 246 552C232 606 190 650 176 700C210 780 320 850 400 905C480 850 590 780 624 700C610 650 568 606 554 552C538 492 564 418 562 322C560 205 510 118 400 118Z" fill="${ink}"/>
+        <path d="M268 470C282 560 252 640 214 700 M532 470C526 560 560 640 590 700 M322 560C352 650 380 760 400 880 M478 560C452 650 424 760 404 880" fill="none" stroke="${fold}" stroke-width="7" stroke-linecap="round"/>
+        <path d="${face}" transform="translate(400 345) scale(1.075) translate(-400 -345)" fill="${band}"/>
+        <path d="${face}" fill="#cf9a7c"/>
+        <path d="M430 216C476 230 494 280 494 334C494 414 450 474 402 488C438 456 458 406 460 338C462 286 452 244 430 216Z" fill="#b98267" opacity="0.8"/>
+        <circle cx="352" cy="404" r="19" fill="var(--accent)" opacity="0.08"/>
+        <circle cx="450" cy="404" r="18" fill="var(--accent)" opacity="0.08"/>
+        <g fill="none" stroke="${ink}" stroke-linecap="round">
+          <path d="M338 306Q364 293 390 301 M410 301Q436 293 462 306" stroke-width="5"/>
+          <path d="M344 341Q366 355 388 341 M412 341Q434 355 456 341" stroke-width="4.5"/>
+          <path d="M346 345l-8 6 M454 345l8 6" stroke-width="3"/>
+        </g>
+        <path d="M402 350Q396 392 388 404Q400 412 414 404" fill="none" stroke="#9a664f" stroke-width="4" stroke-linecap="round"/>
+        <path d="M368 440Q384 430 400 436Q416 430 432 440Q416 446 400 444Q384 446 368 440Z" fill="var(--accent)"/>
+        <path d="M372 441Q400 466 428 441Q400 452 372 441Z" fill="var(--accent)" opacity="0.85"/>
+        <circle cx="302" cy="566" r="14" fill="#c9a45c" stroke="#8a6d35" stroke-width="2"/>
+        <circle cx="302" cy="566" r="5" fill="var(--paper)"/>`;
+    }
+
+    // Project 01: a café identity laid out on a table, seen from above.
+    function artBrand(id) {
+      const ink = `#${COL.ink}`;
+      const beans = [[70, 560, 20], [96, 590, -30], [540, 170, 60], [520, 200, 10], [300, 150, -20], [560, 470, 80], [250, 640, 40]]
+        .map(([x, y, r]) => `<g transform="translate(${x} ${y}) rotate(${r})"><ellipse rx="13" ry="9" fill="#4a2f1d"/><path d="M-10 0Q0 -4 10 0" stroke="#2b1a10" stroke-width="2" fill="none"/></g>`).join("");
+      return `<svg viewBox="0 0 600 760" preserveAspectRatio="xMidYMid slice">
+        <defs>
+          <filter id="sh-${id}" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="7" dy="14" stdDeviation="11" flood-color="#3a2a1a" flood-opacity="0.3"/></filter>
+          <radialGradient id="cr-${id}"><stop offset="0" stop-color="#c8905c"/><stop offset="0.65" stop-color="#8d5c37"/><stop offset="1" stop-color="#583520"/></radialGradient>
+          <linearGradient id="lt-${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.4"/><stop offset="0.55" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.08"/></linearGradient>
+        </defs>
+        <rect width="600" height="760" fill="#e4d4bf"/>
+        <rect width="600" height="760" fill="url(#lt-${id})"/>
+        ${beans}
+        <g transform="translate(58 200) rotate(-7)" filter="url(#sh-${id})">
+          <rect width="228" height="318" rx="5" fill="#c69a68"/>
+          <rect width="228" height="48" fill="#b58856"/>
+          <path d="M0 48H228" stroke="#9c7447" stroke-width="2"/>
+          <rect x="168" y="0" width="30" height="58" fill="var(--accent)"/>
+          <circle cx="114" cy="176" r="58" fill="${ink}"/>
+          <text x="114" y="189" text-anchor="middle" font-family="Playfair Display" font-style="italic" font-size="40" fill="var(--paper)">K&amp;C</text>
+          <text x="114" y="272" text-anchor="middle" font-family="Manrope" font-weight="700" font-size="11" letter-spacing="3" fill="#6d4b2c">KOPI &amp; CO. SINCE 1994</text>
+        </g>
+        <g transform="translate(428 300)" filter="url(#sh-${id})">
+          <circle r="118" fill="#f6f1e8"/>
+          <circle r="118" fill="none" stroke="#e2d7c6" stroke-width="3"/>
+          <path d="M76 -12C112 -16 120 22 80 24" fill="none" stroke="#efe6d9" stroke-width="17" stroke-linecap="round"/>
+          <circle r="80" fill="#efe6d9"/>
+          <circle r="66" fill="url(#cr-${id})"/>
+          <path d="M0 22C-34 -4 -22 -38 0 -22C22 -38 34 -4 0 22Z" fill="#ecd3ae" opacity="0.92"/>
+        </g>
+        <g transform="translate(262 452) rotate(-5)" filter="url(#sh-${id})">
+          <rect width="244" height="142" rx="4" fill="#f6f1e8"/>
+          <text x="24" y="44" font-family="Manrope" font-weight="700" font-size="11" letter-spacing="2.5" fill="${ink}">LIM AH KOW</text>
+          <text x="24" y="62" font-family="Manrope" font-size="10" letter-spacing="1" fill="#6b625a">Owner and head barista</text>
+          <rect x="24" y="100" width="120" height="3" fill="#cbbfae"/><rect x="24" y="112" width="90" height="3" fill="#cbbfae"/>
+          <circle cx="214" cy="32" r="12" fill="${ink}"/>
+        </g>
+        <g transform="translate(300 540) rotate(8)" filter="url(#sh-${id})">
+          <rect width="244" height="142" rx="4" fill="${ink}"/>
+          <text x="26" y="86" font-family="Playfair Display" font-style="italic" font-size="36" fill="var(--paper)">Kopi &amp; Co.</text>
+          <circle cx="216" cy="30" r="9" fill="var(--accent)"/>
+        </g>
+      </svg>`;
+    }
+
+    // Project 02: three festival posters taped to a wall.
+    function artPosters(id) {
+      const ink = `#${COL.ink}`;
+      const tape = (x, y, r) => `<rect x="${x - 22}" y="${y - 8}" width="44" height="16" fill="#efe4cf" opacity="0.88" transform="rotate(${r} ${x} ${y})"/>`;
+      const title = (fill) => `<text x="85" y="206" text-anchor="middle" font-family="Playfair Display" font-weight="900" font-size="34" fill="${fill}">HUJAN</text>
+        <text x="85" y="226" text-anchor="middle" font-family="Manrope" font-weight="700" font-size="8" letter-spacing="3" fill="${fill}">JAZZ FESTIVAL</text>`;
+      const rain = Array.from({ length: 9 }, (_, i) => `<path d="M${12 + i * 19} 30l-14 70" stroke="var(--paper)" stroke-width="1.6" opacity="0.45"/>`).join("");
+      const rings = [26, 44, 62, 80].map((r) => `<circle cx="85" cy="140" r="${r}" fill="none" stroke="${ink}" stroke-width="5"/>`).join("");
+      let drops = "";
+      for (let r = 0; r < 6; r++) for (let c = 0; c < 5; c++) {
+        const x = 20 + c * 32 + (r % 2) * 16, y = 26 + r * 26;
+        drops += `<path d="M${x} ${y - 9}C${x + 7} ${y} ${x + 7} ${y + 7} ${x} ${y + 7}C${x - 7} ${y + 7} ${x - 7} ${y} ${x} ${y - 9}Z" fill="${ink}"/>`;
+      }
+      return `<svg viewBox="0 0 600 760" preserveAspectRatio="xMidYMid slice">
+        <defs><filter id="ps-${id}" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="6" dy="12" stdDeviation="9" flood-color="#2a2016" flood-opacity="0.33"/></filter>
+          <linearGradient id="wl-${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e2d9cb"/><stop offset="1" stop-color="#cfc3b1"/></linearGradient></defs>
+        <rect width="600" height="760" fill="url(#wl-${id})"/>
+        <rect y="610" width="600" height="150" fill="#b7a78f"/>
+        <rect y="606" width="600" height="6" fill="#9d8d75"/>
+        <g transform="translate(44 236) rotate(-3)" filter="url(#ps-${id})">
+          <rect width="170" height="244" fill="${ink}"/>${rain}
+          <circle cx="85" cy="112" r="52" fill="var(--accent)"/>${title("var(--paper)")}
+          ${tape(20, 2, -8)}${tape(150, 2, 6)}
+        </g>
+        <g transform="translate(218 204) rotate(1.5)" filter="url(#ps-${id})">
+          <rect width="170" height="244" fill="var(--accent)"/>${rings}${title(ink)}
+          ${tape(85, 0, 3)}
+        </g>
+        <g transform="translate(392 246) rotate(4)" filter="url(#ps-${id})">
+          <rect width="170" height="244" fill="#d9a23f"/>${drops}
+          <rect x="0" y="180" width="170" height="64" fill="#d9a23f"/>${title(ink)}
+          ${tape(24, 2, -5)}${tape(148, 4, 9)}
+        </g>
+      </svg>`;
+    }
+
+    function barcode() {
+      let x = 0, bars = "", s = 7;
+      while (x < 118) {
+        s = (s * 16807) % 2147483647;
+        const w = 1 + (s % 3);
+        if ((s >> 3) % 3) bars += `<rect x="${x}" y="0" width="${w}" height="${(s >> 5) % 5 ? 44 : 50}" fill="var(--ink)"/>`;
+        x += w + 1;
+      }
+      return `<svg width="120" height="50" viewBox="0 0 120 50">${bars}</svg>`;
+    }
+
+    const SIGN = "M8 58C26 12 50 8 46 52C43 80 18 72 34 44C54 12 82 18 76 58C73 84 96 38 112 34C128 30 120 70 138 60C154 50 162 28 178 44C188 56 172 70 194 62C224 50 252 40 296 44";
+
+    // ---- Pages ----
+
+    const runningHead = (left, right, t) => `<div class="rh"${A(t, "fade", 0.6)}><span>${left}</span><span>${right}</span></div>`;
+
+    function coverPage(L) {
+      const lines = L.mast.lines.map((line, li) => `<div class="line" style="padding-top:0.06em">${[...line].map((ch, i) =>
+        `<span${A(0.3 + li * 0.18 + i * 0.035, "up", 0.9)}>${ch === " " ? "&nbsp;" : esc(ch)}</span>`).join("")}</div>`).join("");
+      const g = L.fig;
+      return `<div class="page" style="padding:0;background:var(--stone)">
+        <svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 800 ${L.PH}">
+          <g${A(0.12, "pop", 1.1)}><g transform="${g}"><circle cx="470" cy="352" r="250" fill="var(--accent)"/></g></g>
+        </svg>
+        <div class="caps" style="position:absolute;left:48px;right:48px;top:24px;display:flex;justify-content:space-between"${A(0.2, "fade", 0.8)}>
+          <span>The portfolio issue</span><span>No. 07 · Autumn 2026</span></div>
+        <div class="mast" style="position:absolute;left:0;right:0;top:${L.mastTop}px;text-align:center;font-size:${L.mast.size}px">${lines}</div>
+        <svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 800 ${L.PH}">
+          <g${A(0.2, "fig", 1.3)}><g transform="${g}">${figure("c")}</g></g>
+        </svg>
+        <div style="position:absolute;left:48px;top:${L.clTop}px;width:${L.clW}px">
+          <div class="kick"${A(0.95, "fade", 0.6)}>In this issue</div>
+          <div style="font:italic 400 ${L.clSize}px/1.06 'Playfair Display',Georgia,serif;margin-top:12px">
+            <div${A(1.05, "slide", 0.7, "tick")}>Designer.</div><div${A(1.17, "slide", 0.7, "tick")}>Maker.</div>
+            <div style="color:var(--accent)"${A(1.29, "slide", 0.7, "tick")}>Storyteller.</div></div>
+          <div class="hair" style="width:56px;margin:22px 0 14px"${A(1.45, "rule", 0.6)}></div>
+          <div class="caps"${A(1.55, "fade", 0.6)}>Selected work<br>2020 to 2026</div>
+        </div>
+        <div class="caps" style="position:absolute;left:48px;bottom:40px;line-height:1.9"${A(1.7, "fade", 0.6)}>
+          <b style="color:var(--accent)">p. 04</b>&nbsp; Kopi &amp; Co.<br><b style="color:var(--accent)">p. 10</b>&nbsp; Hujan Jazz</div>
+        <div style="position:absolute;right:44px;bottom:38px;background:var(--paper);padding:10px 12px 8px"${A(1.8, "fade", 0.6)}>
+          ${barcode()}<div class="caps" style="font-size:8px;margin-top:4px">No. 07 · RM 18</div></div>
+      </div>`;
+    }
+
+    // A project as a left hand text page (spreads).
+    function textPage(p, t) {
+      return `<div class="page">
+        ${runningHead(esc(NAME), `Portfolio <b>${p.page}</b>`, t)}
+        <div style="display:flex;align-items:flex-end;gap:26px;margin-top:44px">
+          <div class="num"${A(t + 0.05, "rise", 0.9)}>${p.num}</div>
+          <div class="kick" style="padding-bottom:14px"${A(t + 0.2, "fade", 0.6)}>${p.kicker}</div>
+        </div>
+        <div class="line ttl" style="margin-top:26px">${riseWords(p.title, t + 0.3)}</div>
+        <div class="sub" style="margin-top:12px"${A(t + 0.55, "rise", 0.7)}>${p.sub}</div>
+        <div class="hair" style="margin:30px 0 26px"${A(t + 0.6, "rule", 0.9)}></div>
+        <div class="body" style="font-size:16px;line-height:1.62"${A(t + 0.75, "fade", 0.9)}>${p.body} ${p.body2}</div>
+        <div style="flex:1;min-height:20px"></div>
+        <div class="quote" style="font-size:52px;max-width:92%"${A(t + 1.0, "rise", 0.8, "tick")}>${p.quote}</div>
+        <div class="hair" style="margin:26px 0 14px"${A(t + 1.15, "rule", 0.8)}></div>
+        <div class="cred"${A(t + 1.25, "fade", 0.6)}>${p.credits.map(([k, v]) => `<div><span>${k}</span>${v}</div>`).join("")}</div>
+      </div>`;
+    }
+
+    // A project shot as a full page (spreads).
+    function artPage(p, t, id) {
+      const art = p.art === "brand" ? artBrand(id) : artPosters(id);
+      return `<div class="page" style="padding:0">
+        <div class="art" style="position:absolute;left:0;right:0;top:0;bottom:92px"${A(t + 0.1, "wipe", 1.2, "swish")}>${art}</div>
+        <div style="position:absolute;left:48px;right:48px;bottom:34px;display:flex;justify-content:space-between;align-items:flex-end;gap:30px"${A(t + 0.7, "fade", 0.7)}>
+          <div style="font:italic 400 17px/1.35 'Playfair Display',Georgia,serif;max-width:470px">${p.caption}</div>
+          <div class="caps">Portfolio <b style="color:var(--accent)">${String(+p.page + 1).padStart(2, "0")}</b></div>
+        </div>
+      </div>`;
+    }
+
+    // A project on one page: number and title, the shot, then the story (single pages).
+    function projectPage(p, t, id) {
+      const art = p.art === "brand" ? artBrand(id) : artPosters(id);
+      return `<div class="page">
+        ${runningHead(esc(NAME), `Portfolio <b>${p.page}</b>`, t)}
+        <div style="display:flex;align-items:flex-end;gap:24px;margin-top:30px">
+          <div class="num" style="font-size:160px"${A(t + 0.05, "rise", 0.9)}>${p.num}</div>
+          <div style="flex:1;padding-bottom:6px">
+            <div class="kick"${A(t + 0.2, "fade", 0.6)}>${p.kicker}</div>
+            <div class="line ttl" style="font-size:78px;margin-top:6px">${riseWords(p.title, t + 0.25)}</div>
+          </div>
+        </div>
+        <div class="art" style="flex:1;min-height:160px;margin:24px 0 10px"${A(t + 0.3, "wipe", 1.1, "swish")}>${art}</div>
+        <div style="font:italic 400 14px/1.4 'Playfair Display',Georgia,serif;margin-bottom:20px"${A(t + 0.9, "fade", 0.6)}>${p.caption}</div>
+        <div style="display:flex;gap:28px;align-items:flex-start">
+          <div class="quote" style="font-size:31px;flex:0 0 40%"${A(t + 0.95, "rise", 0.8, "tick")}>${p.quote}</div>
+          <div class="body" style="column-count:1;font-size:13.5px;line-height:1.58;flex:1"${A(t + 1.05, "fade", 0.9)}>${p.body}</div>
+        </div>
+        <div class="hair" style="margin:22px 0 12px"${A(t + 1.2, "rule", 0.8)}></div>
+        <div class="cred"${A(t + 1.3, "fade", 0.6)}>${p.credits.map(([k, v]) => `<div><span>${k}</span>${v}</div>`).join("")}</div>
+      </div>`;
+    }
+
+    function aboutPage(t, id) {
+      const items = [["04", "Brand identity", "Kopi &amp; Co."], ["10", "Poster and print", "Hujan Jazz"], ["16", "Editorial design", "Riuh magazine"], ["22", "Art direction", "Batik Lane"], ["28", "Motion", "Studio reel"]];
+      return `<div class="page">
+        ${runningHead(esc(NAME), "Contents", t)}
+        <div class="kick" style="margin-top:44px"${A(t + 0.1, "fade", 0.6)}>In this issue</div>
+        <div class="line ttl" style="font-size:96px;margin-top:8px">${riseWords("Contents", t + 0.2)}</div>
+        <div style="display:flex;gap:30px;margin-top:30px;align-items:flex-start">
+          <div class="art" style="width:230px;height:280px;flex:none"${A(t + 0.35, "wipeUp", 1.0)}>
+            <svg viewBox="150 110 500 610" preserveAspectRatio="xMidYMid slice"><circle cx="470" cy="352" r="250" fill="var(--accent)"/>${figure(id)}</svg></div>
+          <div style="font:italic 400 23px/1.42 'Playfair Display',Georgia,serif"${A(t + 0.6, "rise", 0.8)}>${FIRST} is a designer in Kuala Lumpur who makes identities, posters and pages for cafés, festivals and small brands that care about craft.</div>
+        </div>
+        <div style="margin-top:30px">${items.map(([n, name, who], i) =>
+          `<div class="toc"${A(t + 0.75 + i * 0.1, "slide", 0.6, i < 3 ? "tick" : "")}><span class="n">${n}</span><span class="t">${name}</span><span class="d"></span><span class="p">${who}</span></div>`).join("")}</div>
+      </div>`;
+    }
+
+    function contactPage(t, withSkills) {
+      const rows = [["Email", `hello@${HANDLE}.com`], ["Studio", `${HANDLE}.com`], ["Instagram", `@${HANDLE}`], ["Based in", "Kuala Lumpur"]];
+      return `<div class="page">
+        ${runningHead(esc(NAME), "Back page", t)}
+        <div class="kick" style="margin-top:46px"${A(t + 0.1, "fade", 0.6)}>Available for new work</div>
+        <div style="font:400 ${Math.round(clamp(L.PH * 0.085, 96, 124))}px/0.98 'Playfair Display',Georgia,serif;letter-spacing:-0.02em;margin-top:18px">
+          <div class="line"><span${A(t + 0.2, "up", 0.9, "chime")}>Let’s work</span></div>
+          <div class="line"><span${A(t + 0.34, "up", 0.9)}><i>together</i><span style="color:var(--accent)">.</span></span></div>
+        </div>
+        <div class="hair" style="margin:36px 0 10px"${A(t + 0.6, "rule", 0.9)}></div>
+        ${rows.map(([k, v], i) => `<div class="row"${A(t + 0.75 + i * 0.1, "slide", 0.6, "tick")}><span class="caps">${k}</span><span class="v">${esc(v)}</span></div>`).join("")}
+        <div class="caps" style="margin-top:22px;color:var(--accent)"${A(t + 1.2, "fade", 0.6)}>Identity \u00b7 Posters \u00b7 Editorial \u00b7 Art direction \u00b7 Motion</div>
+        <div style="font:italic 400 28px/1.3 'Playfair Display',Georgia,serif;margin-top:18px"${A(t + 1.3, "rise", 0.7)}>Now booking projects for early 2027.</div>
+        ${withSkills && L.PH > 1150 ? `<div style="display:flex;gap:26px;align-items:center;margin-top:30px">
+          <div class="art" style="width:150px;height:180px;flex:none"${A(t + 1.0, "wipeUp", 0.9)}>
+            <svg viewBox="170 130 460 552" preserveAspectRatio="xMidYMid slice"><circle cx="470" cy="352" r="250" fill="var(--accent)"/>${figure("ct")}</svg></div>
+          <div style="font:italic 400 22px/1.42 'Playfair Display',Georgia,serif"${A(t + 1.15, "rise", 0.8)}>${FIRST} makes identities, posters and pages for caf\u00e9s, festivals and small brands that care about craft.</div>
+        </div>` : ""}
+        <div style="flex:1;min-height:16px"></div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-end">
+          <div>
+            <svg width="300" height="90" viewBox="0 0 300 90" style="display:block"><path d="${SIGN}" fill="none" stroke="var(--ink)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"${A(t + 1.35, "draw", 1.0, "pen")}/></svg>
+            <div style="font:italic 400 16px/1.3 'Playfair Display',Georgia,serif;margin-top:6px"${A(t + 2.0, "fade", 0.7)}>Thank you for reading.</div>
+          </div>
+          <div class="caps"${A(t + 2.1, "fade", 0.6)}>No. 07</div>
+        </div>
+      </div>`;
+    }
+
+    // ---- Layout, build and render ----
+
+    const scene = document.getElementById("scene"), cam = document.getElementById("cam"), book = document.getElementById("book");
+    const flash = document.getElementById("flash");
+    scene.setAttribute("aria-label", `A luxury magazine about ${NAME}: the cover, project spreads and a contact page, turning page by page`);
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    const PW = 800;
+    let L = null, leaves = [], anims = [], sfx = [], shL = null, tl = null;
+    const clock = { t: 0 };
+
+    // Fit the name as a masthead: one line if it stays big, otherwise two balanced lines.
+    function fitMast(maxW) {
+      const probe = document.createElement("span");
+      probe.className = "mast";
+      Object.assign(probe.style, { position: "absolute", visibility: "hidden", whiteSpace: "pre", fontSize: "100px" });
+      document.body.append(probe);
+      const width = (s) => { probe.textContent = s.toUpperCase(); return probe.getBoundingClientRect().width; };
+      const one = (100 * maxW) / width(NAME);
+      let out = { lines: [NAME.toUpperCase()], size: Math.min(one, 190) };
+      if (one < 104 && WORDS.length > 1) {
+        let best = null;
+        for (let i = 1; i < WORDS.length; i++) {
+          const pair = [WORDS.slice(0, i).join(" "), WORDS.slice(i).join(" ")];
+          const w = Math.max(...pair.map(width));
+          if (!best || w < best.w) best = { w, pair };
+        }
+        out = { lines: best.pair.map((s) => s.toUpperCase()), size: Math.min((100 * maxW) / best.w, 150) };
+      }
+      out.size = Math.max(out.size, 44);
+      probe.remove();
+      return out;
+    }
+
+    function layout() {
+      const W = innerWidth, H = innerHeight, aspect = W / H;
+      const mode = aspect >= 1.3 ? "spread" : aspect <= 0.7 ? "tall" : "desk";
+      const ratio = mode === "tall" ? clamp((0.92 * aspect) / 0.88, 0.56, 0.78) : mode === "desk" ? 0.76 : 0.72;
+      const PH = Math.round(PW / ratio);
+      const S = mode === "spread" ? Math.min((0.94 * W) / (2 * PW), (0.88 * H) / PH)
+        : mode === "tall" ? Math.min((0.92 * W) / PW, (0.9 * H) / PH)
+        : Math.min((0.84 * W) / PW, (0.9 * H) / PH);
+      const tilt = mode === "desk" ? "rotateX(22deg) rotateZ(-4deg)" : mode === "spread" ? "rotateX(7deg)" : "";
+      // Cover: the masthead, then the portrait scaled so her head overlaps its last line.
+      const mast = fitMast(PW - 88), mastTop = 52;
+      const mastBottom = mastTop + mast.lines.length * mast.size * 0.92;
+      // Her head overlaps the bottom of a big masthead; a long name set smaller stays readable.
+      const headTop = mastBottom - (mast.size < 120 ? 0.1 : 0.34) * mast.size;
+      const k = (PH - headTop) / 882;
+      const fig = `translate(${(480 - 400 * k).toFixed(1)} ${(PH - 1000 * k).toFixed(1)}) scale(${k.toFixed(4)})`;
+      const edge = 480 - 162 * k;
+      const clW = Math.max(150, edge - 64);
+      return { W, H, mode, PH, S, tilt, mast, mastTop, fig, clTop: PH - 1000 * k + 300 * k, clW, clSize: clamp(clW / 5.9, 26, 40) };
+    }
+
+    // One leaf is a sheet of paper: a front page and a back page, turning on the spine.
+    function leaf(frontHtml, backHtml) {
+      const el = document.createElement("div");
+      el.className = "leaf";
+      Object.assign(el.style, { width: `${PW}px`, height: `${L.PH}px` });
+      el.innerHTML = `
+        <div class="face front">${frontHtml}<div class="fx grain"></div><div class="fx gut"></div><div class="fx cast"></div><div class="fx shade"></div></div>
+        <div class="face back">${backHtml}<div class="fx grain"></div><div class="fx gut"></div><div class="fx cast"></div><div class="fx shade"></div></div>`;
+      book.append(el);
+      const [front, back] = el.children;
+      return { el, faces: [front, back], fs: front.querySelector(".shade"), bs: back.querySelector(".shade"), fc: front.querySelector(".cast"), bc: back.querySelector(".cast") };
+    }
+
+    function build() {
+      const keep = tl ? tl.time() : 0;
+      if (tl) tl.kill();
+      book.replaceChildren();
+      L = layout();
+      scene.style.perspective = `${2600 * L.S}px`;
+      const single = L.mode !== "spread";
+      const base = TURN.map((t) => t + 0.32);
+
+      // The magazine's shadow on the desk: under the right page, and under the left once it opens.
+      const shR = document.createElement("div"), shLeft = document.createElement("div");
+      for (const [el, x] of [[shR, 0], [shLeft, -PW]]) {
+        el.className = "bsh";
+        Object.assign(el.style, { left: `${x}px`, width: `${PW}px`, height: `${L.PH}px`, transform: "translateZ(-3px)" });
+        book.append(el);
+      }
+      shL = shLeft;
+
+      const blank = `<div class="page"></div>`;
+      if (single) {
+        leaves = [
+          leaf(coverPage(L), blank),
+          leaf(projectPage(PROJECTS[0], base[0], "a1"), blank),
+          leaf(projectPage(PROJECTS[1], base[1], "a2"), blank),
+          leaf(contactPage(base[2], true), blank),
+        ];
+      } else {
+        leaves = [
+          leaf(coverPage(L), textPage(PROJECTS[0], base[0])),
+          leaf(artPage(PROJECTS[0], base[0], "a1"), artPage(PROJECTS[1], base[1], "a2")),
+          leaf(textPage(PROJECTS[1], base[1]), aboutPage(base[2], "ab")),
+          leaf(contactPage(base[2], false), blank),
+        ];
+      }
+
+      // Collect every animated element and the sound it makes.
+      sfx = [];
+      anims = [...book.querySelectorAll("[data-a]")].map((el) => {
+        const [t0, fx, d, s] = el.dataset.a.split("|");
+        const a = { el, t0: +t0, fx, d: +d, len: 0 };
+        if (fx === "draw") {
+          a.len = el.getTotalLength() + 2;
+          el.style.strokeDasharray = `${a.len}`;
+        }
+        if (s) sfx.push({ t: a.t0, type: s, dur: a.d });
+        return a;
+      });
+      sfx.push({ t: 0.1, type: "shutter" });
+      TURN.forEach((t, i) => {
+        sfx.push({ t: t + 0.02, type: "turn", dur: TD * 0.9, p: single ? 0.3 : 0.45 });
+        sfx.push({ t: t + TD - 0.07, type: "thump", p: single ? 0 : -0.3 });
+      });
+      sfx.push({ t: LOOP - 0.72, type: "whine" }, { t: LOOP - 0.38, type: "flash" });
+
+      tl = gsap.timeline({ repeat: -1, onUpdate: () => render(clock.t) });
+      tl.fromTo(clock, { t: 0 }, { t: LOOP, duration: LOOP, ease: "none" }, 0);
+      if (reduce.matches) seek(2.3, true);
+      else tl.time(keep % LOOP);
+      sound.replan();
+    }
+
+    function applyAnim(a, t) {
+      const p = prog(t, a.t0, a.t0 + a.d), s = a.el.style;
+      let k;
+      switch (a.fx) {
+        case "rise": k = E("power3.out")(p); s.opacity = k; s.transform = `translateY(${(1 - k) * 34}px)`; break;
+        case "up": k = E("power4.out")(p); s.transform = `translateY(${(1 - k) * 108}%)`; break;
+        case "fade": s.opacity = E("power1.inOut")(p); break;
+        case "slide": k = E("power3.out")(p); s.opacity = k; s.transform = `translateX(${(1 - k) * -32}px)`; break;
+        case "rule": s.transform = `scaleX(${E("power3.inOut")(p)})`; break;
+        case "pop": k = E("back.out(1.3)")(p); s.opacity = Math.min(1, p * 3); s.transform = `scale(${0.35 + 0.65 * k})`; break;
+        case "fig": k = E("power3.out")(p); s.opacity = Math.min(1, p * 2.2); s.transform = `translateY(${(1 - k) * 70}px)`; break;
+        case "draw": s.strokeDashoffset = `${a.len * (1 - E("power1.inOut")(p))}`; break;
+        case "wipe":
+        case "wipeUp": {
+          k = E("power3.inOut")(p);
+          s.clipPath = a.fx === "wipe" ? `inset(0 ${(1 - k) * 100}% 0 0)` : `inset(${(1 - k) * 100}% 0 0 0)`;
+          const inner = a.el.firstElementChild;
+          if (inner) inner.style.transform = `scale(${1.14 - 0.14 * E("power2.out")(p)})`;
+          break;
+        }
+      }
+    }
+
+    // Everything on screen is a pure function of the loop time t.
+    function render(t) {
+      if (!L) return;
+      const single = L.mode !== "spread";
+      for (const a of anims) applyAnim(a, t);
+      const f = TURN.map((T) => E("power2.inOut")(prog(t, T, T + TD)));
+      leaves.forEach((lf, i) => {
+        const fi = f[i] ?? 0;
+        const z = fi <= 0 ? -i * 0.7 : fi >= 1 ? 1 + i * 0.7 : 6;
+        lf.el.style.transform = `translate3d(0,0,${z}px) rotateY(${-180 * fi}deg)`;
+        lf.fs.style.opacity = (bump(fi) * 0.55).toFixed(3);
+        lf.bs.style.opacity = (bump(fi) * 0.45).toFixed(3);
+        // The page underneath catches the turning page's shadow.
+        lf.fc.style.opacity = (bump(f[i - 1] ?? 0) * 0.6).toFixed(3);
+        const next = f[i + 1] ?? 0;
+        lf.bc.style.opacity = (!single && next > 0.5 ? bump(next) * 0.55 : 0).toFixed(3);
+        if (single) {
+          // Fade the faces, not the sheet: opacity on the sheet would flatten its 3D.
+          const gone = fi >= 1 ? prog(t, TURN[i] + TD, TURN[i] + TD + 0.3) : 0;
+          for (const face of lf.faces) face.style.opacity = (1 - gone).toFixed(3);
+          lf.el.style.visibility = gone >= 1 ? "hidden" : "visible";
+        }
+      });
+      const open = single ? 0 : f[0];
+      const spine = single ? -PW / 2 : lerp(-PW / 2, 0, open);
+      book.style.transform = `translate3d(${spine}px,${-L.PH / 2}px,0)`;
+      shL.style.opacity = open;
+      // A slow breath of the camera that loops cleanly.
+      const breathe = 0.5 - 0.5 * Math.cos((2 * Math.PI * t) / LOOP);
+      cam.style.transform = `scale(${L.S * (1 + 0.022 * breathe)}) ${L.tilt}`;
+      // A camera flash opens and closes the loop.
+      const fl = t < 0.55 ? 1 - E("power2.out")(t / 0.55) : t > LOOP - 0.38 ? E("power2.in")((t - (LOOP - 0.38)) / 0.38) : 0;
+      flash.style.opacity = fl.toFixed(3);
+    }
+
+    function seek(t, pause = true) {
+      if (!tl) return;
+      if (pause) tl.pause();
+      tl.time(((t % LOOP) + LOOP) % LOOP);
+      render(clock.t);
+    }
+    window.seekDemo = (t) => seek(t, true);
+
+    reduce.addEventListener("change", () => {
+      if (!tl) return;
+      if (reduce.matches) seek(2.3, true);
+      else tl.play();
+    });
+
+    // Sound: every sound is made with the Web Audio API. It is off until the
+    // parent page (or ?sound=1 / ?sound=effects) turns it on, and it follows the
+    // GSAP timeline clock. Effects come from the same list of animations the pages use.
+    const sound = (() => {
+      const LEVEL = 1.05, MUSIC = 0.17;
+      const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+      const clock_ = () => (tl && !tl.paused() ? tl.totalTime() : null);
+      // Slow jazz in D minor, five bars: Dm9, G13, Cmaj9, Fmaj9, A7(b9).
+      const BARS = [
+        { v: [53, 57, 60, 64], walk: [38, 41, 45, 44] },
+        { v: [53, 59, 64], walk: [43, 47, 50, 49] },
+        { v: [52, 55, 59, 62], walk: [48, 45, 43, 40] },
+        { v: [57, 60, 64, 67], walk: [41, 45, 48, 46] },
+        { v: [55, 61, 65, 70], walk: [45, 49, 52, 39] },
+      ];
+      let ctx = null, master, impulse, noiseBuf, session = null, fxBus, musicBus, verbSend, keys;
+      let wantOn = false, wantMusic = true, playing = false;
+      let timer = 0, sleepTimer = 0, anchor = null, doneUpTo = 0;
+
+      function plan() {
+        const list = [];
+        const add = (t, type, extra = {}, music = false) => list.push({ ...extra, t, type, music });
+        let s = 5;
+        const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+        for (const e of sfx) add(e.t, e.type, { ...e, f: 3200 + rnd() * 1800, p: e.p ?? (rnd() - 0.5) * 0.6 });
+        const B = BEAT;
+        BARS.forEach((bar, n) => {
+          const t0 = n * 4 * B;
+          add(t0, "ep", { notes: bar.v, dur: B * 1.7, v: 1 }, true);
+          add(t0 + (1 + 2 / 3) * B, "ep", { notes: bar.v, dur: B * 0.55, v: 0.6 }, true);
+          add(t0 + (3 + 2 / 3) * B, "ep", { notes: bar.v.slice(1), dur: B * 0.4, v: 0.45 }, true);
+          bar.walk.forEach((m, q) => add(t0 + q * B, "bass", { f: hz(m), dur: B * 0.92 }, true));
+          add(t0, "kick", { v: 1 }, true);
+          add(t0 + 2 * B, "kick", { v: 0.6 }, true);
+          add(t0 + B, "brush", {}, true);
+          add(t0 + 3 * B, "brush", {}, true);
+          for (let q = 0; q < 4; q++) {
+            add(t0 + q * B, "ride", { v: q % 2 ? 0.75 : 1 }, true);
+            if (q % 2) add(t0 + (q + 2 / 3) * B, "ride", { v: 0.5 }, true);
+          }
+        });
+        return list.sort((a, b) => a.t - b.t);
+      }
+      let events = [];
+
+      function makeGraph() {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -14;
+        comp.knee.value = 8;
+        comp.ratio.value = 4;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.2;
+        master = ctx.createGain();
+        master.gain.value = LEVEL;
+        master.connect(comp).connect(ctx.destination);
+        const len = Math.floor(ctx.sampleRate * 1.8);
+        impulse = ctx.createBuffer(2, len, ctx.sampleRate);
+        for (let ch = 0; ch < 2; ch++) {
+          const d = impulse.getChannelData(ch);
+          for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+        }
+        noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+        const nd = noiseBuf.getChannelData(0);
+        for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+      }
+
+      // Fresh buses every time sound is turned on, so nothing queued earlier can leak out.
+      function openSession() {
+        const t = ctx.currentTime;
+        session = ctx.createGain();
+        session.gain.setValueAtTime(0, t);
+        session.gain.linearRampToValueAtTime(1, t + 0.05);
+        session.connect(master);
+        fxBus = ctx.createGain();
+        fxBus.connect(session);
+        musicBus = ctx.createGain();
+        musicBus.gain.value = wantMusic ? MUSIC : 0;
+        musicBus.connect(session);
+        const verb = ctx.createConvolver();
+        verb.buffer = impulse;
+        const verbOut = ctx.createGain();
+        verbOut.gain.value = 0.32;
+        verbSend = ctx.createGain();
+        verbSend.connect(verb).connect(filter("lowpass", 3800)).connect(verbOut).connect(session);
+        // Electric piano bus: soft top end, a gentle tremolo and some room.
+        keys = ctx.createGain();
+        const trem = ctx.createGain();
+        trem.gain.value = 0.85;
+        const lfo = ctx.createOscillator();
+        lfo.frequency.value = 4.6;
+        const depth = ctx.createGain();
+        depth.gain.value = 0.15;
+        lfo.connect(depth).connect(trem.gain);
+        lfo.start();
+        keys.connect(filter("lowpass", 3400, 0.5)).connect(trem).connect(musicBus);
+        send(trem, 0.35);
+      }
+      function closeSession() {
+        const old = session, t = ctx.currentTime;
+        session = null;
+        old.gain.cancelScheduledValues(t);
+        old.gain.setValueAtTime(old.gain.value, t);
+        old.gain.linearRampToValueAtTime(0, t + 0.15);
+        setTimeout(() => old.disconnect(), 250);
+      }
+
+      function amp(when, peak, attack, decay, out) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, when);
+        g.gain.exponentialRampToValueAtTime(peak, when + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay);
+        g.connect(out);
+        return g;
+      }
+      function osc(type, freq, when, dur) {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.setValueAtTime(freq, when);
+        o.start(when);
+        o.stop(when + dur + 0.05);
+        return o;
+      }
+      function noise(when, dur) {
+        const s = ctx.createBufferSource();
+        s.buffer = noiseBuf;
+        s.loop = true;
+        s.start(when, Math.random() * 1.5);
+        s.stop(when + dur + 0.05);
+        return s;
+      }
+      function filter(type, freq, q = 0.7) {
+        const f = ctx.createBiquadFilter();
+        f.type = type;
+        f.frequency.value = freq;
+        f.Q.value = q;
+        return f;
+      }
+      function pan(value, out) {
+        const p = ctx.createStereoPanner();
+        p.pan.value = value;
+        p.connect(out);
+        return p;
+      }
+      function send(node, amount) {
+        const g = ctx.createGain();
+        g.gain.value = amount;
+        node.connect(g).connect(verbSend);
+      }
+      function shape(when, points, out) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, when);
+        for (const [dt, v] of points) g.gain.linearRampToValueAtTime(v, when + dt);
+        g.connect(out);
+        return g;
+      }
+
+      const voices = {
+        shutter(when) {
+          // A soft mechanical shutter: two quick clicks with a little body.
+          const out = pan(0, fxBus);
+          [0, 0.042].forEach((dt, k) => {
+            noise(when + dt, 0.03).connect(filter("highpass", 2600)).connect(amp(when + dt, k ? 0.2 : 0.28, 0.001, 0.022, out));
+            osc("sine", k ? 900 : 640, when + dt, 0.05).connect(amp(when + dt, 0.07, 0.001, 0.03, out));
+          });
+        },
+        whine(when) {
+          // The flash charging up, very quiet.
+          const o = osc("sine", 1700, when, 0.36);
+          o.frequency.exponentialRampToValueAtTime(6400, when + 0.33);
+          o.connect(shape(when, [[0.28, 0.03], [0.34, 0]], pan(0.15, fxBus)));
+        },
+        flash(when) {
+          // The flash firing: a soft pop with a short low thud.
+          const out = pan(0, fxBus);
+          noise(when, 0.25).connect(filter("bandpass", 1900, 0.7)).connect(amp(when, 0.32, 0.002, 0.12, out));
+          const o = osc("sine", 150, when, 0.22);
+          o.frequency.exponentialRampToValueAtTime(58, when + 0.18);
+          o.connect(amp(when, 0.28, 0.003, 0.16, out));
+          send(out, 0.3);
+        },
+        turn(when, e) {
+          // A papery page turn that sweeps across, with a rustle and a crisp top.
+          const d = e.dur;
+          const p = ctx.createStereoPanner();
+          p.pan.setValueAtTime(e.p, when);
+          p.pan.linearRampToValueAtTime(-e.p, when + d);
+          p.connect(fxBus);
+          const g = shape(when, [[d * 0.22, 0.2], [d * 0.55, 0.26], [d, 0]], p);
+          const rustle = ctx.createGain();
+          rustle.gain.value = 0.65;
+          const lfo = osc("square", 23, when, d);
+          const depth = ctx.createGain();
+          depth.gain.value = 0.3;
+          lfo.connect(depth).connect(rustle.gain);
+          const bp = filter("bandpass", 1200, 0.7);
+          bp.frequency.setValueAtTime(900, when);
+          bp.frequency.linearRampToValueAtTime(2600, when + d * 0.55);
+          bp.frequency.linearRampToValueAtTime(1300, when + d);
+          noise(when, d).connect(bp).connect(rustle).connect(g);
+          noise(when, d).connect(filter("highpass", 5500)).connect(shape(when, [[d * 0.45, 0.05], [d, 0]], p));
+          send(g, 0.2);
+        },
+        thump(when, e) {
+          // The page settling onto the one below.
+          const out = pan(e.p || 0, fxBus);
+          const o = osc("sine", 125, when, 0.18);
+          o.frequency.exponentialRampToValueAtTime(55, when + 0.15);
+          o.connect(amp(when, 0.3, 0.003, 0.13, out));
+          noise(when, 0.08).connect(filter("lowpass", 800)).connect(amp(when, 0.22, 0.002, 0.06, out));
+        },
+        tick(when, e) {
+          // A gentle type click as a word or line sets.
+          const out = pan(e.p || 0, fxBus);
+          noise(when, 0.03).connect(filter("bandpass", e.f, 2)).connect(amp(when, 0.1, 0.001, 0.018, out));
+          osc("sine", e.f / 2, when, 0.03).connect(amp(when, 0.025, 0.001, 0.02, out));
+        },
+        swish(when, e) {
+          // A photograph sliding into place.
+          const d = Math.min(1, e.dur);
+          const p = ctx.createStereoPanner();
+          p.pan.setValueAtTime(-0.35, when);
+          p.pan.linearRampToValueAtTime(0.35, when + d);
+          p.connect(fxBus);
+          const bp = filter("bandpass", 700, 0.8);
+          bp.frequency.setValueAtTime(700, when);
+          bp.frequency.exponentialRampToValueAtTime(2800, when + d * 0.7);
+          noise(when, d).connect(bp).connect(shape(when, [[d * 0.45, 0.1], [d, 0]], p));
+        },
+        chime(when) {
+          // A warm little chord for the contact page.
+          [81, 84, 88, 91].forEach((m, k) => {
+            const t = when + k * 0.07;
+            const g = amp(t, 0.1 - k * 0.012, 0.004, 1.8, pan(-0.24 + k * 0.16, fxBus));
+            osc("sine", hz(m), t, 2).connect(g);
+            osc("sine", hz(m) * 2.01, t, 0.8).connect(amp(t, 0.025, 0.002, 0.5, g));
+            send(g, 0.6);
+          });
+        },
+        pen(when, e) {
+          // A fountain pen signing, with the scratch following the stroke.
+          const d = e.dur;
+          const g = shape(when, [[0.05, 0.07], [d * 0.8, 0.06], [d, 0]], pan(0.25, fxBus));
+          const am = ctx.createGain();
+          am.gain.value = 0.5;
+          const l = osc("sine", 17, when, d);
+          const dp = ctx.createGain();
+          dp.gain.value = 0.45;
+          l.connect(dp).connect(am.gain);
+          noise(when, d).connect(filter("bandpass", 3600, 1.4)).connect(am).connect(g);
+        },
+        ep(when, e) {
+          // Electric piano: a sine voice with a quick FM bite on the attack.
+          e.notes.forEach((m, k) => {
+            const f = hz(m), t = when + k * 0.012, end = t + e.dur;
+            const car = osc("sine", f, t, e.dur + 0.8);
+            const mod = osc("sine", f, t, e.dur + 0.8);
+            const mg = ctx.createGain();
+            mg.gain.setValueAtTime(f * 2, t);
+            mg.gain.exponentialRampToValueAtTime(f * 0.2, t + 0.35);
+            mod.connect(mg).connect(car.frequency);
+            const g = ctx.createGain();
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.exponentialRampToValueAtTime(0.09 * e.v, t + 0.006);
+            g.gain.exponentialRampToValueAtTime(0.04 * e.v, t + 0.3);
+            g.gain.setValueAtTime(0.04 * e.v, end);
+            g.gain.exponentialRampToValueAtTime(0.0001, end + 0.55);
+            car.connect(g).connect(keys);
+          });
+        },
+        bass(when, e) {
+          // Upright bass: a round pluck that settles onto the note.
+          const g = amp(when, 0.42, 0.008, e.dur, musicBus);
+          const lp = filter("lowpass", 700, 0.9);
+          lp.frequency.setValueAtTime(900, when);
+          lp.frequency.exponentialRampToValueAtTime(320, when + e.dur);
+          lp.connect(g);
+          for (const [type, v] of [["triangle", 1], ["sine", 0.8]]) {
+            const o = osc(type, e.f * 1.012, when, e.dur + 0.05);
+            o.frequency.exponentialRampToValueAtTime(e.f, when + 0.05);
+            const og = ctx.createGain();
+            og.gain.value = v;
+            o.connect(og).connect(lp);
+          }
+        },
+        kick(when, e) {
+          const o = osc("sine", 96, when, 0.28);
+          o.frequency.exponentialRampToValueAtTime(42, when + 0.2);
+          o.connect(amp(when, 0.42 * e.v, 0.003, 0.24, musicBus));
+        },
+        brush(when) {
+          // A brush swept across the snare.
+          noise(when, 0.34).connect(filter("bandpass", 4200, 0.6)).connect(shape(when, [[0.03, 0.13], [0.3, 0]], pan(-0.15, musicBus)));
+        },
+        ride(when, e) {
+          const out = pan(0.3, musicBus);
+          noise(when, 0.08).connect(filter("highpass", 7500)).connect(amp(when, 0.05 * e.v, 0.001, 0.07, out));
+          for (const f of [3150, 4720]) osc("sine", f, when, 0.35).connect(amp(when, 0.009 * e.v, 0.001, 0.3, out));
+        },
+      };
+
+      // Look-ahead scheduler: every 25 ms, schedule sounds due in the next 100 ms.
+      // Animation time is mapped to audio time by an anchor that is re-set after any jump.
+      function tick() {
+        const now = playing && ctx.state === "running" && !document.hidden && !reduce.matches ? clock_() : null;
+        if (now === null) { anchor = null; return; }
+        const loopLen = LOOP;
+        const at = ctx.currentTime;
+        if (anchor) {
+          const err = now - (anchor.tl + (at - anchor.audio));
+          if (Math.abs(err) > 0.08) anchor = null;
+          else anchor.tl += err * 0.05;
+        }
+        if (!anchor) {
+          anchor = { tl: now, audio: at };
+          doneUpTo = now;
+        }
+        const cur = anchor.tl + (at - anchor.audio);
+        const from = Math.max(doneUpTo, cur - 0.05);
+        const to = cur + 0.1;
+        if (to <= from) return;
+        for (let k = Math.floor(from / loopLen); k <= Math.floor(to / loopLen); k++) {
+          for (const e of events) {
+            const t = k * loopLen + e.t;
+            if (t < from || t >= to) continue;
+            if (e.music && !wantMusic) continue;
+            const v = voices[e.type];
+            if (v) v(Math.max(at, anchor.audio + (t - anchor.tl)), e);
+          }
+        }
+        doneUpTo = to;
+      }
+
+      function update() {
+        const on = wantOn && !reduce.matches;
+        if (on) {
+          if (!ctx) makeGraph();
+          clearTimeout(sleepTimer);
+          if (ctx.state !== "running") ctx.resume().catch(() => {});
+          if (!playing) {
+            playing = true;
+            anchor = null;
+            openSession();
+            clearInterval(timer);
+            timer = setInterval(tick, 25);
+          }
+          const t = ctx.currentTime;
+          musicBus.gain.cancelScheduledValues(t);
+          musicBus.gain.setTargetAtTime(wantMusic ? MUSIC : 0, t, 0.03);
+        } else if (playing) {
+          playing = false;
+          clearInterval(timer);
+          closeSession();
+          sleepTimer = setTimeout(() => ctx.suspend(), 200);
+        }
+      }
+      reduce.addEventListener("change", update);
+
+      const unlock = () => { if (playing && ctx && ctx.state !== "running") ctx.resume().catch(() => {}); };
+      addEventListener("pointerdown", unlock);
+      addEventListener("keydown", unlock);
+
+      addEventListener("message", (event) => {
+        if (event.origin !== location.origin) return;
+        const data = event.data;
+        if (!data || data.type !== "motionprompt-sound") return;
+        if (typeof data.on === "boolean") wantOn = data.on;
+        if (typeof data.music === "boolean") wantMusic = data.music;
+        update();
+      });
+
+      const fromUrl = params.get("sound");
+      if (fromUrl === "1" || fromUrl === "effects") {
+        wantOn = true;
+        wantMusic = fromUrl === "1";
+        update();
+      }
+      return { replan() { events = plan(); } };
+    })();
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(build, 150);
+    });
+
+    // Wait briefly for the fonts so the masthead is measured in the right face.
+    Promise.race([
+      Promise.all([document.fonts.load('900 100px "Playfair Display"'), document.fonts.load('italic 400 40px "Playfair Display"'), document.fonts.load("500 14px Manrope")]),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(build);
+  </script>
+</body>
+</html>

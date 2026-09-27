@@ -1,0 +1,25 @@
+Make my video in this style: Editorial portfolio.
+
+Look and motion
+- A luxury fashion and design magazine about me, shot on a dark desk. It opens on the cover, then the pages turn one by one like a real magazine.
+- The cover: my name as a huge, high contrast serif masthead, my portrait in front of it with my head overlapping the bottom of the letters, a big circle of the accent colour behind me, a few small cover lines ("Designer. Maker. Storyteller."), an issue number and a small barcode.
+- Then turn to one spread per project: a big serif number ("01"), the project name in serif italic, a short line about it, two columns of text with a drop cap, a pull quote and small caps credits (client, role, year), with a large image of the work. Show two or three projects.
+- End on a back page: "Let's work together." in big serif type, then my email, website and socials in neat rows, a line of my skills and a hand drawn signature that writes itself.
+- Pages turn with a real page curl and a soft shadow on the page below. On each new page the words rise into place, the image wipes in and fine rules draw across.
+- Keep it calm and elegant: generous white space, thin rules, a light paper grain and one spot colour used sparingly. Hold each page long enough to read the title.
+- Use my portrait and project images if I attach them (a portrait photo and two to four images of my work). If I don't, draw tasteful stand ins in a flat editorial illustration style.
+- Fit the shape of the video: a single tall page for vertical videos, open two page spreads for wide videos, and a page lying at an angle on the desk for square videos.
+
+Type and colour
+- A high contrast serif (like Playfair Display) for the masthead, numbers, titles and quotes, and a clean sans (like Manrope) in small spaced capitals for labels and body text.
+- Use my brand colours if I give them. Otherwise use paper #f4efe6, ink #151515, a warm stone cover backdrop #d9ccba, a dark desk #2b2622 and one accent, deep red #c8341f.
+
+Sound
+- Effects: a soft camera shutter as the cover appears, a papery page turn with a gentle thump as each page lands, light type clicks as titles and lines set, a soft swish as each image slides in, a warm little chime on the back page, a fountain pen scratch as the signature writes, and a camera flash pop at the very end.
+- Music: a stylish slow jazz bed at about 100 bpm: soft electric piano chords, a walking upright bass, brushed snare and a light ride cymbal, kept low under the effects and looping cleanly.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP and CSS 3D page turns) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.
