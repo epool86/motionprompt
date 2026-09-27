@@ -11,6 +11,7 @@
     "name": "Kinetic typography",
     "summary": "Big bold words that punch in on the beat, then stack into one line.",
     "library": "GSAP",
+    "tileStart": 2.5,
     "tags": ["text", "social"]
   },
   {
@@ -18,6 +19,7 @@
     "name": "Malaysian heritage",
     "summary": "Wau bulan fly as batik bunga raya draw and bloom, then your title unrolls on gold songket.",
     "library": "GSAP",
+    "tileStart": 1.5,
     "tags": ["malaysia", "festive", "text"]
   },
   {
@@ -25,6 +27,7 @@
     "name": "App showcase",
     "summary": "A floating 3D phone with sliding app screens, pop out UI cards and a tap ripple.",
     "library": "GSAP",
+    "tileStart": 1,
     "tags": ["product", "3d"]
   },
   {
@@ -32,6 +35,7 @@
     "name": "Kawaii pastel",
     "summary": "A cute chibi girl waves hello among pastel stickers, hearts and bouncy bubble text.",
     "library": "GSAP",
+    "tileStart": 1,
     "tags": ["social", "promo", "cute"]
   },
   {
@@ -39,6 +43,7 @@
     "name": "Tech noir",
     "summary": "A dark cinematic tech film: a dotted globe, glowing line-art devices and particle text.",
     "library": "Canvas",
+    "tileStart": 5.5,
     "tags": ["3d", "explainer", "product"]
   },
   {
@@ -53,6 +58,7 @@
     "name": "Neon sign",
     "summary": "Neon tube lettering that flickers on letter by letter over a dark brick wall.",
     "library": "CSS",
+    "tileStart": 3.5,
     "tags": ["text", "retro"]
   },
   {
@@ -67,6 +73,7 @@
     "name": "Liquid gradient",
     "summary": "Soft colour blobs melt into each other under fine grain while a clean headline fades in.",
     "library": "WebGL",
+    "tileStart": 1.5,
     "tags": ["background", "text"]
   },
   {
@@ -82,6 +89,7 @@
     "name": "Data story",
     "summary": "Numbers count up while bars grow, lines draw and donuts fill, card by card.",
     "library": "GSAP",
+    "tileStart": 1,
     "tags": ["data", "explainer"]
   },
   {
@@ -89,6 +97,7 @@
     "name": "Claymation",
     "summary": "A squishy clay world with a bouncy blob buddy, shot in choppy stop motion.",
     "library": "Three.js",
+    "tileStart": 1.5,
     "tags": ["3d", "handmade", "cute"]
   },
   {
@@ -96,6 +105,7 @@
     "name": "Retro synthwave",
     "summary": "80s outrun: a neon grid, a striped setting sun and a chrome headline.",
     "library": "Canvas",
+    "tileStart": 1,
     "tags": ["retro", "background"]
   },
   {
@@ -103,6 +113,7 @@
     "name": "Elegant wedding",
     "summary": "Watercolour flowers bloom around a gold arch as the names write on in foil script.",
     "library": "GSAP",
+    "tileStart": 3,
     "tags": ["festive", "text", "handmade"]
   },
   {
@@ -110,6 +121,7 @@
     "name": "3D logo spin",
     "summary": "A shiny 3D logo that spins, settles and floats, ready for an intro or outro.",
     "library": "Three.js",
+    "tileStart": 1.5,
     "tags": ["3d", "brand"]
   },
   {
@@ -125,6 +137,7 @@
     "name": "Comic pop art",
     "summary": "Comic book panels slam in with halftone dots, speech bubbles and a big POW.",
     "library": "GSAP",
+    "tileStart": 1.5,
     "tags": ["promo", "retro", "text"]
   },
   {
@@ -132,6 +145,7 @@
     "name": "Photo slideshow",
     "summary": "Your photos with slow Ken Burns zooms, bold captions and smooth editorial transitions.",
     "library": "GSAP",
+    "tileStart": 1,
     "tags": ["photos", "travel", "social"]
   },
   {
@@ -139,6 +153,7 @@
     "name": "Batik fashion",
     "summary": "Baju kurung looks in colourful batik, linked by bold batik scene transitions.",
     "library": "GSAP",
+    "tileStart": 3.5,
     "tags": ["malaysia", "product", "promo"]
   },
   {
@@ -154,6 +169,7 @@
     "name": "Product turntable",
     "summary": "A glass bottle turns on a studio pedestal with light glints, callouts and a price card.",
     "library": "Three.js",
+    "tileStart": 2.5,
     "tags": ["product", "3d", "promo"]
   },
   {
@@ -161,6 +177,7 @@
     "name": "Glitch",
     "summary": "Digital glitch type with RGB split, sliced frames and a blinking terminal cursor.",
     "library": "Canvas",
+    "tileStart": 1,
     "tags": ["text", "social"]
   },
   {
@@ -176,6 +193,7 @@
     "name": "Chat story",
     "summary": "A phone chat that pops to life: typing dots, springy bubbles and a voice note.",
     "library": "GSAP",
+    "tileStart": 3,
     "tags": ["social", "promo", "text"]
   },
   {
@@ -183,6 +201,7 @@
     "name": "Sale countdown",
     "summary": "A punchy 3, 2, 1 countdown, a swinging price tag and a burst of confetti.",
     "library": "GSAP",
+    "tileStart": 1.5,
     "tags": ["promo", "social"]
   },
   {
@@ -190,6 +209,7 @@
     "name": "Watercolour ink",
     "summary": "Watercolour washes bloom on paper as an ink plum branch and a brushed headline paint in.",
     "library": "WebGL",
+    "tileStart": 6.5,
     "tags": ["handmade", "text", "brand"]
   },
   {
@@ -205,6 +225,7 @@
     "name": "Whiteboard sketch",
     "summary": "Marker doodles and handwriting draw themselves on a warm whiteboard, explainer style.",
     "library": "GSAP",
+    "tileStart": 5.5,
     "tags": ["explainer", "handmade"]
   },
   {
@@ -212,6 +233,7 @@
     "name": "Y2K chrome",
     "summary": "A liquid chrome blob morphs under a shiny Y2K headline with holo stickers.",
     "library": "Three.js",
+    "tileStart": 1,
     "tags": ["3d", "retro", "brand"]
   },
   {
@@ -219,6 +241,7 @@
     "name": "Chinese heritage",
     "summary": "Red and gold heritage ad: paper cuts, lanterns, your product and red seal badges.",
     "library": "GSAP",
+    "tileStart": 2.5,
     "tags": ["product", "festive", "promo"]
   },
   {
@@ -226,6 +249,7 @@
     "name": "Property tour",
     "summary": "A 3D floor plan builds itself, rooms light up with sizes, then the price slides in.",
     "library": "Three.js",
+    "tileStart": 3,
     "tags": ["3d", "product", "explainer"]
   },
   {
@@ -233,6 +257,7 @@
     "name": "Particle field",
     "summary": "Thousands of glowing dots drifting along soft currents, like smoke or wind.",
     "library": "Canvas",
+    "tileStart": 1,
     "tags": ["background"]
   },
   {
@@ -247,6 +272,7 @@
     "name": "Podcast audiogram",
     "summary": "A podcast clip card with a talking avatar, live sound bars and karaoke captions.",
     "library": "GSAP",
+    "tileStart": 1.5,
     "tags": ["social", "text"]
   },
   {
@@ -254,6 +280,7 @@
     "name": "Borneo rainforest",
     "summary": "A misty Borneo rainforest with light rays, a gliding hornbill and a rafflesia in bloom.",
     "library": "GSAP",
+    "tileStart": 3,
     "tags": ["travel", "background", "malaysia"]
   },
   {
@@ -261,6 +288,7 @@
     "name": "Paper cut-out",
     "summary": "Layered paper hills, sun and clouds pop into place with a handmade stop motion wobble.",
     "library": "SVG",
+    "tileStart": 4,
     "tags": ["handmade", "background"]
   },
   {
@@ -268,6 +296,7 @@
     "name": "Pixel art",
     "summary": "Your offer as a pixel game level: a Player 1 card, blocks that reveal it, a level up CTA.",
     "library": "Canvas",
+    "tileStart": 3,
     "tags": ["retro", "promo", "product"]
   },
   {
@@ -283,6 +312,7 @@
     "name": "Vintage archive",
     "summary": "Sepia photos, typewriter captions and an ink timeline that stamps the years on aged film.",
     "library": "GSAP",
+    "tileStart": 2.5,
     "tags": ["photos", "retro", "brand"]
   },
   {
@@ -290,6 +320,7 @@
     "name": "Swiss geometric",
     "summary": "A bold Swiss poster that lists your services, with a geometric marker for each one.",
     "library": "GSAP",
+    "tileStart": 2.5,
     "tags": ["brand", "promo", "text"]
   }
 ]

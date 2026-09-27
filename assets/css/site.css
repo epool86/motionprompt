@@ -461,6 +461,23 @@ a { color: var(--accent); }
 
 .thumb iframe { pointer-events: none; }
 
+/* The still shows at once; the clip fades in over it once it is playing. */
+.thumb img,
+.thumb video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.thumb video {
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.thumb video.ready { opacity: 1; }
+
 .tile-meta {
   display: flex;
   flex-direction: column;

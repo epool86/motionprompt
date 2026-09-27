@@ -23,7 +23,9 @@ for (const s of styles) {
   }
   if (seen.has(s.slug)) errors.push(`style ${s.slug}: duplicate slug`);
   seen.add(s.slug);
-  for (const file of ["demo.html", "prompt.txt"]) {
+  // Styles in the gallery also need their tile clip and still (node scripts/tiles.mjs <slug>).
+  const files = s.hidden ? ["demo.html", "prompt.txt"] : ["demo.html", "prompt.txt", "tile.mp4", "tile.webp"];
+  for (const file of files) {
     if (!existsSync(join(root, "styles", s.slug ?? "", file))) {
       errors.push(`style ${s.slug}: missing styles/${s.slug}/${file}`);
     }

@@ -28,7 +28,7 @@ without a one-line explanation.
 ## Layout
 
 ```
-index.html              home = the style directory: search, tag filters, grid of live tiles.
+index.html              home = the style directory: search, tag filters, grid of tiles that play clips.
                         Tapping a tile slides the list out and a full detail view in (preview,
                         prompt, copy); Back slides it back. Each style links as #slug
 gallery.html            old address, redirects to index.html
@@ -39,7 +39,9 @@ assets/img/logo.svg     logo mark and favicon
 styles/styles.json      list of styles (the single source of truth for the gallery)
 styles/<slug>/demo.html self-contained animation, loads its own library from a CDN
 styles/<slug>/prompt.txt prompt template for that style, with {placeholders}
+styles/<slug>/tile.mp4  short looping clip of the demo for the gallery tile, and tile.webp its still
 scripts/check.mjs       validation, run before every commit
+scripts/tiles.mjs       makes tile.mp4 and tile.webp (an owner tool, see Tiles below)
 ```
 
 Pages that are listed above but missing are not built yet.
@@ -106,6 +108,22 @@ Demos with sound make it with Web Audio (no files) and stay silent until the par
 `postMessage({ type: "motionprompt-sound", on, music }, origin)`; `?sound=1` or `?sound=effects`
 also turns it on for testing. Grid tiles never get the message, so they are always silent.
 Sound must follow the animation clock and stop with reduced motion.
+
+### Tiles
+
+Gallery tiles do not run the live demo (too heavy with many on screen). Each shows `tile.webp` at
+once, then plays `tile.mp4`, a 4 second seamless loop of the demo, while it is on screen. Reduced
+motion and data saver get the still only. The live demo runs in the detail view.
+
+Remake a style's tile whenever its demo changes, and for every new style (check.mjs fails without it):
+
+```bash
+node scripts/tiles.mjs <slug> [<slug> ...] [--base <site url>]
+```
+
+It needs Chrome, ffmpeg and puppeteer-core outside the repo (see the top of the script).
+`"tileStart"` in styles.json sets where the loop starts in the demo (seconds, default 2): pick a
+moment where the demo looks its best, because the first frame is also the still.
 
 ## Verify
 

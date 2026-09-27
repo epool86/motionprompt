@@ -1,4 +1,4 @@
-// The style directory on the home page: search, tag filters and a grid of live tiles.
+// The style directory on the home page: search, tag filters and a grid of tiles that play short clips.
 // Tapping a tile slides the list away and slides in a full detail view for that style.
 // Each style has its own link (#slug), so the browser back button and shared links work.
 import { loadStyles, loadPrompt, fillPrompt, hasSound, copyText } from "./prompt.js";
@@ -94,19 +94,47 @@ function detailFrame(style) {
   return iframe;
 }
 
-// Tiles play their demo only while on screen, so a long list stays light.
+// Tiles show a still at once, then play a short looping clip of the demo (made by
+// scripts/tiles.mjs). A clip costs far less than a live demo, so a long list stays light.
+// The live demo only runs in the detail view.
+const tileFile = (style, ext) => `styles/${style.slug}/tile.${ext}`;
+
+// Reduced motion and data saver get the still only.
+const stillsOnly = () => reduceMotion.matches || navigator.connection?.saveData === true;
+
+function tileClip(style) {
+  const video = el("video", { src: tileFile(style, "mp4"), loop: "", playsinline: "", preload: "auto", "aria-hidden": "true" });
+  video.muted = true; // the attribute alone does not allow autoplay everywhere
+  video.addEventListener("playing", () => video.classList.add("ready"), { once: true });
+  // A style without a clip yet falls back to its live demo.
+  video.addEventListener("error", () => video.replaceWith(frame(style)), { once: true });
+  video.play().catch(() => {}); // if autoplay is blocked (like Low Power Mode) the still stays
+  return video;
+}
+
+// Clips play only while on screen and are dropped when they scroll away (the still stays).
 const observer = "IntersectionObserver" in window
   ? new IntersectionObserver((entries) => {
       for (const { target, isIntersecting } of entries) {
-        const style = findStyle(target.dataset.slug);
-        if (isIntersecting && !target.querySelector("iframe")) target.replaceChildren(frame(style));
-        if (!isIntersecting && target.querySelector("iframe")) target.replaceChildren();
+        const live = target.querySelector("video, iframe");
+        if (isIntersecting && !live && !stillsOnly()) target.append(tileClip(findStyle(target.dataset.slug)));
+        if ((!isIntersecting || stillsOnly()) && live) live.remove();
       }
     }, { rootMargin: "300px 0px" })
   : null;
 
+// Re-check every tile when reduced motion is switched on or off.
+reduceMotion.addEventListener("change", () => {
+  grid.querySelectorAll(".thumb").forEach((thumb) => {
+    observer?.unobserve(thumb);
+    observer?.observe(thumb);
+  });
+});
+
 function tile(style) {
-  const thumb = el("div", { class: "thumb", "data-slug": style.slug });
+  const still = el("img", { src: tileFile(style, "webp"), alt: "", width: "432", height: "540", loading: "lazy", decoding: "async" });
+  still.addEventListener("error", () => still.remove(), { once: true });
+  const thumb = el("div", { class: "thumb", "data-slug": style.slug }, still);
   const link = el("a", { class: "tile", href: `#${style.slug}`, "aria-label": `${style.name}: ${style.summary}` },
     thumb,
     el("span", { class: "tile-meta" },
@@ -114,7 +142,7 @@ function tile(style) {
       el("span", { class: "tile-lib" }, style.library)));
   link.addEventListener("click", () => { cameFromList = true; });
   if (observer) observer.observe(thumb);
-  else thumb.append(frame(style));
+  else if (!stillsOnly()) thumb.append(tileClip(style));
   return link;
 }
 
