@@ -1,0 +1,1191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Neon tech demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/orbitron@5.3.0/700.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/orbitron@5.3.0/900.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource-variable/geist@5.3.0/index.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=1c0a45&ink=ffffff&accent=ff2fb3&accent2=22e6ff
+       Text: "white line|hot line" sets both lines; without a "|" the last word is the hot line. */
+    :root { --bg: #1c0a45; }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    svg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .tech { font-family: "Orbitron", "Arial Black", sans-serif; }
+    .sans { font-family: "Geist Variable", "Helvetica Neue", Arial, sans-serif; }
+  </style>
+</head>
+<body>
+  <svg id="scene" role="img" xmlns="http://www.w3.org/2000/svg"></svg>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const C = { bg: "#1c0a45", ink: "#ffffff", accent: "#ff2fb3", accent2: "#22e6ff" };
+    for (const key of Object.keys(C)) {
+      const value = params.get(key);
+      if (/^[0-9a-f]{6}$/i.test(value ?? "")) C[key] = `#${value}`;
+    }
+    document.documentElement.style.setProperty("--bg", C.bg);
+
+    // The title: a white line, then a big hot line. "Smart systems|Technology" by default.
+    const raw = (params.get("text") || "Smart systems|Technology").trim().slice(0, 60);
+    let lead, hot;
+    if (raw.includes("|")) [lead, hot] = raw.split("|").map((s) => s.trim());
+    else {
+      const words = raw.split(/\s+/);
+      [lead, hot] = words.length > 1 ? [words.slice(0, -1).join(" "), words[words.length - 1]] : ["", raw];
+    }
+    lead = (lead || "").toUpperCase();
+    hot = (hot || "").toUpperCase();
+    const SUB = "Here is where your story begins";
+
+    // Colour helpers: mix two hex colours.
+    const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+    const mix = (a, b, k) => "#" + rgb(a).map((v, i) => Math.round(v + (rgb(b)[i] - v) * k).toString(16).padStart(2, "0")).join("");
+    const V = {
+      body: mix(C.bg, "#7b4dff", 0.85),
+      side: mix(C.bg, "#5a31d0", 0.85),
+      dark: mix(C.bg, "#3d1c9e", 0.85),
+      key: mix(C.bg, "#26106a", 0.8),
+      lid: mix(C.bg, "#34198c", 0.85),
+      ring: mix(C.bg, "#a987ff", 0.8),
+      trace: mix(C.bg, "#8a5cff", 0.6),
+      deep: mix(C.bg, "#000000", 0.35),
+    };
+
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.getElementById("scene");
+    svg.setAttribute("aria-label", `A neon tech title: ${lead} ${hot}`);
+
+    function el(name, attrs, parent) {
+      const node = document.createElementNS(NS, name);
+      for (const k in attrs) node.setAttribute(k, attrs[k]);
+      if (parent) parent.append(node);
+      return node;
+    }
+
+    // Small seeded random for the layout, and a hash for per frame glitches.
+    let seed = 1;
+    function rand() {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    }
+    function hash(a, b = 0) {
+      let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x7f4a7c15, 0xc2b2ae35);
+      h ^= h >>> 13;
+      h = Math.imul(h, 0x27d4eb2f);
+      h ^= h >>> 16;
+      return (h >>> 0) / 4294967296;
+    }
+
+    const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+    const prog = (t, a, b) => clamp((t - a) / (b - a));
+    const eases = new Map();
+    const E = (name) => { if (!eases.has(name)) eases.set(name, gsap.parseEase(name)); return eases.get(name); };
+    const tw = (t, a, b, ease = "power2.inOut") => E(ease)(prog(t, a, b));
+    const TAU = Math.PI * 2;
+    const f1 = (v) => v.toFixed(1);
+
+    // Isometric projection: x to the lower right, y to the lower left, z up.
+    const CI = Math.cos(Math.PI / 6), SI = 0.5;
+    const iso = (x, y, z) => [CI * (x - y), SI * (x + y) - z];
+    const pts = (list) => list.map((p) => iso(...p).map(f1).join(",")).join(" ");
+
+    // The whole loop is one clock: every frame is drawn from the timeline time.
+    const LOOP = 10; // seconds: five bars at 120 bpm
+    const BEAT = LOOP / 20;
+    const HOLD = 7.2; // the still for reduced motion
+    const T = {
+      base: 0.45, lid: 0.9, lidDur: 0.6, screen: 1.4,
+      panel0: 1.6, panelStep: 0.4,
+      scramble: 2.4, charStep: 0.035,
+      slam: 4.0, pill: 4.45, sub: 4.85, badge0: 5.1,
+      sweeps: [1.0, 6.4], sweepDur: 0.9,
+      outro: 9.0, gone: 9.8,
+    };
+
+    // Floating holographic panels, placed in world units around the laptop.
+    // plane "xz" faces the lower left like the screen, "yz" faces the lower right.
+    const PANELS = [
+      { icon: "gear", plane: "xz", x: -330, y: 0, z: 150, w: 110, h: 88 },
+      { icon: "brain", plane: "xz", x: -190, y: -120, z: 262, w: 150, h: 108 },
+      { icon: "code", plane: "yz", x: 190, y: -40, z: 222, w: 124, h: 94 },
+      { icon: "chart", plane: "xz", x: -300, y: -60, z: 336, w: 120, h: 90 },
+      { icon: "mail", plane: "xz", x: 4, y: -140, z: 336, w: 132, h: 92 },
+    ];
+    // Round badges around the laptop, in the cluster's own screen units.
+    const BADGES = [
+      { icon: "scissors", x: -318, y: -56, fill: "accent" },
+      { icon: "at", x: 262, y: -28, fill: "accent" },
+      { icon: "puzzle", x: 318, y: -372, fill: "accent2" },
+      { icon: "pencil", x: 56, y: -600, fill: "accent" },
+      { icon: "percent", x: -170, y: 150, fill: "none" },
+    ];
+
+    // Line icons, drawn in a 24 unit box.
+    const ICON = {
+      gear: ["M12 8.5a3.5 3.5 0 1 1 0 7a3.5 3.5 0 1 1 0-7z", "M12 2.5v3 M12 18.5v3 M2.5 12h3 M18.5 12h3 M5.3 5.3l2.1 2.1 M16.6 16.6l2.1 2.1 M5.3 18.7l2.1-2.1 M16.6 7.4l2.1-2.1"],
+      brain: ["M11 4.5c-2-1.6-5-0.6-5.4 2c-2 0.6-2.8 3-1.6 4.8c-1.2 1.8-0.4 4.4 1.8 5c0.4 2.6 3.4 3.6 5.2 2z", "M13 4.5c2-1.6 5-0.6 5.4 2c2 0.6 2.8 3 1.6 4.8c1.2 1.8 0.4 4.4-1.8 5c-0.4 2.6-3.4 3.6-5.2 2z", "M11 4.5v14 M13 4.5v14 M6 10h3 M15 13h3"],
+      code: ["M8 7l-5 5l5 5", "M16 7l5 5l-5 5", "M13.5 4.5l-3 15"],
+      chart: ["M4 20h16", "M6.5 20v-6 M11 20v-10 M15.5 20v-7.5", "M4.5 10l5-4l4 3l6-5"],
+      mail: ["M3.5 6.5h17v11h-17z", "M3.5 6.5l8.5 6.5l8.5-6.5"],
+      scissors: ["M7 14a3 3 0 1 1 0 6a3 3 0 1 1 0-6z", "M17 14a3 3 0 1 1 0 6a3 3 0 1 1 0-6z", "M9 15l9-11 M15 15l-9-11"],
+      puzzle: ["M5 8h3.5a2.2 2.2 0 1 1 4 0h3.5v3.5a2.2 2.2 0 1 1 0 4v3.5h-11v-3.5a2.2 2.2 0 1 0 0-4z"],
+      pencil: ["M5 19l1.2-4.3l9.3-9.3l3.1 3.1l-9.3 9.3z", "M13.8 7.1l3.1 3.1"],
+    };
+
+    let tl = null, updaters = [], charTimes = [], soundPlan = [];
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    const state = { t: 0 };
+
+    function render() {
+      const t = state.t % LOOP;
+      const p = t / LOOP;
+      for (const u of updaters) u(t, p);
+    }
+
+    function build() {
+      const keep = tl ? tl.time() : 0;
+      if (tl) tl.kill();
+      svg.replaceChildren();
+      updaters = [];
+      charTimes = [];
+      seed = 11;
+
+      const W = innerWidth, H = innerHeight, aspect = W / H;
+      const L = aspect >= 1.3 ? "wide" : aspect <= 0.85 ? "tall" : "square";
+      // Scene units: a fixed width per layout, and the height follows the window, so nothing letterboxes.
+      const SW = L === "wide" ? 1600 : L === "square" ? 1000 : 900;
+      const SH = SW / aspect;
+      const U = Math.min(SW, SH) / 900; // size unit for decorations
+      svg.setAttribute("viewBox", `0 0 ${SW} ${f1(SH)}`);
+
+      const defs = el("defs", {}, svg);
+      const grad = (type, id, attrs, stops) => {
+        const g = el(type, { id, ...attrs }, defs);
+        for (const [o, c, a = 1] of stops) el("stop", { offset: o, "stop-color": c, "stop-opacity": a }, g);
+        return g;
+      };
+      const big = Math.max(SW, SH);
+      grad("linearGradient", "nt-base", { x1: 0, y1: 0, x2: 1, y2: 1 }, [[0, mix(C.bg, "#000000", 0.25)], [0.5, C.bg], [1, mix(C.bg, "#5b1aa8", 0.45)]]);
+      grad("radialGradient", "nt-mag", { gradientUnits: "userSpaceOnUse", cx: 0, cy: SH * 0.62, r: big * 0.55 }, [[0, C.accent, 0.55], [0.45, C.accent, 0.16], [1, C.accent, 0]]);
+      grad("radialGradient", "nt-vio", { gradientUnits: "userSpaceOnUse", cx: SW * 0.72, cy: SH * 0.3, r: big * 0.6 }, [[0, mix(C.bg, "#6a2cff", 0.6), 0.6], [1, mix(C.bg, "#6a2cff", 0.6), 0]]);
+      grad("radialGradient", "nt-vig", { gradientUnits: "userSpaceOnUse", cx: SW / 2, cy: SH / 2, r: Math.hypot(SW, SH) / 2 }, [[0.55, "#000000", 0], [1, "#000000", 0.5]]);
+      grad("linearGradient", "nt-panel", { x1: 0, y1: 0, x2: 0.4, y2: 1 }, [[0, C.accent2, 0.42], [1, C.accent2, 0.1]]);
+      grad("linearGradient", "nt-screen", { x1: 0, y1: 0, x2: 0.3, y2: 1 }, [[0, mix(C.accent2, "#0b1d5c", 0.55)], [1, "#0a1036"]]);
+      grad("radialGradient", "nt-pool", {}, [[0, C.accent2, 0.35], [0.5, C.accent, 0.12], [1, C.accent, 0]]);
+      grad("linearGradient", "nt-sweep", { x1: 0, y1: 0, x2: 0, y2: 1 }, [[0, C.accent2, 0], [0.5, C.accent2, 0.13], [1, C.accent2, 0]]);
+      grad("radialGradient", "nt-fadeg", {}, [[0, "#ffffff"], [1, "#000000"]]);
+      const fade = el("mask", { id: "nt-fade", maskContentUnits: "objectBoundingBox" }, defs);
+      el("rect", { width: 1, height: 1, fill: "url(#nt-fadeg)" }, fade);
+      const dots = el("pattern", { id: "nt-dots", width: 22 * U, height: 22 * U, patternUnits: "userSpaceOnUse" }, defs);
+      el("circle", { cx: 3 * U, cy: 3 * U, r: 1.7 * U, fill: V.ring }, dots);
+      const lines = el("pattern", { id: "nt-lines", width: 4, height: 4, patternUnits: "userSpaceOnUse" }, defs);
+      el("rect", { width: 4, height: 1, fill: "#000000", opacity: 0.18 }, lines);
+      const glow = (id, sd) => {
+        const f = el("filter", { id, x: "-30%", y: "-30%", width: "160%", height: "160%" }, defs);
+        el("feGaussianBlur", { stdDeviation: sd, result: "b" }, f);
+        const m = el("feMerge", {}, f);
+        el("feMergeNode", { in: "b" }, m);
+        el("feMergeNode", { in: "SourceGraphic" }, m);
+      };
+      glow("nt-glow", 3 * U);
+      glow("nt-glow2", 6 * U);
+      const blur = el("filter", { id: "nt-blur", x: "-20%", y: "-60%", width: "140%", height: "220%" }, defs);
+      el("feGaussianBlur", { stdDeviation: 9 * U }, blur);
+
+      // ---- Background: violet base, a magenta glow from the left, slow breathing ----
+      el("rect", { width: SW, height: SH, fill: "url(#nt-base)" }, svg);
+      el("rect", { width: SW, height: SH, fill: "url(#nt-vio)" }, svg);
+      const mag = el("rect", { width: SW, height: SH, fill: "url(#nt-mag)" }, svg);
+      updaters.push((t, p) => mag.setAttribute("opacity", (0.86 + 0.14 * Math.sin(TAU * p * 5)).toFixed(3)));
+
+      const content = el("g", {}, svg);
+
+      // ---- HUD rings, centred behind the title ----
+      // Wide: behind the title. Square and tall: behind the laptop, so the bright arcs stay off the title.
+      const R = L === "wide" ? SH * 0.56 : SW * (L === "tall" ? 0.56 : 0.5);
+      const arc = (r, a0, a1) => {
+        const p0 = [Math.cos(a0) * r, Math.sin(a0) * r], p1 = [Math.cos(a1) * r, Math.sin(a1) * r];
+        return `M${f1(p0[0])} ${f1(p0[1])}A${f1(r)} ${f1(r)} 0 ${a1 - a0 > Math.PI ? 1 : 0} 1 ${f1(p1[0])} ${f1(p1[1])}`;
+      };
+      const RINGS = [
+        { f: 1, kind: "line", w: 1.5, o: 0.3, v: 3, d: 1 },
+        { f: 0.93, kind: "arcs", w: 12, o: 0.12, v: -5, d: -1, arcs: [[0, 58], [72, 150], [166, 250], [262, 340]] },
+        { f: 0.83, kind: "ticks", w: 2, o: 0.42, v: 4, d: 1 },
+        { f: 0.73, kind: "dash", w: 5, o: 0.3, v: -7, d: -1, dash: "2 10" },
+        { f: 0.63, kind: "bright", w: 4, o: 0.75, v: 10, d: 1, arcs: [[20, 58], [200, 232]], color: C.accent2 },
+        { f: 0.56, kind: "dash", w: 2, o: 0.3, v: -4, d: -1, dash: "26 12" },
+        { f: 0.45, kind: "bright", w: 3, o: 0.6, v: -12, d: -1, arcs: [[110, 170], [290, 318]], color: C.accent },
+        { f: 0.38, kind: "line", w: 1.5, o: 0.32, v: 6, d: 1 },
+      ];
+      const ringsG = el("g", {}, content);
+      RINGS.forEach((ring, i) => {
+        const r = R * ring.f;
+        const mask = el("mask", { id: `nt-rm${i}`, maskUnits: "userSpaceOnUse", x: -r * 1.2, y: -r * 1.2, width: r * 2.4, height: r * 2.4 }, defs);
+        const wedge = el("path", { fill: "#ffffff" }, mask);
+        const outer = el("g", { mask: `url(#nt-rm${i})` }, ringsG);
+        const inner = el("g", {}, outer);
+        const color = ring.color || V.ring;
+        const common = { fill: "none", stroke: color, "stroke-width": ring.w * U, opacity: ring.o };
+        if (ring.kind === "line") el("circle", { r, ...common }, inner);
+        if (ring.kind === "dash") el("circle", { r, ...common, "stroke-dasharray": ring.dash.split(" ").map((v) => v * U).join(" ") }, inner);
+        if (ring.kind === "arcs" || ring.kind === "bright") {
+          const g = el("g", ring.kind === "bright" ? { filter: "url(#nt-glow)" } : {}, inner);
+          for (const [a, b] of ring.arcs) el("path", { d: arc(r, (a * Math.PI) / 180, (b * Math.PI) / 180), ...common }, g);
+        }
+        if (ring.kind === "ticks") {
+          let d = "";
+          for (let k = 0; k < 90; k++) {
+            const a = (k / 90) * TAU, len = (k % 5 ? 10 : 22) * U;
+            d += `M${f1(Math.cos(a) * r)} ${f1(Math.sin(a) * r)}L${f1(Math.cos(a) * (r + len))} ${f1(Math.sin(a) * (r + len))}`;
+          }
+          el("path", { d, ...common }, inner);
+        }
+        const t0 = 0.05 + i * 0.1;
+        const rr = r * 1.15;
+        updaters.push((t) => {
+          const k = tw(t, t0, t0 + 0.9, "power2.out");
+          if (k >= 0.999) wedge.setAttribute("d", `M${-rr} ${-rr}h${2 * rr}v${2 * rr}h${-2 * rr}z`);
+          else if (k <= 0) wedge.setAttribute("d", "M0 0");
+          else {
+            const a0 = -Math.PI / 2, a1 = a0 + k * TAU * ring.d;
+            const [lo, hi] = ring.d > 0 ? [a0, a1] : [a1, a0];
+            wedge.setAttribute("d", `M0 0L${f1(Math.cos(lo) * rr)} ${f1(Math.sin(lo) * rr)}A${f1(rr)} ${f1(rr)} 0 ${hi - lo > Math.PI ? 1 : 0} 1 ${f1(Math.cos(hi) * rr)} ${f1(Math.sin(hi) * rr)}Z`);
+          }
+          // Spin up fast, then settle into a slow turn.
+          const spin = 150 * (1 - Math.exp(-Math.max(0, t - t0) / 0.45));
+          inner.setAttribute("transform", `rotate(${(ring.d * spin + ring.v * t).toFixed(2)})`);
+        });
+      });
+
+      // ---- Dotted grids in two corners ----
+      const grids = L === "wide"
+        ? [[SW * 0.78, SH * 0.04, SW * 0.2, SH * 0.2], [SW * 0.02, SH * 0.72, SW * 0.16, SH * 0.22]]
+        : [[SW * 0.62, SH * 0.02, SW * 0.36, SH * 0.1], [SW * 0.02, SH * 0.82, SW * 0.3, SH * 0.14]];
+      const gridG = el("g", {}, content);
+      for (const [x, y, w, h] of grids) el("rect", { x, y, width: w, height: h, fill: "url(#nt-dots)", mask: "url(#nt-fade)" }, gridG);
+      updaters.push((t) => gridG.setAttribute("opacity", (0.55 * tw(t, 0.3, 1.1)).toFixed(3)));
+
+      // ---- Circuit traces from the edges, with pulses running along them ----
+      const traceG = el("g", {}, content);
+      const pulseG = el("g", { filter: "url(#nt-glow)" }, content);
+      const nodeG = el("g", {}, content);
+      const TRACES = 14;
+      for (let i = 0; i < TRACES; i++) {
+        const side = i % 4;
+        const reach = Math.min(SW, SH) * (0.14 + rand() * 0.14);
+        let x, y, dx, dy;
+        if (side === 0) { x = 0; y = SH * (0.08 + rand() * 0.84); dx = 1; dy = 0; }
+        else if (side === 1) { x = SW; y = SH * (0.08 + rand() * 0.84); dx = -1; dy = 0; }
+        else if (side === 2) { x = SW * (0.05 + rand() * 0.9); y = 0; dx = 0; dy = 1; }
+        else { x = SW * (0.05 + rand() * 0.9); y = SH; dx = 0; dy = -1; }
+        const path = [[x, y]];
+        let left = reach;
+        const bend = rand() < 0.5 ? 1 : -1;
+        const seg1 = left * (0.35 + rand() * 0.3);
+        x += dx * seg1; y += dy * seg1; path.push([x, y]); left -= seg1;
+        // A 45 degree bend, then run parallel to the edge.
+        const diag = left * 0.35;
+        x += (dx + (dy ? bend : 0)) * diag * 0.7071 * (dx ? 1 : 1);
+        y += (dy + (dx ? bend : 0)) * diag * 0.7071;
+        path.push([x, y]);
+        const run = Math.min(SW, SH) * (0.08 + rand() * 0.12);
+        if (dx) y += bend * run; else x += bend * run;
+        path.push([x, y]);
+        const d = "M" + path.map((q) => q.map(f1).join(" ")).join("L");
+        const base = el("path", { d, fill: "none", stroke: V.trace, "stroke-width": 2 * U, opacity: 0.55, pathLength: 1, "stroke-dasharray": "1 1" }, traceG);
+        const len = base.getTotalLength();
+        const node = el("circle", { cx: f1(x), cy: f1(y), r: 5 * U, fill: C.bg, stroke: V.ring, "stroke-width": 2 * U, opacity: 0 }, nodeG);
+        const seg = 46 * U;
+        const pulse = el("path", { d, fill: "none", stroke: i % 3 ? C.accent2 : C.accent, "stroke-width": 3 * U, "stroke-linecap": "round", "stroke-dasharray": `${f1(seg)} ${f1(len + seg * 2)}`, opacity: 0 }, pulseG);
+        const t0 = 0.2 + i * 0.05, speed = 1 + (i % 3), phase = rand();
+        updaters.push((t, p) => {
+          const k = tw(t, t0, t0 + 0.8, "power2.out");
+          base.setAttribute("stroke-dashoffset", (1 - k).toFixed(4));
+          node.setAttribute("opacity", k >= 1 ? 1 : 0);
+          const on = prog(t, 1.2, 1.6) * (1 - prog(t, 8.7, 9.0));
+          const fr = (p * speed + phase) % 1;
+          pulse.setAttribute("stroke-dashoffset", f1(-(fr * (len + seg) - seg)));
+          pulse.setAttribute("opacity", (0.95 * on).toFixed(3));
+        });
+      }
+
+      // ---- Outline triangles and circles, floating slowly ----
+      const DECOR = L === "wide"
+        ? [["tri", 0.47, 0.08, 26], ["cir", 0.87, 0.16, 22], ["cir", 0.93, 0.09, 8], ["tri", 0.07, 0.9, 24], ["cir", 0.02, 0.95, 12], ["tri", 0.96, 0.91, 24], ["cir", 0.91, 0.89, 11], ["cir", 0.4, 0.93, 7]]
+        : [["tri", 0.1, 0.04, 22], ["cir", 0.9, 0.05, 20], ["cir", 0.8, 0.03, 8], ["tri", 0.08, 0.95, 22], ["cir", 0.2, 0.97, 10], ["tri", 0.93, 0.95, 22], ["cir", 0.84, 0.96, 10], ["cir", 0.95, 0.5, 8]];
+      const decoG = el("g", { fill: "none", stroke: C.ink, "stroke-width": 3 * U, "stroke-linejoin": "round" }, content);
+      DECOR.forEach(([kind, fx, fy, s], i) => {
+        const g = el("g", {}, decoG);
+        const size = s * U;
+        if (kind === "tri") el("path", { d: `M0 ${f1(-size)}L${f1(size * 0.866)} ${f1(size * 0.5)}L${f1(-size * 0.866)} ${f1(size * 0.5)}Z` }, g);
+        else el("circle", { r: size }, g);
+        const t0 = 0.8 + i * 0.1, ph = rand();
+        updaters.push((t, p) => {
+          const k = tw(t, t0, t0 + 0.5, "back.out(2)");
+          const bob = 7 * U * Math.sin(TAU * (p * 2 + ph));
+          const rot = kind === "tri" ? 120 * p + ph * 120 : 0;
+          g.setAttribute("transform", `translate(${f1(SW * fx)} ${f1(SH * fy + bob)}) rotate(${rot.toFixed(1)}) scale(${Math.max(0.001, k).toFixed(3)})`);
+          g.setAttribute("opacity", (0.9 * Math.min(1, k * 2)).toFixed(3));
+        });
+      });
+
+      // ---- The title: a white line that decodes, a hot line that slams in, a pill with the subtitle ----
+      const TL = {
+        wide: { cx: SW * 0.72, maxW: SW * 0.43, s1: 52, sA: 120, sub: 26 },
+        square: { cx: SW / 2, maxW: SW * 0.84, s1: 48, sA: 112, sub: 26 },
+        tall: { cx: SW / 2, maxW: SW * 0.86, s1: 48, sA: 108, sub: 30 },
+      }[L];
+      const titleG = el("g", {}, content);
+      const probe = el("text", { class: "tech", "font-weight": 700 }, titleG);
+      const widthOf = (str, size, weight, spacing) => {
+        probe.setAttribute("font-size", size);
+        probe.setAttribute("font-weight", weight);
+        probe.setAttribute("letter-spacing", `${spacing * size}`);
+        probe.textContent = str;
+        const n = str.length;
+        if (!n) return 0;
+        const a = probe.getExtentOfChar(0), b = probe.getExtentOfChar(n - 1);
+        return b.x + b.width - a.x;
+      };
+      const SP1 = 0.09, SPA = 0.03;
+      let s1 = TL.s1;
+      let leadLines = lead ? [lead] : [];
+      if (lead) {
+        let w = widthOf(lead, s1, 700, SP1);
+        const words = lead.split(/\s+/);
+        if (w > TL.maxW && words.length > 1 && TL.maxW / w < 0.75) {
+          // Two balanced lines read better than one tiny line.
+          let best = null;
+          for (let i = 1; i < words.length; i++) {
+            const pair = [words.slice(0, i).join(" "), words.slice(i).join(" ")];
+            const m = Math.max(...pair.map((x) => x.length));
+            if (!best || m < best.m) best = { pair, m };
+          }
+          leadLines = best.pair;
+        }
+        const widest = Math.max(...leadLines.map((line) => widthOf(line, s1, 700, SP1)));
+        if (widest > TL.maxW) s1 *= TL.maxW / widest;
+      }
+      let sA = TL.sA;
+      const wA = widthOf(hot, sA, 900, SPA);
+      if (wA > TL.maxW) sA *= TL.maxW / wA;
+      let sSub = TL.sub;
+      const padX = sSub * 1.4, pillH = sSub * 2.3;
+      probe.setAttribute("class", "sans");
+      probe.setAttribute("font-weight", 400);
+      probe.setAttribute("letter-spacing", 0);
+      probe.setAttribute("font-size", sSub);
+      probe.textContent = SUB;
+      let subW = probe.getComputedTextLength();
+      if (subW + padX * 2 > TL.maxW * 1.02) { sSub *= (TL.maxW * 1.02 - padX * 2) / subW; subW = TL.maxW * 1.02 - padX * 2; }
+      probe.remove();
+
+      const lh1 = s1 * 1.3;
+      const blockH = leadLines.length * lh1 + sA * 1.02 + sA * 0.34 + pillH;
+      const top = L === "wide" ? SH / 2 - blockH / 2 - SH * 0.02 : SH * (L === "tall" ? 0.075 : 0.07);
+      let y = top;
+      const glyphs = "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789#%&<>/";
+      let ci = 0;
+      const leadG = el("g", {}, titleG);
+      leadLines.forEach((line) => {
+        y += lh1 * 0.82;
+        const tmp = el("text", { class: "tech", "font-weight": 700, "font-size": f1(s1), "letter-spacing": f1(SP1 * s1) }, leadG);
+        tmp.textContent = line;
+        const a = tmp.getExtentOfChar(0), b = tmp.getExtentOfChar(line.length - 1);
+        const lw = b.x + b.width - a.x;
+        const x0 = TL.cx - lw / 2 - a.x;
+        const spots = [...line].map((ch, i) => { const e = tmp.getExtentOfChar(i); return { ch, x: x0 + e.x + e.width / 2 }; });
+        tmp.remove();
+        const lineY = y;
+        for (const { ch, x } of spots) {
+          if (ch === " ") continue;
+          const node = el("text", { class: "tech", "font-weight": 700, "font-size": f1(s1), x: f1(x), y: f1(lineY), "text-anchor": "middle", fill: C.ink }, leadG);
+          const i = ci++;
+          const tA = T.scramble + i * T.charStep;
+          const tL = tA + 0.22 + hash(i, 7) * 0.2;
+          charTimes.push({ tA, tL, x });
+          updaters.push((t) => {
+            if (t < tA) { node.textContent = ""; return; }
+            if (t >= tL) { node.textContent = ch; node.setAttribute("fill", C.ink); node.setAttribute("opacity", 1); return; }
+            node.textContent = glyphs[Math.floor(hash(i, Math.floor(t * 24)) * glyphs.length)];
+            node.setAttribute("fill", C.accent2);
+            node.setAttribute("opacity", 0.85);
+          });
+        }
+        y += lh1 * 0.18;
+      });
+
+      // The hot line: a blurred glow copy, two colour split copies for the slam, and the line itself.
+      y += sA * 0.9;
+      const hotY = y;
+      const hotG = el("g", {}, titleG);
+      const hotAttrs = { class: "tech", "font-weight": 900, "font-size": f1(sA), "letter-spacing": f1(SPA * sA), x: f1(TL.cx + SPA * sA / 2), y: f1(hotY), "text-anchor": "middle" };
+      const hotGlow = el("text", { ...hotAttrs, fill: C.accent, filter: "url(#nt-blur)" }, hotG);
+      const hotCyan = el("text", { ...hotAttrs, fill: C.accent2, opacity: 0 }, hotG);
+      const hotMain = el("text", { ...hotAttrs, fill: C.accent }, hotG);
+      for (const n of [hotGlow, hotCyan, hotMain]) n.textContent = hot;
+      const FLICK = [1, 0.3, 1, 1, 0.45, 1, 0.75, 1, 1, 0.6, 1];
+      updaters.push((t, p) => {
+        const k = tw(t, T.slam, T.slam + 0.22, "expo.out");
+        const sc = 1.55 - 0.55 * k;
+        const cy = hotY - sA * 0.36;
+        hotG.setAttribute("transform", `translate(${f1(TL.cx)} ${f1(cy)}) scale(${sc.toFixed(3)}) translate(${f1(-TL.cx)} ${f1(-cy)})`);
+        let fl = 1;
+        if (t >= T.slam + 0.12 && t < T.slam + 0.12 + FLICK.length / 30) fl = FLICK[Math.floor((t - T.slam - 0.12) * 30)];
+        const on = t < T.slam ? 0 : Math.min(1, k * 2.5);
+        hotMain.setAttribute("opacity", (on * (0.55 + 0.45 * fl)).toFixed(3));
+        hotGlow.setAttribute("opacity", (on * fl * (0.62 + 0.14 * Math.sin(TAU * p * 5))).toFixed(3));
+        const split = t < T.slam ? 0 : 1 - prog(t, T.slam, T.slam + 0.3);
+        hotCyan.setAttribute("opacity", (0.8 * split).toFixed(3));
+        hotCyan.setAttribute("transform", `translate(${f1(-16 * split * U)} ${f1(3 * split * U)})`);
+      });
+
+      // The pill draws its outline, then the subtitle rises in.
+      y += sA * 0.34;
+      const pillW = subW + padX * 2;
+      const pill = el("rect", { x: f1(TL.cx - pillW / 2), y: f1(y), width: f1(pillW), height: f1(pillH), rx: f1(pillH / 2), fill: C.ink, "fill-opacity": 0, stroke: C.ink, "stroke-width": 2.5 * U, pathLength: 1, "stroke-dasharray": "1 1" }, titleG);
+      const subT = el("text", { class: "sans", "font-weight": 400, "font-size": f1(sSub), x: f1(TL.cx), y: f1(y + pillH / 2 + sSub * 0.35), "text-anchor": "middle", fill: C.ink }, titleG);
+      subT.textContent = SUB;
+      const titleBottom = y + pillH;
+      updaters.push((t) => {
+        const k = tw(t, T.pill, T.pill + 0.6, "power2.inOut");
+        pill.setAttribute("stroke-dashoffset", (1 - k).toFixed(4));
+        pill.setAttribute("stroke-opacity", k > 0 ? 0.95 : 0);
+        pill.setAttribute("fill-opacity", (0.05 * k).toFixed(3));
+        const s = tw(t, T.sub, T.sub + 0.5, "power3.out");
+        subT.setAttribute("opacity", (0.92 * s).toFixed(3));
+        subT.setAttribute("transform", `translate(0 ${f1(10 * U * (1 - s))})`);
+      });
+
+      // ---- The laptop, its holographic panels and the badges, as one cluster ----
+      const BOX = { x0: -340, x1: 340, y0: -650, y1: 175 };
+      let area;
+      if (L === "wide") area = [SW * 0.03, SH * 0.07, SW * 0.5, SH * 0.94];
+      else area = [SW * 0.04, titleBottom + SH * 0.035, SW * 0.96, SH * 0.975];
+      const cs = Math.min((area[2] - area[0]) / (BOX.x1 - BOX.x0), (area[3] - area[1]) / (BOX.y1 - BOX.y0), L === "tall" ? 1.25 : 1.1);
+      const ccx = (area[0] + area[2]) / 2 - ((BOX.x0 + BOX.x1) / 2) * cs;
+      const ccy = (area[1] + area[3]) / 2 - ((BOX.y0 + BOX.y1) / 2) * cs;
+      const cluster = el("g", { transform: `translate(${f1(ccx)} ${f1(ccy)}) scale(${cs.toFixed(4)})` }, content);
+      const rc = L === "wide" ? [SW * 0.6, SH * 0.47] : [SW / 2, ccy - 230 * cs];
+      ringsG.setAttribute("transform", `translate(${f1(rc[0])} ${f1(rc[1])})`);
+
+      // A soft light pool on the floor.
+      const pool = el("ellipse", { rx: 330, ry: 330, fill: "url(#nt-pool)", transform: `matrix(${CI} ${SI} ${-CI} ${SI} 0 10)` }, cluster);
+      updaters.push((t) => pool.setAttribute("opacity", (tw(t, T.base, T.screen + 0.4)).toFixed(3)));
+
+      const lap = el("g", {}, cluster);
+      // Base: a slim box 300 x 200 x 14.
+      el("polygon", { points: pts([[-150, 100, 0], [150, 100, 0], [150, 100, 14], [-150, 100, 14]]), fill: V.side }, lap);
+      el("polygon", { points: pts([[150, -100, 0], [150, 100, 0], [150, 100, 14], [150, -100, 14]]), fill: V.dark }, lap);
+      el("polygon", { points: pts([[-150, -100, 14], [150, -100, 14], [150, 100, 14], [-150, 100, 14]]), fill: V.body }, lap);
+      el("polyline", { points: pts([[-150, 100, 14], [150, 100, 14], [150, -100, 14]]), fill: "none", stroke: C.accent2, "stroke-width": 1.5, opacity: 0.55 }, lap);
+      const deck = el("g", { transform: `matrix(${CI} ${SI} ${-CI} ${SI} 0 -14)` }, lap);
+      for (let r = 0; r < 5; r++) for (let c = 0; c < 13; c++) {
+        const w = r === 4 && c >= 4 && c <= 8 ? 0 : 16;
+        if (w) el("rect", { x: -131 + c * 20.3, y: -82 + r * 18, width: 16, height: 14, rx: 2.5, fill: V.key }, deck);
+      }
+      el("rect", { x: -48, y: -10, width: 96, height: 14, rx: 2.5, fill: V.key }, deck);
+      el("rect", { x: -44, y: 26, width: 88, height: 58, rx: 6, fill: V.side, stroke: V.ring, "stroke-width": 1, "stroke-opacity": 0.4 }, deck);
+      el("rect", { x: -150, y: -104, width: 300, height: 8, rx: 3, fill: V.dark }, deck);
+      updaters.push((t) => {
+        const k = tw(t, T.base, T.base + 0.45, "back.out(1.6)");
+        lap.setAttribute("transform", `translate(0 ${f1(60 * (1 - k))})`);
+        lap.setAttribute("opacity", Math.min(1, prog(t, T.base, T.base + 0.18)).toFixed(3));
+      });
+
+      // Lid: drawn flat (300 x 190, y down) and mapped onto the hinge at the angle it is open.
+      const lidG = el("g", {}, lap);
+      const lidBack = el("g", {}, lidG);
+      el("rect", { width: 300, height: 190, rx: 10, fill: V.lid, stroke: V.ring, "stroke-width": 1.5, "stroke-opacity": 0.5 }, lidBack);
+      el("circle", { cx: 150, cy: 95, r: 16, fill: "none", stroke: V.ring, "stroke-width": 3, opacity: 0.6 }, lidBack);
+      const lidFront = el("g", {}, lidG);
+      el("rect", { width: 300, height: 190, rx: 10, fill: V.lid, stroke: V.ring, "stroke-width": 1.5, "stroke-opacity": 0.6 }, lidFront);
+      el("rect", { x: 10, y: 10, width: 280, height: 166, rx: 4, fill: "#0a0f33" }, lidFront);
+      const screenOn = el("g", {}, lidFront);
+      el("rect", { x: 10, y: 10, width: 280, height: 166, rx: 4, fill: "url(#nt-screen)" }, screenOn);
+      const ui = el("g", { fill: C.accent2 }, screenOn);
+      el("rect", { x: 20, y: 20, width: 260, height: 12, rx: 3, opacity: 0.4 }, ui);
+      el("rect", { x: 20, y: 40, width: 66, height: 126, rx: 4, opacity: 0.16 }, ui);
+      for (let i = 0; i < 5; i++) el("rect", { x: 28, y: 50 + i * 20, width: 50 - (i % 2) * 14, height: 7, rx: 3, opacity: 0.55 }, ui);
+      el("rect", { x: 96, y: 40, width: 184, height: 80, rx: 4, opacity: 0.14 }, ui);
+      const bars = [];
+      for (let i = 0; i < 7; i++) bars.push(el("rect", { x: 108 + i * 24, width: 14, rx: 2, opacity: 0.85 }, ui));
+      el("circle", { cx: 128, cy: 146, r: 16, fill: "none", stroke: C.accent2, "stroke-width": 5, opacity: 0.7, "stroke-dasharray": "70 101" }, ui);
+      for (let i = 0; i < 3; i++) el("rect", { x: 156, y: 134 + i * 11, width: 110 - i * 26, height: 6, rx: 3, opacity: 0.5 }, ui);
+      const barH = [30, 46, 38, 60, 52, 68, 44];
+      updaters.push((t) => {
+        const open = tw(t, T.lid, T.lid + T.lidDur, "back.out(1.3)");
+        const th = (open * 105 * Math.PI) / 180;
+        const dy = Math.cos(th), dz = Math.sin(th);
+        // Local (u, v) on the lid, v up from the hinge, mapped through the isometric projection.
+        const a = CI, b = SI, c = -dy * CI, d = dy * SI - dz, e = 100 * CI, f = -100 * SI - 14;
+        const m = [a, b, -c, -d, -150 * a + 190 * c + e, -150 * b + 190 * d + f];
+        lidG.setAttribute("transform", `matrix(${m.map((v) => v.toFixed(4)).join(" ")})`);
+        const front = a * -d - b * -c > 0;
+        lidFront.setAttribute("display", front ? "inline" : "none");
+        lidBack.setAttribute("display", front ? "none" : "inline");
+        // The screen powers on with a short flicker.
+        let s = prog(t, T.screen, T.screen + 0.3);
+        if (s > 0 && s < 1) s *= [0.2, 1, 0.5, 1, 0.8, 1][Math.floor(t * 30) % 6];
+        screenOn.setAttribute("opacity", s.toFixed(3));
+        bars.forEach((bar, i) => {
+          const g = tw(t, T.screen + 0.2 + i * 0.05, T.screen + 0.6 + i * 0.05, "back.out(2)");
+          const h = barH[i] * g * (1 + 0.12 * Math.sin(TAU * ((t / LOOP) * 5 + i * 0.3)));
+          bar.setAttribute("y", f1(112 - h));
+          bar.setAttribute("height", f1(Math.max(0, h)));
+        });
+      });
+
+      // Connectors from the top of the screen to each panel, with data pulses.
+      const conG = el("g", { filter: "url(#nt-glow)" }, cluster);
+      const panelG = el("g", {}, cluster);
+      const lidTop = (x) => iso(x, -100 + 190 * Math.cos((105 * Math.PI) / 180), 14 + 190 * Math.sin((105 * Math.PI) / 180));
+      PANELS.forEach((pn, i) => {
+        const t0 = T.panel0 + i * T.panelStep;
+        const anchorW = pn.plane === "xz" ? [pn.x + pn.w / 2, pn.y] : [pn.x, pn.y - pn.w / 2];
+        const from = lidTop(clamp(anchorW[0] - anchorW[1] - 60, -120, 120));
+        const line = el("path", { fill: "none", stroke: C.accent2, "stroke-width": 1.6, opacity: 0.7, pathLength: 1, "stroke-dasharray": "1 1" }, conG);
+        const endDot = el("circle", { r: 4, fill: C.accent2 }, conG);
+        const bit = el("circle", { r: 3.5, fill: C.ink }, conG);
+        const g = el("g", {}, panelG);
+        const clip = el("clipPath", { id: `nt-pc${i}` }, defs);
+        const clipR = el("rect", { x: -20, y: -20, width: pn.w + 40, height: 0 }, clip);
+        const inner = el("g", { "clip-path": `url(#nt-pc${i})` }, g);
+        el("rect", { x: -6, y: -6, width: pn.w + 12, height: pn.h + 12, rx: 12, fill: C.accent2, opacity: 0.16, filter: "url(#nt-glow2)" }, inner);
+        el("rect", { width: pn.w, height: pn.h, rx: 8, fill: "url(#nt-panel)", stroke: C.accent2, "stroke-width": 2 }, inner);
+        el("rect", { x: 0, y: 0, width: pn.w, height: 14, rx: 7, fill: C.accent2, opacity: 0.35 }, inner);
+        for (let k = 0; k < 3; k++) el("circle", { cx: 10 + k * 9, cy: 7, r: 2.5, fill: C.ink, opacity: 0.8 }, inner);
+        const iconS = Math.min(pn.w * 0.5, pn.h - 30) / 24;
+        const ig = el("g", { transform: `translate(${f1(pn.w * 0.3 - 12 * iconS)} ${f1(18 + (pn.h - 18) / 2 - 12 * iconS)}) scale(${iconS.toFixed(3)})`, fill: "none", stroke: C.ink, "stroke-width": 1.6, "stroke-linecap": "round", "stroke-linejoin": "round" }, inner);
+        const strokes = ICON[pn.icon].map((d) => el("path", { d, pathLength: 1, "stroke-dasharray": "1 1" }, ig));
+        for (let k = 0; k < 3; k++) el("rect", { x: pn.w * 0.58, y: 30 + k * 14, width: pn.w * (0.32 - k * 0.07), height: 6, rx: 3, fill: C.ink, opacity: 0.55 }, inner);
+        const scan = el("rect", { x: -4, width: pn.w + 8, height: 3, fill: C.ink, opacity: 0 }, g);
+        const ph = rand();
+        updaters.push((t, p) => {
+          const rise = tw(t, t0, t0 + 0.45, "power3.out");
+          const bob = 6 * Math.sin(TAU * (p * 2 + ph)) * prog(t, t0 + 0.45, t0 + 0.9);
+          const z = 120 + (pn.z - 120) * rise + bob;
+          let m;
+          if (pn.plane === "xz") m = [CI, SI, 0, 1, CI * pn.x - CI * pn.y, SI * pn.x + SI * pn.y - z - pn.h];
+          else m = [CI, -SI, 0, 1, CI * (pn.x - pn.y), SI * (pn.x + pn.y) - z - pn.h];
+          // Glitchy scan in: the panel jitters sideways while it is revealed from the top.
+          const sc = prog(t, t0 + 0.12, t0 + 0.42);
+          const jitter = sc > 0 && sc < 1 && hash(i, Math.floor(t * 30)) < 0.5 ? (hash(i + 9, Math.floor(t * 30)) - 0.5) * 16 : 0;
+          m[4] += jitter;
+          g.setAttribute("transform", `matrix(${m.map((v) => v.toFixed(3)).join(" ")})`);
+          g.setAttribute("opacity", t < t0 ? 0 : 1);
+          clipR.setAttribute("height", f1((pn.h + 40) * sc));
+          scan.setAttribute("y", f1(-2 + (pn.h + 4) * sc));
+          scan.setAttribute("opacity", sc > 0 && sc < 1 ? 0.9 : 0);
+          const ik = prog(t, t0 + 0.3, t0 + 0.8);
+          strokes.forEach((s, k) => s.setAttribute("stroke-dashoffset", (1 - clamp(ik * strokes.length - k * 0.6)).toFixed(3)));
+          // The connector runs from the screen to the bottom of the panel.
+          const to = pn.plane === "xz" ? iso(anchorW[0], anchorW[1], z) : iso(anchorW[0], anchorW[1], z);
+          const midY = Math.min(from[1], to[1]) - 18;
+          line.setAttribute("d", `M${f1(from[0])} ${f1(from[1])}L${f1(from[0])} ${f1(midY)}L${f1(to[0])} ${f1(to[1])}`);
+          const ck = prog(t, t0 + 0.35, t0 + 0.7);
+          line.setAttribute("stroke-dashoffset", (1 - ck).toFixed(3));
+          endDot.setAttribute("cx", f1(to[0]));
+          endDot.setAttribute("cy", f1(to[1]));
+          endDot.setAttribute("opacity", ck >= 1 ? 1 : 0);
+          // A bit of data travels up the connector, three times per loop.
+          const fr = (p * 3 + ph) % 1;
+          const l1 = Math.abs(midY - from[1]), l2 = Math.hypot(to[0] - from[0], to[1] - midY);
+          const at = fr * (l1 + l2);
+          const q = at < l1 ? [from[0], from[1] - (from[1] - midY) * (at / l1)] : [from[0] + (to[0] - from[0]) * ((at - l1) / l2), midY + (to[1] - midY) * ((at - l1) / l2)];
+          bit.setAttribute("cx", f1(q[0]));
+          bit.setAttribute("cy", f1(q[1]));
+          bit.setAttribute("opacity", ck >= 1 && t < T.outro ? 0.95 : 0);
+        });
+      });
+
+      // Round badges pop in around the laptop and bob gently.
+      BADGES.forEach((bd, i) => {
+        const g = el("g", {}, cluster);
+        const t0 = T.badge0 + i * 0.12, ph = rand();
+        if (bd.fill !== "none") el("circle", { r: 30, fill: C[bd.fill], filter: "url(#nt-glow2)", opacity: 0.95 }, g);
+        if (bd.icon === "at" || bd.icon === "percent") {
+          const tx = el("text", { class: "sans", "font-weight": 700, "font-size": bd.icon === "at" ? 34 : 40, "text-anchor": "middle", y: 12, fill: C.ink }, g);
+          tx.textContent = bd.icon === "at" ? "@" : "%";
+        } else {
+          const ig = el("g", { transform: "translate(-17 -17) scale(1.42)", fill: "none", stroke: C.ink, "stroke-width": 2, "stroke-linecap": "round", "stroke-linejoin": "round" }, g);
+          for (const d of ICON[bd.icon]) el("path", { d }, ig);
+        }
+        updaters.push((t, p) => {
+          const k = tw(t, t0, t0 + 0.4, "back.out(2.5)");
+          const bob = 8 * Math.sin(TAU * (p * 2 + ph));
+          g.setAttribute("transform", `translate(${bd.x} ${f1(bd.y + bob)}) scale(${Math.max(0.001, k).toFixed(3)})`);
+          g.setAttribute("opacity", t < t0 ? 0 : 1);
+        });
+      });
+
+      // ---- A scan line sweeps down the frame now and then ----
+      const sweep = el("g", {}, content);
+      el("rect", { x: 0, y: -SH * 0.07, width: SW, height: SH * 0.14, fill: "url(#nt-sweep)" }, sweep);
+      el("rect", { x: 0, y: -1, width: SW, height: 2, fill: C.accent2, opacity: 0.35 }, sweep);
+      updaters.push((t) => {
+        let on = 0, yy = 0;
+        for (const s of T.sweeps) {
+          const k = prog(t, s, s + T.sweepDur);
+          if (k > 0 && k < 1) { on = 1; yy = -SH * 0.1 + k * SH * 1.2; }
+        }
+        sweep.setAttribute("opacity", on);
+        sweep.setAttribute("transform", `translate(0 ${f1(yy)})`);
+      });
+
+      // ---- Outro: everything glitches out, and the loop starts again from the bare background ----
+      updaters.push((t) => {
+        const k = prog(t, T.outro, T.gone);
+        if (k <= 0) { content.setAttribute("opacity", 1); content.removeAttribute("transform"); return; }
+        const fr = Math.floor(t * 30);
+        const blink = hash(fr, 3) < 0.35 ? 0.35 : 1;
+        content.setAttribute("opacity", (k >= 1 ? 0 : (1 - E("power2.in")(k)) * blink).toFixed(3));
+        content.setAttribute("transform", k < 0.85 ? `translate(${f1((hash(fr, 5) - 0.5) * 26 * U * k)} 0)` : "");
+      });
+
+      // Fine screen lines and a vignette over everything.
+      el("rect", { width: SW, height: SH, fill: "url(#nt-lines)", "pointer-events": "none" }, svg);
+      el("rect", { width: SW, height: SH, fill: "url(#nt-vig)", "pointer-events": "none" }, svg);
+
+      tl = gsap.timeline({ repeat: -1 });
+      state.t = 0;
+      tl.to(state, { t: LOOP, duration: LOOP, ease: "none", onUpdate: render });
+      if (reduce.matches) { tl.pause(HOLD); render(); }
+      else { tl.time(keep % LOOP); render(); }
+      sound.replan();
+    }
+
+    // Jump to an exact time, for frame by frame capture.
+    window.seekDemo = (t) => {
+      if (!tl) return;
+      tl.pause();
+      tl.time(((t % LOOP) + LOOP) % LOOP);
+      render();
+    };
+
+    reduce.addEventListener("change", () => {
+      if (!tl) return;
+      if (reduce.matches) { tl.pause(HOLD); render(); }
+      else tl.play();
+    });
+
+    // Sound: every sound is made with the Web Audio API. It is off until the
+    // parent page (or ?sound=1 / ?sound=effects) turns it on, and it follows the
+    // GSAP timeline clock, so each bleep lands on the picture it belongs to.
+    const sound = (() => {
+      const LEVEL = 1.1, MUSIC = 0.16;
+      const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+      const clock = () => (tl && !tl.paused() ? tl.totalTime() : null);
+      // Five bars in A minor: Am F C G Am.
+      const CHORDS = [[57, 60, 64, 69], [53, 57, 60, 65], [55, 60, 64, 67], [55, 59, 62, 67], [57, 60, 64, 69]];
+      const ROOTS = [33, 29, 36, 31, 33];
+      let ctx = null, master, impulse, noiseBuf, session = null, fxBus, musicBus, arpBus, verbSend;
+      let wantOn = false, wantMusic = true, playing = false;
+      let timer = 0, sleepTimer = 0, anchor = null, doneUpTo = 0;
+      const FLICK = [1, 0.3, 1, 1, 0.45, 1, 0.75, 1, 1, 0.6, 1];
+
+      function plan() {
+        const list = [];
+        const add = (t, type, extra = {}, music = false) => list.push({ t, type, music, ...extra });
+        let s = 5;
+        const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+        add(0.02, "power", { dur: 1.1 });
+        add(T.base + 0.18, "thunk", {});
+        add(T.lid, "servo", { dur: T.lidDur });
+        add(T.screen, "boot", {});
+        add(T.screen + 0.1, "hum", { dur: T.outro - T.screen + 0.3 });
+        PANELS.forEach((pn, i) => {
+          const t0 = T.panel0 + i * T.panelStep;
+          const p = pn.x > 0 ? 0.35 : -0.35;
+          add(t0, "rise", { p });
+          add(t0 + 0.12, "scan", { dur: 0.3, p });
+          add(t0 + 0.34, "chirp", { n: 4 + (i % 3), p, f: [rnd(), rnd(), rnd(), rnd(), rnd(), rnd()] });
+        });
+        charTimes.forEach((c, i) => {
+          add(c.tA, "tick", { f: 3800 + rnd() * 2400, v: 0.5 });
+          add(c.tL, "tick", { f: 2600 + (i % 4) * 300, v: 1, lock: true });
+        });
+        add(T.slam - 0.02, "zap", {});
+        add(T.slam + 0.12, "buzz", { dur: FLICK.length / 30 });
+        add(T.pill, "glide", { dur: 0.6 });
+        add(T.sub, "shimmer", {});
+        BADGES.forEach((bd, i) => add(T.badge0 + i * 0.12 + 0.05, "pop", { f: hz([79, 83, 86, 88, 91][i]), p: Math.max(-0.6, Math.min(0.6, bd.x / 500)) }));
+        for (const t0 of T.sweeps) add(t0, "sweep", { dur: T.sweepDur });
+        for (let b = 6; b < 18; b += 2) add(b * BEAT + BEAT / 2, "pulse", { p: (b % 4 ? 0.4 : -0.4), f: 1700 + (b % 3) * 250 });
+        add(T.outro, "glitch", { dur: 0.8 });
+
+        // Music: four on the floor, claps on 2 and 4, 16th hats, a pulsing bass and an arpeggio.
+        const PAT = [0, 2, 1, 3, 2, 4, 3, 1];
+        for (let b = 0; b < 20; b++) {
+          const bar = Math.floor(b / 4), t0 = b * BEAT;
+          if (b < 18) {
+            add(t0, "kick", {}, true);
+            if (b % 4 === 1 || b % 4 === 3) add(t0, "clap", {}, true);
+            for (let q = 0; q < 4; q++) add(t0 + (q * BEAT) / 4, "hat", { v: q === 2 ? 0.9 : q % 2 ? 0.35 : 0.5, open: q === 2 }, true);
+          }
+          if (b < 19) for (let e = 0; e < 2; e++) add(t0 + (e * BEAT) / 2, "bass", { f: hz(ROOTS[bar] + (e ? 12 : 0)), dur: BEAT * 0.45 }, true);
+          if (b >= 2 && b < 18) {
+            const tones = [...CHORDS[bar], CHORDS[bar][0] + 12];
+            for (let q = 0; q < 4; q++) add(t0 + (q * BEAT) / 4, "arp", { f: hz(tones[PAT[(b * 4 + q) % 8]] + 12), v: q === 0 ? 1 : 0.7 }, true);
+          }
+          if (b % 4 === 0 && b < 18) add(t0, "pad", { notes: CHORDS[bar], dur: bar === 4 ? BEAT * 2 : BEAT * 4 }, true);
+        }
+        return list.sort((a, b) => a.t - b.t);
+      }
+      let events = [];
+
+      function makeGraph() {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -14;
+        comp.knee.value = 8;
+        comp.ratio.value = 4;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.2;
+        master = ctx.createGain();
+        master.gain.value = LEVEL;
+        master.connect(comp).connect(ctx.destination);
+        const len = Math.floor(ctx.sampleRate * 1.6);
+        impulse = ctx.createBuffer(2, len, ctx.sampleRate);
+        for (let ch = 0; ch < 2; ch++) {
+          const d = impulse.getChannelData(ch);
+          for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+        }
+        noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+        const nd = noiseBuf.getChannelData(0);
+        for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+      }
+
+      // Each time sound is turned on it gets fresh buses, so sounds queued before a
+      // stop can never leak out later.
+      function openSession() {
+        const t = ctx.currentTime;
+        session = ctx.createGain();
+        session.gain.setValueAtTime(0, t);
+        session.gain.linearRampToValueAtTime(1, t + 0.05);
+        session.connect(master);
+        fxBus = ctx.createGain();
+        fxBus.connect(session);
+        musicBus = ctx.createGain();
+        musicBus.gain.value = wantMusic ? MUSIC : 0;
+        musicBus.connect(session);
+        const verb = ctx.createConvolver();
+        verb.buffer = impulse;
+        const tone = filter("lowpass", 5000);
+        const verbOut = ctx.createGain();
+        verbOut.gain.value = 0.3;
+        verbSend = ctx.createGain();
+        verbSend.connect(verb).connect(tone).connect(verbOut).connect(session);
+        // The arpeggio gets a dotted eighth echo, the classic synthwave shimmer.
+        arpBus = ctx.createGain();
+        arpBus.connect(musicBus);
+        const delay = ctx.createDelay(1);
+        delay.delayTime.value = BEAT * 0.75;
+        const fb = ctx.createGain();
+        fb.gain.value = 0.3;
+        const wet = ctx.createGain();
+        wet.gain.value = 0.28;
+        arpBus.connect(delay);
+        delay.connect(fb).connect(delay);
+        delay.connect(filter("lowpass", 3500)).connect(wet).connect(musicBus);
+      }
+      function closeSession() {
+        const old = session, t = ctx.currentTime;
+        session = null;
+        old.gain.cancelScheduledValues(t);
+        old.gain.setValueAtTime(old.gain.value, t);
+        old.gain.linearRampToValueAtTime(0, t + 0.15);
+        setTimeout(() => old.disconnect(), 250);
+      }
+
+      // Small building blocks.
+      function amp(when, peak, attack, decay, out) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, when);
+        g.gain.exponentialRampToValueAtTime(peak, when + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay);
+        g.connect(out);
+        return g;
+      }
+      function osc(type, freq, when, dur) {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.setValueAtTime(freq, when);
+        o.start(when);
+        o.stop(when + dur + 0.05);
+        return o;
+      }
+      function noise(when, dur) {
+        const s = ctx.createBufferSource();
+        s.buffer = noiseBuf;
+        s.loop = true;
+        s.start(when, Math.random() * 1.5);
+        s.stop(when + dur + 0.05);
+        return s;
+      }
+      function filter(type, freq, q = 0.7) {
+        const f = ctx.createBiquadFilter();
+        f.type = type;
+        f.frequency.value = freq;
+        f.Q.value = q;
+        return f;
+      }
+      function pan(value, out) {
+        const p = ctx.createStereoPanner();
+        p.pan.value = value;
+        p.connect(out);
+        return p;
+      }
+      function send(node, amount) {
+        const g = ctx.createGain();
+        g.gain.value = amount;
+        node.connect(g).connect(verbSend);
+      }
+      function shape(when, points, out) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, when);
+        for (const [dt, v] of points) g.gain.linearRampToValueAtTime(v, when + dt);
+        g.connect(out);
+        return g;
+      }
+
+      const voices = {
+        power(when, e) {
+          // The HUD powers up: a rising synth sweep with a noise riser under it.
+          const d = e.dur;
+          const g = shape(when, [[d * 0.8, 0.2], [d, 0.05], [d + 0.2, 0]], fxBus);
+          const lp = filter("lowpass", 300, 4);
+          lp.frequency.setValueAtTime(300, when);
+          lp.frequency.exponentialRampToValueAtTime(4000, when + d);
+          lp.connect(g);
+          const o = osc("sawtooth", 55, when, d + 0.2);
+          o.frequency.exponentialRampToValueAtTime(440, when + d);
+          o.connect(lp);
+          const bp = filter("bandpass", 600, 1.2);
+          bp.frequency.setValueAtTime(600, when);
+          bp.frequency.exponentialRampToValueAtTime(6000, when + d);
+          noise(when, d + 0.2).connect(bp).connect(shape(when, [[d, 0.12], [d + 0.15, 0]], fxBus));
+          send(g, 0.3);
+        },
+        thunk(when) {
+          // The laptop lands: a soft low thunk with a tiny click.
+          const o = osc("sine", 110, when, 0.2);
+          o.frequency.exponentialRampToValueAtTime(50, when + 0.15);
+          o.connect(amp(when, 0.45, 0.003, 0.18, fxBus));
+          noise(when, 0.03).connect(filter("bandpass", 2500, 1)).connect(amp(when, 0.12, 0.001, 0.02, fxBus));
+        },
+        servo(when, e) {
+          // The lid swings open: a small motor whir, then a soft click.
+          const d = e.dur;
+          const bp = filter("bandpass", 900, 3);
+          const o = osc("sawtooth", 170, when, d);
+          o.frequency.linearRampToValueAtTime(420, when + d * 0.8);
+          o.connect(bp).connect(shape(when, [[0.05, 0.06], [d * 0.8, 0.07], [d, 0]], fxBus));
+          noise(when + d * 0.85, 0.03).connect(filter("highpass", 3000)).connect(amp(when + d * 0.85, 0.12, 0.001, 0.02, fxBus));
+        },
+        boot(when) {
+          // The screen switches on: three rising bleeps.
+          [84, 88, 91].forEach((m, k) => {
+            const t = when + k * 0.07;
+            const g = amp(t, 0.1, 0.003, 0.12, pan(-0.2, fxBus));
+            osc("triangle", hz(m), t, 0.16).connect(g);
+            send(g, 0.4);
+          });
+        },
+        hum(when, e) {
+          // A soft electric hum under the whole scene, with a slow shimmer.
+          const d = e.dur;
+          const g = shape(when, [[0.6, 0.03], [d - 0.5, 0.03], [d, 0]], fxBus);
+          const bp = filter("bandpass", 600, 0.8);
+          const trem = ctx.createGain();
+          trem.gain.value = 0.7;
+          const lfo = osc("sine", 6, when, d);
+          const depth = ctx.createGain();
+          depth.gain.value = 0.3;
+          lfo.connect(depth).connect(trem.gain);
+          bp.connect(trem).connect(g);
+          osc("sawtooth", 110, when, d).connect(bp);
+          osc("sawtooth", 110.6, when, d).connect(bp);
+        },
+        rise(when, e) {
+          const g = amp(when, 0.05, 0.01, 0.2, pan(e.p, fxBus));
+          const o = osc("sine", 400, when, 0.25);
+          o.frequency.exponentialRampToValueAtTime(950, when + 0.2);
+          o.connect(g);
+        },
+        scan(when, e) {
+          // A panel scans in: a quick hiss sweeping down.
+          const d = e.dur;
+          const bp = filter("bandpass", 6000, 2);
+          bp.frequency.setValueAtTime(6000, when);
+          bp.frequency.exponentialRampToValueAtTime(1500, when + d);
+          noise(when, d).connect(bp).connect(shape(when, [[0.02, 0.1], [d * 0.7, 0.08], [d, 0]], pan(e.p, fxBus)));
+        },
+        chirp(when, e) {
+          // Data chirps: a run of little square wave blips.
+          for (let k = 0; k < e.n; k++) {
+            const t = when + k * 0.045;
+            const f = 1200 + e.f[k % e.f.length] * 1400;
+            const g = amp(t, 0.045, 0.002, 0.03, pan(e.p, fxBus));
+            osc("square", f, t, 0.04).connect(filter("lowpass", 5000)).connect(g);
+          }
+        },
+        tick(when, e) {
+          // The text decode: tiny ticks, a brighter blip when a letter locks.
+          noise(when, 0.02).connect(filter("bandpass", e.f, 3)).connect(amp(when, 0.05 * e.v, 0.001, 0.012, fxBus));
+          if (e.lock) osc("triangle", e.f, when, 0.05).connect(amp(when, 0.03, 0.002, 0.04, fxBus));
+        },
+        zap(when) {
+          // The hot line slams in: a synth zap, a sub thump and a burst of noise.
+          const g = amp(when, 0.3, 0.004, 0.3, fxBus);
+          const lp = filter("lowpass", 6000, 1.5);
+          lp.frequency.setValueAtTime(6000, when);
+          lp.frequency.exponentialRampToValueAtTime(500, when + 0.3);
+          lp.connect(g);
+          const o1 = osc("sawtooth", 2200, when, 0.32);
+          o1.frequency.exponentialRampToValueAtTime(90, when + 0.28);
+          const o2 = osc("square", 1100, when, 0.32);
+          o2.frequency.exponentialRampToValueAtTime(60, when + 0.28);
+          o1.connect(lp);
+          o2.connect(lp);
+          const sub = osc("sine", 70, when, 0.4);
+          sub.frequency.exponentialRampToValueAtTime(40, when + 0.35);
+          sub.connect(amp(when, 0.6, 0.004, 0.35, fxBus));
+          noise(when, 0.15).connect(filter("highpass", 2000)).connect(amp(when, 0.12, 0.002, 0.12, fxBus));
+          send(g, 0.5);
+        },
+        buzz(when, e) {
+          // Neon glow flicker: an electric buzz gated in step with the picture.
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0, when);
+          FLICK.forEach((v, k) => g.gain.setValueAtTime(v > 0.9 ? 0.05 : 0.005, when + k / 30));
+          g.gain.setValueAtTime(0, when + e.dur);
+          g.connect(fxBus);
+          const bp = filter("bandpass", 1400, 1.5);
+          bp.connect(g);
+          osc("sawtooth", 120, when, e.dur).connect(bp);
+          osc("sawtooth", 240, when, e.dur).connect(bp);
+        },
+        glide(when, e) {
+          // The pill outline draws: a soft rising tone.
+          const d = e.dur;
+          const g = shape(when, [[0.08, 0.06], [d * 0.8, 0.05], [d, 0]], pan(0.1, fxBus));
+          const o = osc("sine", 520, when, d);
+          o.frequency.exponentialRampToValueAtTime(1040, when + d);
+          o.connect(g);
+          osc("triangle", 1040, when, d).connect(amp(when, 0.015, 0.1, d, g));
+          send(g, 0.5);
+        },
+        shimmer(when) {
+          [88, 91, 95, 100].forEach((m, k) => {
+            const t = when + k * 0.05;
+            const g = amp(t, 0.03, 0.004, 0.6, fxBus);
+            osc("sine", hz(m), t, 0.7).connect(g);
+            send(g, 0.6);
+          });
+        },
+        pop(when, e) {
+          // A badge pops in.
+          const g = amp(when, 0.14, 0.002, 0.09, pan(e.p, fxBus));
+          const o = osc("sine", e.f, when, 0.12);
+          o.frequency.exponentialRampToValueAtTime(e.f * 0.6, when + 0.08);
+          o.connect(g);
+          noise(when, 0.01).connect(filter("highpass", 5000)).connect(amp(when, 0.04, 0.001, 0.01, g));
+        },
+        sweep(when, e) {
+          // The scan line: a soft airy sweep from left to right.
+          const d = e.dur;
+          const p = ctx.createStereoPanner();
+          p.pan.setValueAtTime(-0.5, when);
+          p.pan.linearRampToValueAtTime(0.5, when + d);
+          p.connect(fxBus);
+          const bp = filter("bandpass", 400, 1);
+          bp.frequency.setValueAtTime(400, when);
+          bp.frequency.exponentialRampToValueAtTime(3000, when + d * 0.5);
+          bp.frequency.exponentialRampToValueAtTime(800, when + d);
+          noise(when, d).connect(bp).connect(shape(when, [[d * 0.4, 0.07], [d, 0]], p));
+        },
+        pulse(when, e) {
+          // A pulse runs along a circuit trace.
+          const g = amp(when, 0.035, 0.002, 0.06, pan(e.p, fxBus));
+          const o = osc("sine", e.f, when, 0.08);
+          o.frequency.exponentialRampToValueAtTime(e.f * 1.35, when + 0.06);
+          o.connect(g);
+        },
+        glitch(when, e) {
+          // The scene glitches out: crushed stutters over a falling sweep.
+          for (let k = 0; k < 7; k++) {
+            const t = when + k * 0.07;
+            const f = [300, 1200, 520, 2000, 700, 1600, 400][k];
+            osc("square", f, t, 0.04).connect(filter("bandpass", f, 2)).connect(amp(t, 0.06, 0.001, 0.035, pan(k % 2 ? 0.3 : -0.3, fxBus)));
+          }
+          const o = osc("sawtooth", 800, when, e.dur);
+          o.frequency.exponentialRampToValueAtTime(50, when + e.dur);
+          o.connect(filter("lowpass", 1800)).connect(shape(when, [[0.05, 0.08], [e.dur, 0]], fxBus));
+        },
+        kick(when) {
+          const o = osc("sine", 150, when, 0.3);
+          o.frequency.exponentialRampToValueAtTime(42, when + 0.12);
+          o.connect(amp(when, 1, 0.002, 0.28, musicBus));
+          noise(when, 0.01).connect(filter("highpass", 3000)).connect(amp(when, 0.18, 0.001, 0.008, musicBus));
+        },
+        clap(when) {
+          const g = ctx.createGain();
+          g.connect(musicBus);
+          const bp = filter("bandpass", 1500, 1.2);
+          bp.connect(g);
+          [0, 0.01, 0.021].forEach((dt, k) => noise(when + dt, 0.15).connect(amp(when + dt, k === 2 ? 0.5 : 0.3, 0.002, k === 2 ? 0.14 : 0.012, bp)));
+          send(g, 0.5);
+        },
+        hat(when, e) {
+          noise(when, e.open ? 0.14 : 0.05).connect(filter("highpass", 7500)).connect(amp(when, 0.14 * e.v, 0.002, e.open ? 0.1 : 0.03, musicBus));
+        },
+        bass(when, e) {
+          // Pulsing synth bass: a filtered saw with a quick filter drop.
+          const g = amp(when, 0.5, 0.004, e.dur, musicBus);
+          const lp = filter("lowpass", 1100, 4);
+          lp.frequency.setValueAtTime(1100, when);
+          lp.frequency.exponentialRampToValueAtTime(220, when + e.dur);
+          lp.connect(g);
+          osc("sawtooth", e.f, when, e.dur + 0.02).connect(lp);
+          osc("sine", e.f, when, e.dur + 0.02).connect(amp(when, 0.4, 0.004, e.dur, musicBus));
+        },
+        arp(when, e) {
+          const g = amp(when, 0.16 * e.v, 0.003, 0.13, arpBus);
+          const lp = filter("lowpass", 3200, 2);
+          lp.connect(g);
+          osc("sawtooth", e.f, when, 0.16).connect(lp);
+          osc("square", e.f * 1.003, when, 0.16).connect(amp(when, 0.5, 0.003, 0.12, lp));
+        },
+        pad(when, e) {
+          // A warm pad under each bar.
+          const d = e.dur;
+          const g = shape(when, [[0.3, 0.05], [d - 0.3, 0.045], [d, 0]], musicBus);
+          const lp = filter("lowpass", 1400, 0.7);
+          lp.connect(g);
+          for (const m of e.notes) {
+            osc("sawtooth", hz(m - 12), when, d).connect(lp);
+            osc("sawtooth", hz(m - 12) * 1.004, when, d).connect(lp);
+          }
+          send(g, 0.4);
+        },
+      };
+
+      // Look-ahead scheduler: every 25 ms, schedule sounds due in the next 100 ms.
+      // Animation time is mapped to audio time by an anchor that is re-set after any jump
+      // (a pause, a hidden tab, a restart), so missed sounds never pile up.
+      function tick() {
+        const now = playing && ctx.state === "running" && !document.hidden && !reduce.matches ? clock() : null;
+        if (now === null) { anchor = null; return; }
+        const at = ctx.currentTime;
+        if (anchor) {
+          const err = now - (anchor.tl + (at - anchor.audio));
+          if (Math.abs(err) > 0.08) anchor = null;
+          else anchor.tl += err * 0.05;
+        }
+        if (!anchor) {
+          anchor = { tl: now, audio: at };
+          doneUpTo = now;
+        }
+        const cur = anchor.tl + (at - anchor.audio);
+        const from = Math.max(doneUpTo, cur - 0.05);
+        const to = cur + 0.1;
+        if (to <= from) return;
+        for (let k = Math.floor(from / LOOP); k <= Math.floor(to / LOOP); k++) {
+          for (const e of events) {
+            const t = k * LOOP + e.t;
+            if (t < from || t >= to) continue;
+            if (e.music && !wantMusic) continue;
+            voices[e.type](Math.max(at, anchor.audio + (t - anchor.tl)), e);
+          }
+        }
+        doneUpTo = to;
+      }
+
+      function update() {
+        const on = wantOn && !reduce.matches;
+        if (on) {
+          if (!ctx) makeGraph();
+          clearTimeout(sleepTimer);
+          if (ctx.state !== "running") ctx.resume().catch(() => {});
+          if (!playing) {
+            playing = true;
+            anchor = null;
+            openSession();
+            clearInterval(timer);
+            timer = setInterval(tick, 25);
+          }
+          const t = ctx.currentTime;
+          musicBus.gain.cancelScheduledValues(t);
+          musicBus.gain.setTargetAtTime(wantMusic ? MUSIC : 0, t, 0.03);
+        } else if (playing) {
+          playing = false;
+          clearInterval(timer);
+          closeSession();
+          sleepTimer = setTimeout(() => ctx.suspend(), 200);
+        }
+      }
+      reduce.addEventListener("change", update);
+
+      // Browsers may block audio until the first click or key press.
+      const unlock = () => { if (playing && ctx && ctx.state !== "running") ctx.resume().catch(() => {}); };
+      addEventListener("pointerdown", unlock);
+      addEventListener("keydown", unlock);
+
+      addEventListener("message", (event) => {
+        if (event.origin !== location.origin) return;
+        const data = event.data;
+        if (!data || data.type !== "motionprompt-sound") return;
+        if (typeof data.on === "boolean") wantOn = data.on;
+        if (typeof data.music === "boolean") wantMusic = data.music;
+        update();
+      });
+
+      const fromUrl = params.get("sound");
+      if (fromUrl === "1" || fromUrl === "effects") {
+        wantOn = true;
+        wantMusic = fromUrl === "1";
+      }
+      return {
+        replan() {
+          events = plan();
+          if (wantOn) update();
+        },
+      };
+    })();
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(build, 150);
+    });
+
+    // Wait briefly for the fonts so text is measured in the right face.
+    Promise.race([
+      Promise.all([document.fonts.load("700 1em Orbitron"), document.fonts.load("900 1em Orbitron"), document.fonts.load('400 1em "Geist Variable"')]),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(build);
+  </script>
+</body>
+</html>

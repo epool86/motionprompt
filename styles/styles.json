@@ -8,6 +8,14 @@
     "tags": ["3d", "social", "promo"]
   },
   {
+    "slug": "neon-tech",
+    "name": "Neon tech",
+    "summary": "A neon tech title: HUD rings spin up, holographic panels rise from an isometric laptop and your key word slams in magenta.",
+    "library": "GSAP",
+    "tileStart": 4.6,
+    "tags": ["explainer", "brand", "promo"]
+  },
+  {
     "slug": "kaiju-attack",
     "name": "Kaiju attack",
     "summary": "A retro monster movie: a giant rubber suit monster rises over a model city and burns your headline into the sky.",

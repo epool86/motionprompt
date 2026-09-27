@@ -1,0 +1,26 @@
+Make my video in this style: Neon tech.
+
+Look and motion
+- A bold tech title slide that comes alive: a deep purple to violet background with a hot magenta glow from one edge, fine screen lines and a dark vignette.
+- Behind the title, big faint HUD rings: thin circles, dashed rings, a ring of tick marks and a few bright cyan and magenta arcs. They draw themselves on with a fast spin, then keep turning slowly.
+- Thin circuit board traces run in from the edges with small round nodes, and glowing pulses keep travelling along them. Scatter a few white outline triangles and circles and small dotted grids, floating and turning gently.
+- Beside the title, an isometric laptop (or the device that fits my topic) in violet with a glowing cyan screen. It lands, the lid swings open and the screen flickers on.
+- Holographic panels rise out of the screen one by one, glowing cyan with white line icons that match my topic (for example cloud, lock, chart, code, mail or a brain for AI). Each one scans in from the top with a quick glitch, and thin glowing lines connect it back to the screen with little bits of data running along them.
+- A few round badges pop in around the device, pink and cyan with small white icons, and bob gently.
+- The title decodes letter by letter from random characters. Then the key word slams in huge in magenta with a glow flicker and a quick colour split. A rounded outline pill draws itself below it and my tagline fades up inside.
+- Now and then a soft scan line sweeps down the frame. End with a short glitch out.
+- Keep every line of text short and easy to read in a second.
+
+Type and colour
+- A wide techno display font (like Orbitron) in capitals for the title: the first line in white, the key word much bigger in magenta. A clean sans (like Geist) for the tagline.
+- Use my brand colours if I give them. Otherwise use a deep violet background #1c0a45, white text #ffffff, hot magenta #ff2fb3 for the key word and glows, cyan #22e6ff for screens, panels and pulses, and a soft lavender #9573ec for the rings and traces.
+
+Sound
+- Effects: a rising power up as the rings spin on, a soft thunk as the laptop lands, a small motor whir as the lid opens and three bleeps as the screen turns on, a quick scan hiss and a run of data chirps for each panel, tiny ticks while the title decodes with a brighter blip as each letter locks, a big synth zap with a sub thump when the key word slams in, an electric buzz in time with its flicker, a soft rising tone as the pill draws, bubbly pops for the badges, airy sweeps for the scan lines, a quiet electric hum under it all and a glitchy stutter at the end.
+- Music: a driving synthwave bed at about 120 bpm in a minor key: four on the floor kick, claps on 2 and 4, crisp 16th hi hats, a pulsing filtered synth bass, a bright arpeggio with an echo and a warm pad. Keep it under the effects and let it loop cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with GSAP and SVG) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.
