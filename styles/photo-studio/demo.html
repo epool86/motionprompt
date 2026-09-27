@@ -375,6 +375,21 @@
 
     const PAINTERS = [paintPortrait, paintProduct, paintEvent];
 
+    // The three shots are real photos. Each is loaded and decoded before the first frame;
+    // if one fails, that shot falls back to its painted scene.
+    const PHOTOS = ["img/portrait.webp", "img/product.webp", "img/event.webp"];
+    let photos = [null, null, null];
+    function loadPhotos() {
+      return Promise.all(PHOTOS.map((src) => {
+        const img = new Image();
+        img.src = src;
+        return Promise.race([
+          img.decode().then(() => img),
+          new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
+        ]).catch(() => null);
+      })).then((list) => { photos = list; });
+    }
+
     // ---------- Layout ----------
     let W = 0, H = 0, DPR = 1, L = null, scenes = [], small = null;
     let tl = null;
@@ -407,9 +422,10 @@
           lay.card = { x: W * 0.08, y: y0 + areaH + m * 0.8, w: W * 0.84, h: H - (y0 + areaH + m * 0.8) - m * 1.6 };
           lay.spot = { x: W / 2, y: y0 + areaH / 2, r: W * 0.6 };
         } else {
-          const aw = W * 0.44, pw = Math.min(aw / 1.75, (H * 0.8) / 2.5);
+          // A cascade that steps right as it goes down, so each print's label stays in view.
+          const aw = W * 0.44, pw = Math.min(aw / 2.3, (H * 0.8) / 2.5);
           const ph = printHeight(pw), acx = m + aw / 2;
-          [[-0.2, -0.36, -7], [0.02, 0, 3], [0.2, 0.36, -4]].forEach(([dx, dy, rot]) => {
+          [[-0.62, -0.34, -6], [0, 0, 3], [0.62, 0.34, -4]].forEach(([dx, dy, rot]) => {
             lay.slotsB.push(printPose(acx + dx * pw, H / 2 + dy * ph, pw, rot));
           });
           lay.card = { x: W * 0.5, y: m * 2, w: W * 0.46, h: H - m * 4 };
@@ -478,9 +494,11 @@
       canvas.height = Math.round(H * DPR);
       L = makeLayout();
 
-      // Paint each scene a little larger than the viewfinder, for drift and zoom.
+      // Use the photo for each shot; paint a stand-in scene (a little larger than the
+      // viewfinder, for drift and zoom) only when a photo did not load.
       const s = Math.min(DPR * 1.12, 2000 / Math.max(L.vf.w, L.vf.h));
-      scenes = PAINTERS.map((paint) => {
+      scenes = PAINTERS.map((paint, i) => {
+        if (photos[i]) return photos[i];
         const c = document.createElement("canvas");
         c.width = Math.round(L.vf.w * s);
         c.height = Math.round(L.vf.h * s);
@@ -1484,9 +1502,13 @@
     });
 
     // Wait briefly for the fonts so text is measured in the right face.
-    Promise.race([
-      Promise.all(["400 1em Anton", "500 1em Oswald", "700 1em Oswald", "500 1em 'JetBrains Mono'", "700 1em 'JetBrains Mono'"].map((f) => document.fonts.load(f))),
-      new Promise((resolve) => setTimeout(resolve, 2000)),
+    // The photos load at the same time, so the first frame already has them.
+    Promise.all([
+      Promise.race([
+        Promise.all(["400 1em Anton", "500 1em Oswald", "700 1em Oswald", "500 1em 'JetBrains Mono'", "700 1em 'JetBrains Mono'"].map((f) => document.fonts.load(f))),
+        new Promise((resolve) => setTimeout(resolve, 2000)),
+      ]).catch(() => {}),
+      loadPhotos(),
     ]).finally(build);
   </script>
 </body>
