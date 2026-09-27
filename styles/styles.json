@@ -4,6 +4,7 @@
     "name": "Kaiju attack",
     "summary": "A retro monster movie: a giant rubber suit monster rises over a model city and burns your headline into the sky.",
     "library": "Canvas",
+    "tileStart": 4,
     "tags": ["promo", "retro", "text"]
   },
   {
@@ -11,6 +12,7 @@
     "name": "Infographic",
     "summary": "A flat explainer poster: the camera glides from numbered steps to a people stat and a before and after.",
     "library": "GSAP",
+    "tileStart": 3.7,
     "tags": ["explainer", "data", "social"]
   },
   {
@@ -18,6 +20,7 @@
     "name": "Radial infographic",
     "summary": "A rainbow cycle wheel snaps together blade by blade as each numbered point lights up around your logo.",
     "library": "GSAP",
+    "tileStart": 5,
     "tags": ["explainer", "brand", "data"]
   },
   {
@@ -25,6 +28,7 @@
     "name": "Slide deck",
     "summary": "Presentation slides spread on a tilted table, with the camera gliding from slide to slide as each one comes alive.",
     "library": "GSAP",
+    "tileStart": 1.8,
     "tags": ["brand", "explainer", "product"]
   },
   {
@@ -32,6 +36,7 @@
     "name": "Flat illustration",
     "summary": "A flat vector team scene on bright blue: a presenter at a flip chart, charts that draw themselves and a bold title.",
     "library": "GSAP",
+    "tileStart": 3.5,
     "tags": ["explainer", "brand", "promo"]
   },
   {
