@@ -1,0 +1,23 @@
+Make my video in this style: Photo studio.
+
+Look and motion
+- We look through a camera viewfinder. Show a crisp viewfinder overlay: white corner brackets, faint rule of thirds lines, a mode badge and settings at the top, a battery icon, an exposure meter and a readout strip at the bottom (shutter speed, aperture, ISO and a shots counter that ticks down).
+- Take three quick shots of different kinds, like a portrait, a product and an event. For each one, the live view drifts gently like a handheld camera and starts out of focus. The centre focus box hunts, then locks and turns yellow, and the picture snaps sharp.
+- On each shot, the shutter blinks shut with a fast black curtain and a white flash. The captured frame then shrinks into a white bordered print with a small label (like "01 PORTRAIT") and lands on a black set, held by a strip of yellow tape. Between shots, the camera pans quickly to the next scene.
+- If I attach photos, use them as the scenes and the prints. Use 3 to 6 of my best photos. If I attach none, draw simple stand in scenes that still look like real photos.
+- End on the set: the prints fanned out, my headline with the key word on a yellow block, my services as a short list with small yellow icons (like Weddings, Portraits, Products, Events), a bold yellow "Book a shoot" button that pulses, and my contact or booking line. Use my packages or prices if I give them, and keep them short.
+- Keep every line of text short and easy to read in a second.
+
+Type and colour
+- A bold condensed font (like Anton) in capitals for the headline, a clean condensed font (like Oswald) for the services and button, and a mono font (like JetBrains Mono) for the viewfinder readouts and labels.
+- Use my brand colours if I give them. Otherwise use near black #0d0d0d, bold yellow #ffd400, white #ffffff for small text and warm grey #9a948a for the contact line.
+
+Sound
+- Effects: a soft whirr as the camera wakes, fast autofocus motor ticks while the focus hunts, the classic double beep when it locks, a crisp mechanical shutter with a mirror slap, a thin flash recharge whine, a quick swish for each pan, a whoosh and a paper tap as each print lands, a thud as the yellow block lands, soft ticks for the services, a pop for the button and a heavier shutter close at the end.
+- Music: a cool, confident lo-fi house bed at about 120 bpm: warm electric piano chords, a soft four on the floor kick, finger snaps, light hats and a round bass. Keep it under the effects and let it loop cleanly.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with Canvas and GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

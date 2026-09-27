@@ -378,5 +378,13 @@
     "library": "GSAP",
     "tileStart": 4.6,
     "tags": ["explainer", "brand", "promo"]
+  },
+  {
+    "slug": "photo-studio",
+    "name": "Photo studio",
+    "summary": "Through a camera viewfinder: focus locks, the shutter fires, each shot prints onto a black and yellow set, then your booking card.",
+    "library": "Canvas",
+    "tileStart": 4.3,
+    "tags": ["photos", "promo", "brand"]
   }
 ]

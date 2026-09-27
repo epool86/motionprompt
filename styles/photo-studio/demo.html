@@ -1,0 +1,1493 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Photo studio demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/anton@5.3.0/400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/oswald@5.3.0/500.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/oswald@5.3.0/700.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5.3.0/500.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5.3.0/700.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=0d0d0d&ink=ffffff&accent=ffd400&accent2=9a948a */
+    :root { --bg: #0d0d0d; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
+    canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  </style>
+</head>
+<body>
+  <canvas id="stage" role="img"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const hexParam = (key, fallback) => {
+      const value = params.get(key);
+      return /^[0-9a-f]{6}$/i.test(value ?? "") ? `#${value}` : fallback;
+    };
+    const C = {
+      bg: hexParam("bg", "#0d0d0d"),
+      ink: hexParam("ink", "#ffffff"),
+      accent: hexParam("accent", "#ffd400"),
+      accent2: hexParam("accent2", "#9a948a"),
+    };
+    document.documentElement.style.setProperty("--bg", C.bg);
+    const text = (params.get("text") || "Capture your moments").trim().slice(0, 60);
+    // The last word of the headline is the key word: it sits on a yellow block.
+    const words = text.toUpperCase().split(/\s+/);
+    const keyWord = words.pop();
+    const LABELS = ["PORTRAIT", "PRODUCT", "EVENT"];
+    const SERVICES = ["Weddings", "Portraits", "Products", "Events"];
+
+    const canvas = document.getElementById("stage");
+    const ctx = canvas.getContext("2d");
+    canvas.setAttribute("aria-label", `Looking through a camera viewfinder: three photos are taken and printed, then a photo studio card: ${text}`);
+
+    const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    const rgba = (hex, a) => `rgba(${rgb(hex).join(",")},${a})`;
+    const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+    const lerp = (a, b, k) => a + (b - a) * k;
+    const prog = (t, a, b) => clamp((t - a) / (b - a));
+    const eases = new Map();
+    const E = (name) => {
+      if (!eases.has(name)) eases.set(name, gsap.parseEase(name));
+      return eases.get(name);
+    };
+    const tw = (t, a, b, ease = "power2.inOut") => E(ease)(prog(t, a, b));
+    function rng(seed) {
+      return () => {
+        seed = (seed + 0x6d2b79f5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    // Timing (seconds). 120 bpm, so one beat is 0.5 s and the 10 s loop is five bars.
+    const LOOP = 10;
+    const SHOTS = [2.0, 3.5, 5.0]; // shutter clicks, on the beat
+    const HUNTS = [[0.4, 1.5], [2.62, 3.0], [4.12, 4.5]]; // focus hunts: start, lock
+    const WHIPS = [[2.35, 2.62], [3.85, 4.12]]; // quick pans to the next scene
+    const CARD = 6.0, EXIT = 9.4;
+
+    // Soft blur needs canvas filters; older Safari falls back to a scaled down copy.
+    const probe = document.createElement("canvas").getContext("2d");
+    const canFilter = typeof probe.filter === "string";
+
+    // ---------- The three scenes, painted once per size so they read like photos ----------
+
+    function glow(g, x, y, r, color) {
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, color);
+      gr.addColorStop(1, color.replace(/[\d.]+\)$/, "0)"));
+      g.fillStyle = gr;
+      g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    function vignette(g, w, h, a) {
+      const gr = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.hypot(w, h) / 2);
+      gr.addColorStop(0, "rgba(0,0,0,0)");
+      gr.addColorStop(1, `rgba(0,0,0,${a})`);
+      g.fillStyle = gr;
+      g.fillRect(0, 0, w, h);
+    }
+
+    // A portrait against warm evening bokeh, lit from the right.
+    function paintPortrait(g, w, h) {
+      const u = Math.min(w, h), r = rng(11);
+      let gr = g.createLinearGradient(0, 0, 0, h);
+      gr.addColorStop(0, "#2b1709");
+      gr.addColorStop(0.55, "#3b210c");
+      gr.addColorStop(1, "#110803");
+      g.fillStyle = gr;
+      g.fillRect(0, 0, w, h);
+      glow(g, w * 0.2, h * 0.28, u * 0.75, "rgba(255,168,70,0.34)");
+      glow(g, w * 0.88, h * 0.12, u * 0.55, "rgba(255,120,60,0.22)");
+      g.save();
+      g.globalCompositeOperation = "lighter";
+      const cols = ["255,207,107", "255,179,71", "255,150,60", "255,238,190", "247,169,92"];
+      for (let i = 0; i < 72; i++) {
+        const x = r() * w, y = r() * h * 0.82, rad = u * (0.014 + r() * r() * 0.085), a = 0.07 + r() * 0.3, c = cols[i % 5];
+        const bg = g.createRadialGradient(x, y, 0, x, y, rad);
+        bg.addColorStop(0, `rgba(${c},${a * 0.65})`);
+        bg.addColorStop(0.8, `rgba(${c},${a})`);
+        bg.addColorStop(0.92, `rgba(${c},${a * 1.25})`);
+        bg.addColorStop(1, `rgba(${c},0)`);
+        g.fillStyle = bg;
+        g.beginPath();
+        g.arc(x, y, rad, 0, Math.PI * 2);
+        g.fill();
+      }
+      g.restore();
+
+      // Head and shoulders, turned a little towards the light.
+      const k = Math.min(h * 0.68, w * 1.02), cx = w * 0.54, by = h * 1.02;
+      const P = (x, y) => [cx + x * k, by + y * k];
+      // Three pieces (body, head, hair), each its own closed shape, so they fill as one.
+      const body = new Path2D();
+      body.moveTo(...P(-0.54, 0));
+      body.bezierCurveTo(...P(-0.52, -0.26), ...P(-0.42, -0.36), ...P(-0.3, -0.4));
+      body.bezierCurveTo(...P(-0.2, -0.43), ...P(-0.11, -0.45), ...P(-0.09, -0.5));
+      body.lineTo(...P(-0.08, -0.62));
+      body.lineTo(...P(0.09, -0.62));
+      body.lineTo(...P(0.1, -0.49));
+      body.bezierCurveTo(...P(0.13, -0.44), ...P(0.24, -0.42), ...P(0.33, -0.39));
+      body.bezierCurveTo(...P(0.45, -0.35), ...P(0.53, -0.26), ...P(0.55, 0));
+      body.closePath();
+      const [hx, hy] = P(0.01, -0.74);
+      const head = new Path2D();
+      head.ellipse(hx, hy, k * 0.125, k * 0.158, 0.12, 0, Math.PI * 2);
+      // Long hair falling over the left shoulder.
+      const hair = new Path2D();
+      hair.moveTo(...P(-0.13, -0.8));
+      hair.bezierCurveTo(...P(-0.12, -0.96), ...P(0.12, -0.98), ...P(0.145, -0.8));
+      hair.bezierCurveTo(...P(0.16, -0.7), ...P(0.13, -0.62), ...P(0.12, -0.58));
+      hair.lineTo(...P(0.07, -0.6));
+      hair.bezierCurveTo(...P(0.1, -0.72), ...P(0.03, -0.85), ...P(-0.05, -0.82));
+      hair.bezierCurveTo(...P(-0.09, -0.66), ...P(-0.14, -0.52), ...P(-0.27, -0.37));
+      hair.bezierCurveTo(...P(-0.2, -0.33), ...P(-0.12, -0.36), ...P(-0.1, -0.4));
+      hair.bezierCurveTo(...P(-0.19, -0.5), ...P(-0.2, -0.66), ...P(-0.13, -0.8));
+      hair.closePath();
+      const all = new Path2D();
+      [body, head, hair].forEach((part) => all.addPath(part));
+      // Backlight: a warm halo around the edges.
+      g.save();
+      g.shadowColor = "rgba(255,182,100,0.95)";
+      g.shadowBlur = u * 0.035;
+      g.fillStyle = "#140b06";
+      [body, head, hair].forEach((part) => g.fill(part));
+      g.restore();
+      [body, head, hair].forEach((part) => { g.fillStyle = "#140b06"; g.fill(part); });
+      // Side light from the right, and a little warmth on the cheek.
+      g.save();
+      g.clip(all);
+      glow(g, cx + k * 0.62, by - k * 0.82, k * 0.95, "rgba(255,172,92,0.62)");
+      glow(g, hx + k * 0.08, hy + k * 0.02, k * 0.16, "rgba(226,148,98,0.55)");
+      g.restore();
+      vignette(g, w, h, 0.6);
+    }
+
+    // A black glass bottle on a pedestal against a yellow paper sweep.
+    function paintProduct(g, w, h) {
+      const u = Math.min(w, h), cx = w * 0.5;
+      let gr = g.createRadialGradient(w * 0.5, h * 0.42, 0, w * 0.5, h * 0.42, Math.hypot(w, h) * 0.62);
+      gr.addColorStop(0, "#ffe978");
+      gr.addColorStop(0.42, C.accent);
+      gr.addColorStop(0.8, "#d9a600");
+      gr.addColorStop(1, "#9a7300");
+      g.fillStyle = gr;
+      g.fillRect(0, 0, w, h);
+      gr = g.createLinearGradient(0, h * 0.58, 0, h);
+      gr.addColorStop(0, "rgba(120,80,0,0)");
+      gr.addColorStop(1, "rgba(120,80,0,0.28)");
+      g.fillStyle = gr;
+      g.fillRect(0, h * 0.58, w, h * 0.42);
+      glow(g, cx, h * 0.44, u * 0.42, "rgba(255,255,235,0.5)");
+
+      const topY = h * 0.66, rx = u * 0.27, ry = rx * 0.2, ph = u * 0.24;
+      // Soft shadow on the floor.
+      g.save();
+      g.translate(cx + u * 0.03, topY + ph + ry * 0.2);
+      g.scale(1, 0.22);
+      glow(g, 0, 0, rx * 1.7, "rgba(60,40,0,0.45)");
+      g.restore();
+      // Pedestal.
+      gr = g.createLinearGradient(cx - rx, 0, cx + rx, 0);
+      gr.addColorStop(0, "#0c0c0c");
+      gr.addColorStop(0.28, "#353535");
+      gr.addColorStop(0.62, "#161616");
+      gr.addColorStop(0.92, "#3a3320");
+      gr.addColorStop(1, "#0a0a0a");
+      g.fillStyle = gr;
+      g.beginPath();
+      g.moveTo(cx - rx, topY);
+      g.lineTo(cx - rx, topY + ph);
+      g.ellipse(cx, topY + ph, rx, ry, 0, Math.PI, 0, true);
+      g.lineTo(cx + rx, topY);
+      g.closePath();
+      g.fill();
+      gr = g.createLinearGradient(cx - rx, topY - ry, cx + rx, topY + ry);
+      gr.addColorStop(0, "#3a3a3a");
+      gr.addColorStop(1, "#1a1a1a");
+      g.fillStyle = gr;
+      g.beginPath();
+      g.ellipse(cx, topY, rx, ry, 0, 0, Math.PI * 2);
+      g.fill();
+
+      // Bottle.
+      const bw = u * 0.2, bh = u * 0.28, yb = topY + ry * 0.12, x0 = cx - bw / 2;
+      g.save();
+      g.translate(cx, yb);
+      g.scale(1, 0.22);
+      glow(g, 0, 0, bw * 0.75, "rgba(0,0,0,0.55)");
+      g.restore();
+      gr = g.createLinearGradient(x0, 0, x0 + bw, 0);
+      gr.addColorStop(0, "#050505");
+      gr.addColorStop(0.2, "#2c2c2c");
+      gr.addColorStop(0.48, "#0b0b0b");
+      gr.addColorStop(0.86, "#232015");
+      gr.addColorStop(1, "#060606");
+      g.fillStyle = gr;
+      g.beginPath();
+      g.roundRect(x0, yb - bh, bw, bh, [bw * 0.2, bw * 0.2, bw * 0.05, bw * 0.05]);
+      g.fill();
+      gr = g.createLinearGradient(0, yb - bh, 0, yb);
+      gr.addColorStop(0, "rgba(255,255,255,0)");
+      gr.addColorStop(0.2, "rgba(255,255,255,0.4)");
+      gr.addColorStop(0.8, "rgba(255,255,255,0.28)");
+      gr.addColorStop(1, "rgba(255,255,255,0)");
+      g.fillStyle = gr;
+      g.fillRect(x0 + bw * 0.15, yb - bh * 0.94, bw * 0.06, bh * 0.88);
+      g.fillStyle = rgba(C.accent, 0.4);
+      g.fillRect(x0 + bw * 0.9, yb - bh * 0.86, bw * 0.025, bh * 0.78);
+      // Label.
+      g.strokeStyle = "#cfae5a";
+      g.lineWidth = Math.max(1, u * 0.002);
+      g.strokeRect(x0 + bw * 0.2, yb - bh * 0.62, bw * 0.6, bh * 0.3);
+      g.fillStyle = "#d8b85f";
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      g.font = `700 ${u * 0.03}px Oswald, sans-serif`;
+      g.fillText("LUMEN", cx, yb - bh * 0.5);
+      g.font = `500 ${u * 0.012}px Oswald, sans-serif`;
+      g.fillText("EAU DE PARFUM", cx, yb - bh * 0.4);
+      // Neck and gold cap.
+      const nw = u * 0.07, nh = u * 0.04, cw = u * 0.105, ch = u * 0.08;
+      g.fillStyle = "#121212";
+      g.fillRect(cx - nw / 2, yb - bh - nh, nw, nh + 2);
+      gr = g.createLinearGradient(cx - cw / 2, 0, cx + cw / 2, 0);
+      gr.addColorStop(0, "#6b4e14");
+      gr.addColorStop(0.32, "#f6d57f");
+      gr.addColorStop(0.58, "#b8902e");
+      gr.addColorStop(1, "#4f3a0e");
+      g.fillStyle = gr;
+      g.beginPath();
+      g.roundRect(cx - cw / 2, yb - bh - nh - ch, cw, ch, cw * 0.1);
+      g.fill();
+      vignette(g, w, h, 0.35);
+    }
+
+    // A couple on a hill at sunset.
+    function paintEvent(g, w, h) {
+      const u = Math.min(w, h), r = rng(5), hy = h * 0.7;
+      let gr = g.createLinearGradient(0, 0, 0, h);
+      gr.addColorStop(0, "#221941");
+      gr.addColorStop(0.3, "#6a2f6c");
+      gr.addColorStop(0.5, "#d0506a");
+      gr.addColorStop(0.64, "#ff8a3c");
+      gr.addColorStop(0.72, "#ffc56c");
+      gr.addColorStop(1, "#ffc56c");
+      g.fillStyle = gr;
+      g.fillRect(0, 0, w, h);
+      g.save();
+      g.globalCompositeOperation = "lighter";
+      glow(g, w * 0.5, hy, u * 0.6, "rgba(255,170,80,0.55)");
+      glow(g, w * 0.5, hy - u * 0.02, u * 0.16, "rgba(255,240,200,0.9)");
+      g.restore();
+      g.fillStyle = "#fff4d0";
+      g.beginPath();
+      g.arc(w * 0.5, hy - u * 0.02, u * 0.07, 0, Math.PI * 2);
+      g.fill();
+      // Thin clouds.
+      g.fillStyle = "rgba(255,160,170,0.2)";
+      for (let i = 0; i < 6; i++) {
+        g.beginPath();
+        g.ellipse(r() * w, h * (0.38 + r() * 0.22), u * (0.2 + r() * 0.3), u * (0.012 + r() * 0.012), 0, 0, Math.PI * 2);
+        g.fill();
+      }
+      // Far hills, then the near hill the couple stands on.
+      g.fillStyle = "#4a1f38";
+      g.beginPath();
+      g.moveTo(0, hy + u * 0.02);
+      for (let x = 0; x <= w; x += w / 24) g.lineTo(x, hy + u * 0.01 - Math.sin(x / w * 7 + 1) * u * 0.02);
+      g.lineTo(w, h);
+      g.lineTo(0, h);
+      g.fill();
+      const crest = (x) => hy + u * 0.07 + Math.pow((x - w * 0.5) / (w * 0.5), 2) * u * 0.08;
+      g.fillStyle = "#12070d";
+      g.beginPath();
+      g.moveTo(0, h);
+      for (let x = 0; x <= w; x += w / 40) g.lineTo(x, crest(x));
+      g.lineTo(w, h);
+      g.fill();
+      for (let i = 0; i < 90; i++) {
+        const x = r() * w, y = crest(x) + 1, gh = u * (0.01 + r() * 0.03), lean = (r() - 0.5) * gh;
+        g.beginPath();
+        g.moveTo(x - u * 0.003, y);
+        g.lineTo(x + lean, y - gh);
+        g.lineTo(x + u * 0.003, y);
+        g.fill();
+      }
+      // The couple, holding hands.
+      const k = Math.min(h * 0.32, w * 0.46), base = crest(w * 0.5) + 1;
+      const gx = w * 0.5 - k * 0.14, bx = w * 0.5 + k * 0.12;
+      g.fillStyle = "#0b0408";
+      g.beginPath();
+      g.arc(gx, base - k * 0.92, k * 0.066, 0, Math.PI * 2);
+      g.moveTo(gx - k * 0.11, base - k * 0.8);
+      g.lineTo(gx + k * 0.11, base - k * 0.8);
+      g.lineTo(gx + k * 0.08, base - k * 0.44);
+      g.lineTo(gx + k * 0.075, base);
+      g.lineTo(gx + k * 0.01, base);
+      g.lineTo(gx, base - k * 0.4);
+      g.lineTo(gx - k * 0.01, base);
+      g.lineTo(gx - k * 0.075, base);
+      g.lineTo(gx - k * 0.08, base - k * 0.44);
+      g.closePath();
+      g.fill();
+      g.beginPath();
+      g.arc(bx, base - k * 0.85, k * 0.058, 0, Math.PI * 2);
+      g.moveTo(bx - k * 0.07, base - k * 0.76);
+      g.lineTo(bx + k * 0.07, base - k * 0.76);
+      g.lineTo(bx + k * 0.06, base - k * 0.55);
+      g.bezierCurveTo(bx + k * 0.12, base - k * 0.3, bx + k * 0.24, base - k * 0.08, bx + k * 0.3, base);
+      g.lineTo(bx - k * 0.2, base);
+      g.bezierCurveTo(bx - k * 0.15, base - k * 0.1, bx - k * 0.08, base - k * 0.3, bx - k * 0.06, base - k * 0.55);
+      g.closePath();
+      g.fill();
+      // Arms meeting between them.
+      g.lineWidth = k * 0.03;
+      g.lineCap = "round";
+      g.strokeStyle = "#0b0408";
+      g.beginPath();
+      g.moveTo(gx + k * 0.1, base - k * 0.76);
+      g.quadraticCurveTo(gx + k * 0.14, base - k * 0.58, w * 0.5, base - k * 0.5);
+      g.quadraticCurveTo(bx - k * 0.08, base - k * 0.55, bx - k * 0.06, base - k * 0.72);
+      g.stroke();
+      // A veil catching the wind.
+      g.fillStyle = "rgba(11,4,8,0.62)";
+      g.beginPath();
+      g.moveTo(bx - k * 0.02, base - k * 0.9);
+      g.bezierCurveTo(bx + k * 0.2, base - k * 0.92, bx + k * 0.34, base - k * 0.7, bx + k * 0.42, base - k * 0.45);
+      g.bezierCurveTo(bx + k * 0.3, base - k * 0.55, bx + k * 0.16, base - k * 0.6, bx + k * 0.05, base - k * 0.8);
+      g.closePath();
+      g.fill();
+      // A faint lens flare.
+      g.save();
+      g.globalCompositeOperation = "lighter";
+      [[0.35, 0.05, 0.25], [0.6, 0.025, 0.2], [0.85, 0.07, 0.12]].forEach(([p, s, a]) => {
+        const fx = lerp(w * 0.5, w * 0.82, p), fy = lerp(hy, h * 0.95, p);
+        glow(g, fx, fy, u * s, `rgba(255,200,150,${a})`);
+      });
+      g.restore();
+      vignette(g, w, h, 0.5);
+    }
+
+    const PAINTERS = [paintPortrait, paintProduct, paintEvent];
+
+    // ---------- Layout ----------
+    let W = 0, H = 0, DPR = 1, L = null, scenes = [], small = null;
+    let tl = null;
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+
+    function makeLayout() {
+      const m = Math.min(W, H) * 0.04;
+      const wide = W / H >= 1.3;
+      const lay = { m, wide, slotsA: [], slotsB: [] };
+      const printPose = (cx, cy, pw, rot) => ({ cx, cy, w: pw, h: printHeight(pw), rot, border: 1 });
+      if (wide) {
+        lay.vf = { x: m, y: m, w: W * 0.58 - m * 1.5, h: H - m * 2 };
+        const x0 = lay.vf.x + lay.vf.w + m * 1.2, cw = W - x0 - m;
+        const pw = Math.min(cw * 0.3, (H * 0.36) / 1.5);
+        const ph = printHeight(pw);
+        [[0.18, -5, 0.02], [0.5, 3, -0.03], [0.82, -2, 0.03]].forEach(([fx, rot, dy], i) => {
+          lay.slotsA.push(printPose(x0 + cw * fx, m * 1.4 + ph / 2 + dy * ph, pw, rot));
+        });
+        lay.slotsB = lay.slotsA;
+        lay.card = { x: x0, y: m * 2.4 + ph, w: cw, h: H - m * 3.4 - ph };
+        lay.spot = { x: x0 + cw / 2, y: m + ph / 2, r: cw * 0.7 };
+      } else {
+        lay.vf = { x: m, y: m, w: W - m * 2, h: H - m * 2 };
+        if (H / W > 1.12) {
+          const y0 = m * 1.6, areaH = H * 0.4;
+          const pw = Math.min(W * 0.34, areaH / 1.55);
+          [[-0.66, 0.06, -9], [0, -0.05, 2], [0.66, 0.05, 8]].forEach(([dx, dy, rot]) => {
+            lay.slotsB.push(printPose(W / 2 + dx * pw, y0 + areaH / 2 + dy * pw, pw, rot));
+          });
+          lay.card = { x: W * 0.08, y: y0 + areaH + m * 0.8, w: W * 0.84, h: H - (y0 + areaH + m * 0.8) - m * 1.6 };
+          lay.spot = { x: W / 2, y: y0 + areaH / 2, r: W * 0.6 };
+        } else {
+          const aw = W * 0.44, pw = Math.min(aw / 1.75, (H * 0.8) / 2.5);
+          const ph = printHeight(pw), acx = m + aw / 2;
+          [[-0.2, -0.36, -7], [0.02, 0, 3], [0.2, 0.36, -4]].forEach(([dx, dy, rot]) => {
+            lay.slotsB.push(printPose(acx + dx * pw, H / 2 + dy * ph, pw, rot));
+          });
+          lay.card = { x: W * 0.5, y: m * 2, w: W * 0.46, h: H - m * 4 };
+          lay.spot = { x: acx, y: H / 2, r: aw };
+        }
+        // While shooting, each print shrinks in the viewfinder, then drops out of the frame.
+        lay.mid = lay.slotsB.map((s) => ({ ...s, cx: W / 2, cy: H * 0.56, w: s.w * 1.25, h: s.h * 1.25, rot: s.rot * 0.5 }));
+        lay.slotsA = lay.slotsB.map((s, i) => ({ ...s, cx: W / 2 + (i - 1) * s.w * 0.3, cy: H + s.h * 0.7, rot: s.rot * 2 }));
+      }
+      lay.card = layoutCard(lay.card);
+      return lay;
+    }
+    function printHeight(pw) {
+      const b = pw * 0.055;
+      return (pw - b * 2) * 1.25 + b + b * 3.4;
+    }
+
+    // The service card: a label, the headline with its key word on a yellow block,
+    // the services with icons, a booking button and a contact line. Everything is
+    // sized to fit its box and centred in it vertically.
+    function layoutCard(R) {
+      let b = Math.min(R.w * 0.06, R.h * 0.052);
+      for (let tries = 0; tries < 40; tries++, b *= 0.94) {
+        const cols = R.w > b * 15 ? 2 : 1;
+        const rows = SERVICES.length / cols;
+        const rest = b * 0.75 + b * 0.9 + rows * b * 2 + b * 1.1 + b * 2.4 + b * 0.9 + b * 0.75;
+        const headRoom = R.h - rest;
+        if (headRoom < b * 2) continue;
+        let fs = Math.min(R.w * 0.2, b * 3.6, headRoom / 1.05);
+        for (; fs > b; fs *= 0.95) {
+          ctx.font = `${fs}px Anton, Impact, sans-serif`;
+          const pad = fs * 0.14, space = ctx.measureText(" ").width;
+          const tokens = words.map((w) => ({ t: w, w: ctx.measureText(w).width, key: false }));
+          tokens.push({ t: keyWord, w: ctx.measureText(keyWord).width + pad * 2, key: true });
+          const lines = [];
+          let cur = [], cw = 0;
+          for (const tk of tokens) {
+            const add = (cur.length ? space : 0) + tk.w;
+            if (cur.length && cw + add > R.w) {
+              lines.push({ toks: cur, w: cw });
+              cur = [tk];
+              cw = tk.w;
+            } else {
+              cur.push(tk);
+              cw += add;
+            }
+          }
+          lines.push({ toks: cur, w: cw });
+          const lh = fs * 1.04;
+          if (lines.some((l) => l.w > R.w) || lines.length * lh > headRoom || lines.length > 4) continue;
+          const total = rest + lines.length * lh;
+          const top = R.y + Math.max(0, (R.h - total) / 2);
+          return { R, b, fs, lh, pad, space, lines, cols, top };
+        }
+      }
+      return { R, b, fs: b, lh: b, pad: 0, space: 0, lines: [], cols: 1, top: R.y };
+    }
+
+    function build() {
+      const keep = tl ? tl.time() : 0;
+      if (tl) tl.kill();
+      W = innerWidth;
+      H = innerHeight;
+      DPR = Math.min(2, devicePixelRatio || 1);
+      canvas.width = Math.round(W * DPR);
+      canvas.height = Math.round(H * DPR);
+      L = makeLayout();
+
+      // Paint each scene a little larger than the viewfinder, for drift and zoom.
+      const s = Math.min(DPR * 1.12, 2000 / Math.max(L.vf.w, L.vf.h));
+      scenes = PAINTERS.map((paint) => {
+        const c = document.createElement("canvas");
+        c.width = Math.round(L.vf.w * s);
+        c.height = Math.round(L.vf.h * s);
+        paint(c.getContext("2d"), c.width, c.height);
+        return c;
+      });
+      small = document.createElement("canvas");
+
+      tl = gsap.timeline({ repeat: -1, onUpdate: render });
+      tl.to({}, { duration: LOOP }, 0);
+      tl.addLabel("hold", 8.4);
+      if (reduce.matches) tl.pause(tl.labels.hold);
+      else tl.time(keep % LOOP);
+      render();
+      sound.replan();
+    }
+
+    // ---------- Drawing ----------
+
+    function cover(img, x, y, w, h, zoom = 1, ox = 0, oy = 0) {
+      const s = Math.max(w / img.width, h / img.height) * zoom;
+      const dw = img.width * s, dh = img.height * s;
+      ctx.drawImage(img, x + (w - dw) / 2 + ox, y + (h - dh) / 2 + oy, dw, dh);
+    }
+    // Draw a scene with a soft focus blur.
+    function coverBlur(img, x, y, w, h, zoom, ox, oy, blur) {
+      if (blur < 0.3) return cover(img, x, y, w, h, zoom, ox, oy);
+      if (canFilter) {
+        ctx.filter = `blur(${blur.toFixed(2)}px)`;
+        cover(img, x, y, w, h, zoom, ox, oy);
+        ctx.filter = "none";
+        return;
+      }
+      const k = 1 / (1 + blur * 0.35);
+      small.width = Math.max(2, Math.round(img.width * k * 0.5));
+      small.height = Math.max(2, Math.round(img.height * k * 0.5));
+      small.getContext("2d").drawImage(img, 0, 0, small.width, small.height);
+      cover(small, x, y, w, h, zoom, ox, oy);
+    }
+
+    function focusBlur(t, max) {
+      for (let i = HUNTS.length - 1; i >= 0; i--) {
+        const [h0, lock] = HUNTS[i];
+        if (t >= h0 - (i ? 0.02 : 0.4)) {
+          if (t >= lock) return 0;
+          if (t < h0) return max;
+          const u = prog(t, h0, lock);
+          return max * Math.pow(1 - u, 1.3) * (0.62 + 0.38 * Math.cos(u * Math.PI * 3));
+        }
+      }
+      return max;
+    }
+    function shotIndex(t) {
+      if (t >= WHIPS[1][1]) return 2;
+      if (t >= WHIPS[0][1]) return 1;
+      return 0;
+    }
+    function curtain(t) {
+      let c = 1 - tw(t, 0.05, 0.42, "power2.inOut");
+      for (const s of SHOTS) {
+        const d = t - s;
+        if (d >= 0 && d < 0.17) c = Math.max(c, d < 0.035 ? d / 0.035 : d < 0.07 ? 1 : 1 - (d - 0.07) / 0.1);
+      }
+      c = Math.max(c, tw(t, L.wide ? EXIT : 5.48, L.wide ? EXIT + 0.16 : 5.68, "power2.in"));
+      return c;
+    }
+
+    function drawSet(t) {
+      const a = L.wide ? tw(t, 0.2, 0.9) : tw(t, 5.62, 6.0);
+      if (a <= 0) return;
+      ctx.save();
+      ctx.globalAlpha = a;
+      const S = L.spot;
+      const gr = ctx.createRadialGradient(S.x, S.y, 0, S.x, S.y, S.r);
+      gr.addColorStop(0, "rgba(255,238,200,0.09)");
+      gr.addColorStop(1, "rgba(255,238,200,0)");
+      ctx.fillStyle = gr;
+      ctx.fillRect(0, 0, W, H);
+      // Yellow crop marks in the corners.
+      const m = L.m * 0.7, len = L.m * 1.1;
+      ctx.strokeStyle = C.accent;
+      ctx.lineWidth = Math.max(1.5, L.m * 0.08);
+      ctx.beginPath();
+      [[m, m, 1, 1], [W - m, m, -1, 1], [m, H - m, 1, -1], [W - m, H - m, -1, -1]].forEach(([x, y, sx, sy]) => {
+        ctx.moveTo(x + sx * len, y);
+        ctx.lineTo(x, y);
+        ctx.lineTo(x, y + sy * len);
+      });
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Empty dashed frames where the prints will land (wide layout only).
+    function drawSlots(t) {
+      if (!L.wide) return;
+      const a = tw(t, 0.3, 0.9) * (1 - tw(t, EXIT, EXIT + 0.3));
+      if (a <= 0) return;
+      L.slotsA.forEach((s, i) => {
+        const landed = tw(t, SHOTS[i] + 0.5, SHOTS[i] + 0.62);
+        ctx.save();
+        ctx.globalAlpha = a * (1 - landed);
+        ctx.translate(s.cx, s.cy);
+        ctx.rotate((s.rot * Math.PI) / 180);
+        ctx.setLineDash([s.w * 0.05, s.w * 0.04]);
+        ctx.strokeStyle = rgba(C.accent, 0.6);
+        ctx.lineWidth = Math.max(1, s.w * 0.012);
+        ctx.strokeRect(-s.w / 2, -s.h / 2, s.w, s.h);
+        ctx.setLineDash([]);
+        ctx.fillStyle = rgba(C.accent, 0.8);
+        ctx.font = `700 ${s.w * 0.12}px "JetBrains Mono", monospace`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(`0${i + 1}`, 0, 0);
+        ctx.restore();
+      });
+    }
+
+    function drawViewfinder(t) {
+      const R = L.vf;
+      const a = L.wide ? 1 - tw(t, EXIT + 0.16, EXIT + 0.35) : 1 - tw(t, 5.7, 5.88);
+      if (a <= 0) return;
+      const s = Math.min(R.w, R.h), rad = L.m * 0.35;
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.beginPath();
+      ctx.roundRect(R.x, R.y, R.w, R.h, rad);
+      ctx.clip();
+      ctx.fillStyle = "#000";
+      ctx.fillRect(R.x, R.y, R.w, R.h);
+
+      // Live view: a handheld drift, a focus pull, and a quick pan between scenes.
+      const max = s * 0.03;
+      const blur = focusBlur(t, max);
+      const ox = R.w * 0.006 * Math.sin(t * 1.3) + R.w * 0.003 * Math.sin(t * 3.1);
+      const oy = R.h * 0.005 * Math.cos(t * 1.7);
+      const zoom = 1.08 + 0.025 * (blur / max);
+      const whip = WHIPS.find(([a0, a1]) => t >= a0 && t < a1);
+      if (whip) {
+        const i = WHIPS.indexOf(whip), p = tw(t, whip[0], whip[1], "power2.inOut");
+        const wb = max * 0.6 * Math.sin(Math.PI * p);
+        coverBlur(scenes[i], R.x, R.y, R.w, R.h, zoom, ox - p * R.w * 1.05, oy, wb + blur);
+        coverBlur(scenes[i + 1], R.x, R.y, R.w, R.h, zoom * 1.03, ox + (1 - p) * R.w * 1.05, oy, wb + max);
+      } else {
+        coverBlur(scenes[shotIndex(t)], R.x, R.y, R.w, R.h, zoom, ox, oy, blur);
+      }
+
+      drawHud(t, R, s);
+
+      // Shutter curtains and the flash.
+      const c = curtain(t);
+      if (c > 0) {
+        const ch = (R.h / 2) * c;
+        ctx.fillStyle = "#050505";
+        ctx.fillRect(R.x, R.y, R.w, ch);
+        ctx.fillRect(R.x, R.y + R.h - ch, R.w, ch);
+        ctx.strokeStyle = "rgba(255,255,255,0.06)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let k = 1; k < 4; k++) {
+          ctx.moveTo(R.x, R.y + (ch * k) / 4);
+          ctx.lineTo(R.x + R.w, R.y + (ch * k) / 4);
+          ctx.moveTo(R.x, R.y + R.h - (ch * k) / 4);
+          ctx.lineTo(R.x + R.w, R.y + R.h - (ch * k) / 4);
+        }
+        ctx.stroke();
+      }
+      for (const sh of SHOTS) {
+        const d = t - (sh + 0.07);
+        if (d >= 0 && d < 0.35) {
+          ctx.fillStyle = `rgba(255,255,255,${0.85 * Math.pow(1 - d / 0.35, 2)})`;
+          ctx.fillRect(R.x, R.y, R.w, R.h);
+        }
+      }
+      ctx.restore();
+      // A thin camera screen edge.
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = "rgba(255,255,255,0.12)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(R.x + 0.5, R.y + 0.5, R.w - 1, R.h - 1, rad);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawHud(t, R, s) {
+      const a = tw(t, 0.15, 0.5);
+      if (a <= 0) return;
+      const hu = s * 0.03, inset = s * 0.045, white = C.ink;
+      const mono = (weight, size) => `${weight} ${size}px "JetBrains Mono", monospace`;
+      ctx.save();
+      ctx.globalAlpha *= a;
+
+      // Rule of thirds.
+      ctx.strokeStyle = rgba(white, 0.14);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let k = 1; k < 3; k++) {
+        ctx.moveTo(R.x + (R.w * k) / 3, R.y);
+        ctx.lineTo(R.x + (R.w * k) / 3, R.y + R.h);
+        ctx.moveTo(R.x, R.y + (R.h * k) / 3);
+        ctx.lineTo(R.x + R.w, R.y + (R.h * k) / 3);
+      }
+      ctx.stroke();
+
+      // Corner brackets.
+      const len = s * 0.07 * tw(t, 0.2, 0.55, "power3.out");
+      ctx.strokeStyle = white;
+      ctx.lineWidth = hu * 0.14;
+      ctx.lineCap = "square";
+      ctx.beginPath();
+      [[R.x + inset, R.y + inset, 1, 1], [R.x + R.w - inset, R.y + inset, -1, 1], [R.x + inset, R.y + R.h - inset, 1, -1], [R.x + R.w - inset, R.y + R.h - inset, -1, -1]].forEach(([x, y, sx, sy]) => {
+        ctx.moveTo(x + sx * len, y);
+        ctx.lineTo(x, y);
+        ctx.lineTo(x, y + sy * len);
+      });
+      ctx.stroke();
+
+      // Top row: mode badge and settings on the left, battery on the right.
+      const ty = R.y + inset + hu * 1.3;
+      ctx.textBaseline = "middle";
+      ctx.textAlign = "left";
+      ctx.font = mono(700, hu);
+      const bw = ctx.measureText("P").width + hu * 0.7;
+      ctx.fillStyle = C.accent;
+      ctx.beginPath();
+      ctx.roundRect(R.x + inset + hu * 0.5, ty - hu * 0.7, bw, hu * 1.4, hu * 0.25);
+      ctx.fill();
+      ctx.fillStyle = "#0d0d0d";
+      ctx.fillText("P", R.x + inset + hu * 0.85, ty + hu * 0.05);
+      ctx.fillStyle = white;
+      ctx.font = mono(500, hu * 0.85);
+      ctx.fillText("AF-S   RAW", R.x + inset + hu * 0.9 + bw, ty);
+      const bx = R.x + R.w - inset - hu * 2.6;
+      ctx.strokeStyle = white;
+      ctx.lineWidth = hu * 0.1;
+      ctx.strokeRect(bx, ty - hu * 0.45, hu * 1.8, hu * 0.9);
+      ctx.fillStyle = white;
+      ctx.fillRect(bx + hu * 1.8, ty - hu * 0.2, hu * 0.16, hu * 0.4);
+      ctx.fillStyle = C.accent;
+      for (let k = 0; k < 3; k++) ctx.fillRect(bx + hu * (0.18 + k * 0.54), ty - hu * 0.28, hu * 0.42, hu * 0.56);
+
+      // Focus box: hunts, then locks in yellow with a little pop.
+      const shot = Math.min(2, SHOTS.filter((x) => t >= x + 0.4).length);
+      const [h0, lock] = HUNTS[shotIndex(t)];
+      const locked = t >= lock;
+      const u = prog(t, h0, lock);
+      const hunt = locked ? 0 : 1 - u;
+      const pop = locked ? 1 + 0.18 * Math.max(0, 1 - (t - lock) / 0.15) : 1;
+      const fb = s * 0.17 * (1 + 0.22 * hunt * Math.abs(Math.sin(u * 9))) * pop;
+      const fx = R.x + R.w / 2 + s * 0.03 * hunt * Math.sin(u * 17);
+      const fy = R.y + R.h * 0.44 + s * 0.02 * hunt * Math.cos(u * 13);
+      const fl = fb * 0.26;
+      ctx.strokeStyle = locked ? C.accent : white;
+      ctx.lineWidth = hu * 0.13;
+      ctx.beginPath();
+      [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sy]) => {
+        const x = fx + (sx * fb) / 2, y = fy + (sy * fb) / 2;
+        ctx.moveTo(x - sx * fl, y);
+        ctx.lineTo(x, y);
+        ctx.lineTo(x, y - sy * fl);
+      });
+      ctx.stroke();
+      ctx.fillStyle = locked ? C.accent : white;
+      ctx.beginPath();
+      ctx.arc(fx, fy, hu * 0.14, 0, Math.PI * 2);
+      ctx.fill();
+      if (locked) {
+        ctx.font = mono(700, hu * 0.7);
+        ctx.textAlign = "left";
+        ctx.fillText("AF", fx + fb / 2 + hu * 0.3, fy - fb / 2 + hu * 0.3);
+      }
+
+      // Exposure meter: the needle wanders while hunting and settles on zero.
+      const sh = hu * 2.4, sy = R.y + R.h - inset - sh - hu * 0.6;
+      const mw = Math.min(R.w * 0.46, hu * 14), mx = R.x + R.w / 2 - mw / 2, my = sy - hu * 1.5;
+      ctx.strokeStyle = rgba(white, 0.85);
+      ctx.fillStyle = rgba(white, 0.85);
+      ctx.lineWidth = Math.max(1, hu * 0.07);
+      ctx.beginPath();
+      for (let k = 0; k <= 12; k++) {
+        const x = mx + (mw * k) / 12, big = k % 3 === 0;
+        ctx.moveTo(x, my);
+        ctx.lineTo(x, my - hu * (big ? 0.5 : 0.28));
+      }
+      ctx.stroke();
+      ctx.font = mono(500, hu * 0.6);
+      ctx.textAlign = "center";
+      ["-2", "-1", "0", "+1", "+2"].forEach((lab, k) => ctx.fillText(lab, mx + (mw * k) / 4, my - hu * 1.0));
+      const v = hunt * 1.4 * Math.sin(u * 11 + shot);
+      const nx = mx + mw / 2 + (mw / 4) * v;
+      ctx.fillStyle = C.accent;
+      ctx.beginPath();
+      ctx.moveTo(nx, my + hu * 0.1);
+      ctx.lineTo(nx - hu * 0.35, my + hu * 0.6);
+      ctx.lineTo(nx + hu * 0.35, my + hu * 0.6);
+      ctx.fill();
+
+      // Readout strip.
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.beginPath();
+      ctx.roundRect(R.x + inset + hu * 0.4, sy, R.w - inset * 2 - hu * 0.8, sh, hu * 0.4);
+      ctx.fill();
+      const count = `[${482 - SHOTS.filter((x) => t >= x).length}]`;
+      const read = "1/250   F2.8   ISO 100";
+      let f = hu * 0.95;
+      ctx.font = mono(500, f);
+      const need = () => ctx.measureText(read).width + ctx.measureText(count).width + hu * 3;
+      while (need() > R.w - inset * 2 - hu && f > 6) {
+        f *= 0.92;
+        ctx.font = mono(500, f);
+      }
+      ctx.textAlign = "left";
+      ctx.fillStyle = white;
+      ctx.fillText(read, R.x + inset + hu * 1.2, sy + sh / 2);
+      ctx.textAlign = "right";
+      ctx.fillStyle = C.accent;
+      ctx.font = mono(700, f);
+      ctx.fillText(count, R.x + R.w - inset - hu * 1.2, sy + sh / 2);
+      ctx.restore();
+    }
+
+    // Where each print is at time t, or null.
+    function printPose(t, i) {
+      const S = SHOTS[i];
+      if (t < S + 0.1) return null;
+      const R = L.vf;
+      const full = { cx: R.x + R.w / 2, cy: R.y + R.h / 2, w: R.w, h: R.h, rot: 0, border: 0 };
+      const mix = (a, b, k) => ({ cx: lerp(a.cx, b.cx, k), cy: lerp(a.cy, b.cy, k), w: lerp(a.w, b.w, k), h: lerp(a.h, b.h, k), rot: lerp(a.rot, b.rot, k), border: lerp(a.border, b.border, k) });
+      let pose;
+      if (L.wide) {
+        pose = mix(full, L.slotsA[i], tw(t, S + 0.1, S + 0.62, "power3.inOut"));
+      } else if (t < 5.75) {
+        pose = mix(full, L.mid[i], tw(t, S + 0.1, S + 0.45, "power3.inOut"));
+        pose = mix(pose, L.slotsA[i], tw(t, S + 0.5, S + 0.78, "power2.in"));
+      } else {
+        const B = L.slotsB[i], from = { ...B, cy: B.cy + H * 0.75, rot: B.rot + 14 };
+        pose = mix(from, B, tw(t, 5.8 + i * 0.09, 6.35 + i * 0.09, "back.out(1.3)"));
+      }
+      const out = tw(t, EXIT, EXIT + 0.32, "power2.in");
+      pose.cy += out * H * 0.08;
+      pose.alpha = 1 - out;
+      pose.tape = L.wide ? tw(t, S + 0.6, S + 0.7) : tw(t, 6.3 + i * 0.09, 6.4 + i * 0.09);
+      return pose;
+    }
+
+    function drawPrint(P, i) {
+      if (!P || P.alpha <= 0) return;
+      ctx.save();
+      ctx.globalAlpha = P.alpha;
+      ctx.translate(P.cx, P.cy);
+      ctx.rotate((P.rot * Math.PI) / 180);
+      const w = P.w, h = P.h, b = w * 0.055 * P.border, bottom = b * 3.4;
+      ctx.shadowColor = "rgba(0,0,0,0.55)";
+      ctx.shadowBlur = w * 0.08 * P.border;
+      ctx.shadowOffsetY = w * 0.02 * P.border;
+      ctx.fillStyle = "#f4f1ea";
+      ctx.fillRect(-w / 2, -h / 2, w, h);
+      ctx.shadowColor = "transparent";
+      const ix = -w / 2 + b, iy = -h / 2 + b, iw = w - b * 2, ih = h - b - (P.border ? bottom : 0) * 1;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(ix, iy, iw, ih);
+      ctx.clip();
+      cover(scenes[i], ix, iy, iw, ih, 1.06);
+      ctx.restore();
+      if (P.border > 0.5) {
+        const lb = w * 0.055;
+        ctx.globalAlpha = P.alpha * prog(P.border, 0.5, 1);
+        ctx.fillStyle = "#4a4640";
+        ctx.font = `700 ${lb * 1.25}px "JetBrains Mono", monospace`;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText(`0${i + 1} ${LABELS[i]}`, ix, h / 2 - bottom / 2);
+        ctx.fillStyle = C.accent;
+        ctx.beginPath();
+        ctx.arc(w / 2 - lb * 1.8, h / 2 - bottom / 2, lb * 0.55, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (P.tape > 0) {
+        ctx.globalAlpha = P.alpha * P.tape * 0.88;
+        ctx.rotate(-0.07);
+        ctx.fillStyle = C.accent;
+        ctx.fillRect(-w * 0.17, -h / 2 - w * 0.05, w * 0.34, w * 0.1);
+      }
+      ctx.restore();
+    }
+
+    function drawIcon(kind, x, y, s, color) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.fillStyle = rgba(color, 0.14);
+      ctx.beginPath();
+      ctx.arc(0, 0, s * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = s * 0.075;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      if (kind === 0) {
+        ctx.arc(-s * 0.1, s * 0.04, s * 0.17, 0, Math.PI * 2);
+        ctx.moveTo(s * 0.27, s * 0.04);
+        ctx.arc(s * 0.1, s * 0.04, s * 0.17, 0, Math.PI * 2);
+      } else if (kind === 1) {
+        ctx.arc(0, -s * 0.1, s * 0.12, 0, Math.PI * 2);
+        ctx.moveTo(-s * 0.22, s * 0.26);
+        ctx.quadraticCurveTo(0, -s * 0.06, s * 0.22, s * 0.26);
+      } else if (kind === 2) {
+        ctx.roundRect(-s * 0.2, -s * 0.08, s * 0.4, s * 0.32, s * 0.04);
+        ctx.moveTo(-s * 0.09, -s * 0.08);
+        ctx.arc(0, -s * 0.08, s * 0.09, Math.PI, 0);
+      } else {
+        const r = s * 0.26;
+        ctx.moveTo(0, -r);
+        ctx.quadraticCurveTo(0, 0, r, 0);
+        ctx.quadraticCurveTo(0, 0, 0, r);
+        ctx.quadraticCurveTo(0, 0, -r, 0);
+        ctx.quadraticCurveTo(0, 0, 0, -r);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawCard(t) {
+      const K = L.card;
+      if (!K.lines.length || t < CARD) return;
+      const { R, b, fs, lh, pad, space } = K;
+      const out = tw(t, EXIT, EXIT + 0.3, "power2.in");
+      if (out >= 1) return;
+      ctx.save();
+      ctx.globalAlpha = 1 - out;
+      ctx.translate(0, out * b * 2);
+      let y = K.top;
+
+      // Label.
+      const la = tw(t, CARD, CARD + 0.3, "power3.out");
+      ctx.globalAlpha = (1 - out) * la;
+      ctx.fillStyle = C.accent;
+      ctx.fillRect(R.x + (1 - la) * -b, y + b * 0.1, b * 0.55, b * 0.55);
+      ctx.font = `700 ${b * 0.7}px "JetBrains Mono", monospace`;
+      ctx.textBaseline = "top";
+      ctx.textAlign = "left";
+      ctx.fillText("NOW BOOKING", R.x + b * 0.95 + (1 - la) * -b, y);
+      y += b * 0.75 + b * 0.9;
+
+      // Headline lines rise into place; the key word lands on its yellow block.
+      ctx.font = `${fs}px Anton, Impact, sans-serif`;
+      ctx.textBaseline = "alphabetic";
+      K.lines.forEach((line, li) => {
+        const p = tw(t, CARD + 0.05 + li * 0.08, CARD + 0.45 + li * 0.08, "power4.out");
+        ctx.save();
+        ctx.globalAlpha = 1 - out;
+        ctx.beginPath();
+        ctx.rect(R.x - fs, y - fs * 0.1, R.w + fs * 2, lh + fs * 0.1);
+        ctx.clip();
+        let x = R.x;
+        const base = y + fs * 0.92 + (1 - p) * lh;
+        for (const tk of line.toks) {
+          if (tk.key) {
+            const k = tw(t, CARD + 0.45, CARD + 0.62, "power3.out");
+            const bump = 1 + 0.06 * Math.sin(Math.PI * prog(t, CARD + 0.5, CARD + 0.72));
+            ctx.save();
+            ctx.translate(x + tk.w / 2, base - fs * 0.42);
+            ctx.rotate(-0.03);
+            ctx.scale(bump, bump);
+            ctx.beginPath();
+            ctx.rect(-tk.w / 2, -fs * 0.56, tk.w * k, fs * 1.02);
+            ctx.fillStyle = C.accent;
+            ctx.fill();
+            ctx.clip();
+            ctx.fillStyle = "#0d0d0d";
+            ctx.textAlign = "center";
+            ctx.fillText(tk.t, 0, fs * 0.42);
+            ctx.restore();
+          } else {
+            ctx.fillStyle = C.ink;
+            ctx.textAlign = "left";
+            ctx.fillText(tk.t, x, base);
+          }
+          x += tk.w + space;
+        }
+        ctx.restore();
+        y += lh;
+      });
+      y += b * 0.9;
+
+      // Services.
+      const colW = R.w / K.cols;
+      SERVICES.forEach((name, i) => {
+        const p = tw(t, CARD + 0.8 + i * 0.12, CARD + 1.2 + i * 0.12, "power3.out");
+        const cx = R.x + (i % K.cols) * colW, cy = y + Math.floor(i / K.cols) * b * 2 + b;
+        ctx.globalAlpha = (1 - out) * p;
+        drawIcon(i, cx + b * 0.8 - (1 - p) * b, cy, b * 1.5, C.accent);
+        ctx.fillStyle = C.ink;
+        ctx.font = `500 ${b * 0.95}px Oswald, sans-serif`;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText(name, cx + b * 1.85 - (1 - p) * b, cy);
+      });
+      y += (SERVICES.length / K.cols) * b * 2 + b * 1.1;
+
+      // Booking button with a pulse.
+      ctx.font = `700 ${b * 0.95}px Oswald, sans-serif`;
+      const label = "BOOK A SHOOT";
+      const bw = ctx.measureText(label).width + b * 3.4, bh = b * 2.4;
+      const bp = tw(t, CARD + 1.5, CARD + 1.85, "back.out(2.2)");
+      for (const k of [CARD + 2.0, CARD + 2.6]) {
+        const d = (t - k) / 0.7;
+        if (d > 0 && d < 1) {
+          ctx.globalAlpha = (1 - out) * 0.55 * (1 - d);
+          ctx.strokeStyle = C.accent;
+          ctx.lineWidth = b * 0.12;
+          ctx.beginPath();
+          ctx.roundRect(R.x - d * b * 0.8, y - d * b * 0.8, bw + d * b * 1.6, bh + d * b * 1.6, bh / 2 + d * b * 0.8);
+          ctx.stroke();
+        }
+      }
+      if (bp > 0) {
+        ctx.save();
+        ctx.globalAlpha = 1 - out;
+        ctx.translate(R.x + bw / 2, y + bh / 2);
+        ctx.scale(bp, bp);
+        ctx.fillStyle = C.accent;
+        ctx.beginPath();
+        ctx.roundRect(-bw / 2, -bh / 2, bw, bh, bh / 2);
+        ctx.fill();
+        ctx.fillStyle = "#0d0d0d";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, -bw / 2 + b * 1.1, b * 0.05);
+        const ax = bw / 2 - b * 1.4;
+        ctx.strokeStyle = "#0d0d0d";
+        ctx.lineWidth = b * 0.16;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+        ctx.moveTo(ax - b * 0.4, 0);
+        ctx.lineTo(ax + b * 0.4, 0);
+        ctx.moveTo(ax + b * 0.1, -b * 0.3);
+        ctx.lineTo(ax + b * 0.4, 0);
+        ctx.lineTo(ax + b * 0.1, b * 0.3);
+        ctx.stroke();
+        ctx.restore();
+      }
+      y += bh + b * 0.9;
+
+      // Contact line.
+      ctx.globalAlpha = (1 - out) * tw(t, CARD + 1.75, CARD + 2.05);
+      ctx.fillStyle = C.accent2;
+      ctx.font = `500 ${b * 0.72}px "JetBrains Mono", monospace`;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.fillText("hello@yourstudio.com", R.x, y);
+      ctx.restore();
+    }
+
+    function render() {
+      if (!L || !tl) return;
+      const t = ((tl.time() % LOOP) + LOOP) % LOOP;
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = C.bg;
+      ctx.fillRect(0, 0, W, H);
+      drawSet(t);
+      drawSlots(t);
+      drawViewfinder(t);
+      // Prints: the newest on top.
+      for (let i = 0; i < SHOTS.length; i++) drawPrint(printPose(t, i), i);
+      drawCard(t);
+      // Black at both ends of the loop, so it joins with no jump.
+      const black = Math.max(tw(t, EXIT + 0.3, EXIT + 0.45), 1 - tw(t, 0, 0.12));
+      if (black > 0) {
+        ctx.globalAlpha = black;
+        ctx.fillStyle = C.bg;
+        ctx.fillRect(0, 0, W, H);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    window.seekDemo = (t) => {
+      if (!tl) return;
+      tl.pause();
+      tl.totalTime(t);
+      render();
+    };
+
+    reduce.addEventListener("change", () => {
+      if (!tl) return;
+      if (reduce.matches) tl.pause(tl.labels.hold);
+      else tl.play();
+    });
+
+    // Sound: every sound is made with the Web Audio API. It is off until the
+    // parent page (or ?sound=1 / ?sound=effects) turns it on, and it follows the
+    // GSAP timeline clock. Effects are timed to the same moments as the pictures.
+    const sound = (() => {
+      const LEVEL = 1.1, MUSIC = 0.17;
+      const BEAT = 0.5; // 120 bpm: five bars fill the 10 s loop
+      const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+      const clock = () => (tl && !tl.paused() ? tl.totalTime() : null);
+      const loopLength = () => LOOP;
+      // Warm keys: Am9, Fmaj7, Cmaj7, G6, Em7.
+      const CHORDS = [[57, 60, 64, 67, 71], [53, 57, 60, 64], [48, 55, 59, 64], [55, 59, 62, 64], [52, 55, 59, 62]];
+      const ROOTS = [33, 29, 36, 31, 28];
+      let ctxA = null, master, impulse, noiseBuf, session = null, fxBus, musicBus, verbSend;
+      let wantOn = false, wantMusic = true, playing = false;
+      let timer = 0, sleepTimer = 0, anchor = null, doneUpTo = 0;
+
+      function plan() {
+        const list = [];
+        const add = (t, type, extra = {}, music = false) => list.push({ t, type, music, ...extra });
+        add(0.06, "open", {});
+        HUNTS.forEach(([h0, lock], i) => {
+          add(h0 + 0.02, "af", { dur: 0.3 });
+          add(h0 + (lock - h0) * 0.55, "af", { dur: 0.18 });
+          add(lock, "lock", {});
+        });
+        SHOTS.forEach((s, i) => {
+          add(s, "shutter", {});
+          add(s + 0.2, "charge", {});
+          add(s + 0.12, "whoosh", { dur: 0.45, p0: 0, p1: L && L.wide ? 0.5 : 0 });
+          if (L && L.wide) add(s + 0.6, "tap", { p: 0.2 + i * 0.15 });
+          else add(s + 0.5, "whoosh", { dur: 0.28, p0: 0, p1: 0, low: true });
+        });
+        WHIPS.forEach(([a, b]) => add(a, "swish", { dur: b - a }));
+        if (L && !L.wide) {
+          add(5.48, "close", {});
+          [0, 1, 2].forEach((i) => add(6.18 + i * 0.09, "tap", { p: (i - 1) * 0.3 }));
+        }
+        add(CARD + 0.02, "whoosh", { dur: 0.4, p0: 0.3, p1: 0.1 });
+        add(CARD + 0.5, "slam", {});
+        SERVICES.forEach((_, i) => add(CARD + 0.8 + i * 0.12, "tick", { f: hz([81, 84, 88, 91][i]) }));
+        add(CARD + 1.5, "pop", {});
+        add(CARD + 2.0, "shimmer", {});
+        add(EXIT, "close", {});
+
+        // Music: soft kick, snaps, off beat hats, a round bass and warm keys.
+        CHORDS.forEach((notes, bar) => {
+          const t0 = bar * 4 * BEAT;
+          for (let b = 0; b < 4; b++) {
+            add(t0 + b * BEAT, "kick", {}, true);
+            if (b % 2) add(t0 + b * BEAT, "snap", {}, true);
+            add(t0 + (b + 0.5) * BEAT, "hat", { v: 1 }, true);
+            add(t0 + (b + 0.75) * BEAT, "hat", { v: 0.45 }, true);
+          }
+          add(t0, "keys", { notes, dur: BEAT * 2.4, v: 1 }, true);
+          add(t0 + 2.5 * BEAT, "keys", { notes, dur: BEAT * 0.8, v: 0.7 }, true);
+          add(t0, "bass", { f: hz(ROOTS[bar]), dur: BEAT * 1.2 }, true);
+          add(t0 + 1.5 * BEAT, "bass", { f: hz(ROOTS[bar] + 12), dur: BEAT * 0.4 }, true);
+          add(t0 + 2.5 * BEAT, "bass", { f: hz(ROOTS[bar] + 7), dur: BEAT * 0.4 }, true);
+          add(t0 + 3 * BEAT, "bass", { f: hz(ROOTS[bar]), dur: BEAT * 0.8 }, true);
+        });
+        return list.sort((a, b) => a.t - b.t);
+      }
+      let events = [];
+
+      function makeGraph() {
+        ctxA = new (window.AudioContext || window.webkitAudioContext)();
+        const comp = ctxA.createDynamicsCompressor();
+        comp.threshold.value = -14;
+        comp.knee.value = 8;
+        comp.ratio.value = 4;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.2;
+        master = ctxA.createGain();
+        master.gain.value = LEVEL;
+        master.connect(comp).connect(ctxA.destination);
+        const len = Math.floor(ctxA.sampleRate * 1.2);
+        impulse = ctxA.createBuffer(2, len, ctxA.sampleRate);
+        for (let ch = 0; ch < 2; ch++) {
+          const d = impulse.getChannelData(ch);
+          for (let s = 0; s < len; s++) d[s] = (Math.random() * 2 - 1) * Math.pow(1 - s / len, 3.5);
+        }
+        noiseBuf = ctxA.createBuffer(1, ctxA.sampleRate * 2, ctxA.sampleRate);
+        const nd = noiseBuf.getChannelData(0);
+        for (let s = 0; s < nd.length; s++) nd[s] = Math.random() * 2 - 1;
+      }
+
+      function openSession() {
+        const t = ctxA.currentTime;
+        session = ctxA.createGain();
+        session.gain.setValueAtTime(0, t);
+        session.gain.linearRampToValueAtTime(1, t + 0.05);
+        session.connect(master);
+        fxBus = ctxA.createGain();
+        fxBus.connect(session);
+        musicBus = ctxA.createGain();
+        musicBus.gain.value = wantMusic ? MUSIC : 0;
+        musicBus.connect(session);
+        const verb = ctxA.createConvolver();
+        verb.buffer = impulse;
+        const tone = ctxA.createBiquadFilter();
+        tone.type = "lowpass";
+        tone.frequency.value = 4500;
+        const verbOut = ctxA.createGain();
+        verbOut.gain.value = 0.28;
+        verbSend = ctxA.createGain();
+        verbSend.connect(verb).connect(tone).connect(verbOut).connect(session);
+      }
+      function closeSession() {
+        const old = session, t = ctxA.currentTime;
+        session = null;
+        old.gain.cancelScheduledValues(t);
+        old.gain.setValueAtTime(old.gain.value, t);
+        old.gain.linearRampToValueAtTime(0, t + 0.15);
+        setTimeout(() => old.disconnect(), 250);
+      }
+
+      function amp(when, peak, attack, decay, out) {
+        const g = ctxA.createGain();
+        g.gain.setValueAtTime(0.0001, when);
+        g.gain.exponentialRampToValueAtTime(peak, when + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay);
+        g.connect(out);
+        return g;
+      }
+      function osc(type, freq, when, dur) {
+        const o = ctxA.createOscillator();
+        o.type = type;
+        o.frequency.setValueAtTime(freq, when);
+        o.start(when);
+        o.stop(when + dur + 0.05);
+        return o;
+      }
+      function noise(when, dur) {
+        const s = ctxA.createBufferSource();
+        s.buffer = noiseBuf;
+        s.loop = true;
+        s.start(when, Math.random() * 1.5);
+        s.stop(when + dur + 0.05);
+        return s;
+      }
+      function filter(type, freq, q = 0.7) {
+        const f = ctxA.createBiquadFilter();
+        f.type = type;
+        f.frequency.value = freq;
+        f.Q.value = q;
+        return f;
+      }
+      function pan(value, out) {
+        const p = ctxA.createStereoPanner();
+        p.pan.value = value;
+        p.connect(out);
+        return p;
+      }
+      function send(node, amount) {
+        const g = ctxA.createGain();
+        g.gain.value = amount;
+        node.connect(g).connect(verbSend);
+      }
+      function shape(when, points, out) {
+        const g = ctxA.createGain();
+        g.gain.setValueAtTime(0, when);
+        for (const [dt, v] of points) g.gain.linearRampToValueAtTime(v, when + dt);
+        g.connect(out);
+        return g;
+      }
+
+      const voices = {
+        open(when) {
+          // The camera wakes: a soft rising whirr.
+          const g = shape(when, [[0.05, 0.05], [0.3, 0.04], [0.4, 0]], fxBus);
+          const o = osc("sine", 700, when, 0.4);
+          o.frequency.exponentialRampToValueAtTime(1500, when + 0.35);
+          o.connect(filter("lowpass", 3000)).connect(g);
+          noise(when, 0.4).connect(filter("bandpass", 2400, 3)).connect(amp(when, 0.05, 0.05, 0.3, fxBus));
+        },
+        af(when, e) {
+          // Autofocus hunting: a fast run of tiny motor clicks over a thin whine.
+          const n = Math.round(e.dur / 0.03);
+          for (let k = 0; k < n; k++) {
+            const t = when + k * 0.03;
+            noise(t, 0.01).connect(filter("bandpass", 3200 + (k % 3) * 400, 4)).connect(amp(t, 0.1, 0.001, 0.008, fxBus));
+          }
+          const g = shape(when, [[0.03, 0.02], [e.dur, 0.015], [e.dur + 0.03, 0]], fxBus);
+          const o = osc("triangle", 1100, when, e.dur);
+          o.frequency.linearRampToValueAtTime(1350, when + e.dur);
+          o.connect(g);
+        },
+        lock(when) {
+          // Focus confirmed: the classic double beep.
+          [0, 0.075].forEach((dt) => {
+            const g = amp(when + dt, 0.08, 0.002, 0.045, pan(0.1, fxBus));
+            osc("sine", 2730, when + dt, 0.06).connect(g);
+          });
+        },
+        shutter(when) {
+          // Shutter: a sharp click, the mirror slap, then the curtain closing.
+          const out = fxBus;
+          noise(when, 0.02).connect(filter("highpass", 2500)).connect(amp(when, 0.5, 0.001, 0.015, out));
+          const thump = amp(when + 0.012, 0.45, 0.002, 0.06, out);
+          const o = osc("sine", 180, when + 0.012, 0.08);
+          o.frequency.exponentialRampToValueAtTime(70, when + 0.07);
+          o.connect(thump);
+          noise(when + 0.012, 0.05).connect(filter("bandpass", 900, 1.2)).connect(amp(when + 0.012, 0.35, 0.002, 0.04, out));
+          noise(when + 0.075, 0.02).connect(filter("highpass", 3000)).connect(amp(when + 0.075, 0.35, 0.001, 0.012, out));
+          send(thump, 0.25);
+        },
+        charge(when) {
+          // The flash recharging: a thin rising whine.
+          const g = shape(when, [[0.1, 0.012], [0.7, 0.016], [0.85, 0]], pan(0.3, fxBus));
+          const o = osc("sine", 1800, when, 0.9);
+          o.frequency.exponentialRampToValueAtTime(7800, when + 0.85);
+          o.connect(g);
+        },
+        whoosh(when, e) {
+          const p = ctxA.createStereoPanner();
+          p.pan.setValueAtTime(e.p0, when);
+          p.pan.linearRampToValueAtTime(e.p1, when + e.dur);
+          p.connect(fxBus);
+          const g = shape(when, [[e.dur * 0.55, e.low ? 0.12 : 0.16], [e.dur, 0]], p);
+          const bp = filter("bandpass", e.low ? 500 : 900, 0.9);
+          bp.frequency.setValueAtTime(e.low ? 700 : 700, when);
+          bp.frequency.exponentialRampToValueAtTime(e.low ? 250 : 2600, when + e.dur);
+          noise(when, e.dur + 0.05).connect(bp).connect(g);
+        },
+        swish(when, e) {
+          // A quick handheld pan.
+          const p = ctxA.createStereoPanner();
+          p.pan.setValueAtTime(0.6, when);
+          p.pan.linearRampToValueAtTime(-0.6, when + e.dur);
+          p.connect(fxBus);
+          const g = shape(when, [[e.dur * 0.5, 0.14], [e.dur, 0]], p);
+          const bp = filter("bandpass", 1200, 1.4);
+          bp.frequency.setValueAtTime(1800, when);
+          bp.frequency.exponentialRampToValueAtTime(600, when + e.dur);
+          noise(when, e.dur + 0.05).connect(bp).connect(g);
+        },
+        tap(when, e) {
+          // A print landing on the table.
+          const out = pan(e.p, fxBus);
+          noise(when, 0.04).connect(filter("bandpass", 1400, 1.1)).connect(amp(when, 0.22, 0.002, 0.03, out));
+          const o = osc("sine", 160, when, 0.06);
+          o.connect(amp(when, 0.12, 0.002, 0.05, out));
+        },
+        close(when) {
+          // Shutter closing on the scene: a heavier, darker click.
+          noise(when, 0.03).connect(filter("bandpass", 1600, 1)).connect(amp(when, 0.35, 0.001, 0.02, fxBus));
+          const g = amp(when + 0.02, 0.35, 0.003, 0.12, fxBus);
+          const o = osc("sine", 140, when + 0.02, 0.15);
+          o.frequency.exponentialRampToValueAtTime(55, when + 0.14);
+          o.connect(g);
+          send(g, 0.3);
+        },
+        slam(when) {
+          // The yellow block lands under the key word.
+          const g = amp(when, 0.5, 0.003, 0.22, fxBus);
+          const o = osc("sine", 120, when, 0.25);
+          o.frequency.exponentialRampToValueAtTime(48, when + 0.2);
+          o.connect(g);
+          noise(when, 0.08).connect(filter("bandpass", 2000, 0.8)).connect(amp(when, 0.25, 0.002, 0.06, fxBus));
+          send(g, 0.2);
+        },
+        tick(when, e) {
+          const g = amp(when, 0.08, 0.002, 0.12, pan(-0.2, fxBus));
+          osc("triangle", e.f, when, 0.14).connect(g);
+          send(g, 0.3);
+        },
+        pop(when) {
+          // The booking button pops in.
+          const g = amp(when, 0.3, 0.002, 0.16, fxBus);
+          const o = osc("sine", 900, when, 0.18);
+          o.frequency.exponentialRampToValueAtTime(420, when + 0.12);
+          o.connect(g);
+          noise(when, 0.02).connect(filter("highpass", 4000)).connect(amp(when, 0.15, 0.001, 0.01, fxBus));
+          send(g, 0.3);
+        },
+        shimmer(when) {
+          [88, 91, 95, 100].forEach((m, k) => {
+            const t = when + k * 0.05;
+            const g = amp(t, 0.04, 0.003, 0.4, pan(0.2 * (k - 1.5), fxBus));
+            osc("sine", hz(m), t, 0.45).connect(g);
+            send(g, 0.6);
+          });
+        },
+        kick(when) {
+          const g = amp(when, 0.55, 0.002, 0.26, musicBus);
+          const o = osc("sine", 120, when, 0.3);
+          o.frequency.exponentialRampToValueAtTime(44, when + 0.14);
+          o.connect(g);
+        },
+        snap(when) {
+          const g = ctxA.createGain();
+          g.connect(musicBus);
+          const bp = filter("bandpass", 2300, 1.6);
+          bp.connect(g);
+          [0, 0.008].forEach((dt, k) => noise(when + dt, 0.05).connect(amp(when + dt, k ? 0.3 : 0.18, 0.001, k ? 0.05 : 0.008, bp)));
+          send(g, 0.5);
+        },
+        hat(when, e) {
+          noise(when, 0.05).connect(filter("highpass", 7500)).connect(amp(when, 0.07 * e.v, 0.002, 0.035, musicBus));
+        },
+        bass(when, e) {
+          const g = amp(when, 0.42, 0.008, e.dur, musicBus);
+          const lp = filter("lowpass", 520, 1);
+          lp.connect(g);
+          osc("triangle", e.f, when, e.dur + 0.02).connect(lp);
+          osc("sine", e.f, when, e.dur + 0.02).connect(amp(when, 0.5, 0.01, e.dur, lp));
+        },
+        keys(when, e) {
+          // Electric piano: a sine with a soft bell partial and a slow tremolo.
+          const out = ctxA.createGain();
+          out.gain.value = 1;
+          const trem = osc("sine", 5, when, e.dur + 0.4);
+          const depth = ctxA.createGain();
+          depth.gain.value = 0.18;
+          trem.connect(depth).connect(out.gain);
+          const lp = filter("lowpass", 2600, 0.7);
+          out.connect(lp).connect(musicBus);
+          send(lp, 0.3);
+          e.notes.forEach((m, k) => {
+            const t = when + k * 0.008;
+            const g = amp(t, 0.09 * e.v, 0.006, e.dur, out);
+            osc("sine", hz(m), t, e.dur + 0.1).connect(g);
+            osc("sine", hz(m) * 4, t, 0.3).connect(amp(t, 0.012 * e.v, 0.002, 0.2, out));
+          });
+        },
+      };
+
+      function tick() {
+        const now = playing && ctxA.state === "running" && !document.hidden && !reduce.matches ? clock() : null;
+        if (now === null) { anchor = null; return; }
+        const loopLen = loopLength();
+        const at = ctxA.currentTime;
+        if (anchor) {
+          const err = now - (anchor.tl + (at - anchor.audio));
+          if (Math.abs(err) > 0.08) anchor = null;
+          else anchor.tl += err * 0.05;
+        }
+        if (!anchor) {
+          anchor = { tl: now, audio: at };
+          doneUpTo = now;
+        }
+        const cur = anchor.tl + (at - anchor.audio);
+        const from = Math.max(doneUpTo, cur - 0.05);
+        const to = cur + 0.1;
+        if (to <= from) return;
+        for (let k = Math.floor(from / loopLen); k <= Math.floor(to / loopLen); k++) {
+          for (const e of events) {
+            const t = k * loopLen + e.t;
+            if (t < from || t >= to) continue;
+            if (e.music && !wantMusic) continue;
+            voices[e.type](Math.max(at, anchor.audio + (t - anchor.tl)), e);
+          }
+        }
+        doneUpTo = to;
+      }
+
+      function update() {
+        const on = wantOn && !reduce.matches;
+        if (on) {
+          if (!ctxA) makeGraph();
+          clearTimeout(sleepTimer);
+          if (ctxA.state !== "running") ctxA.resume().catch(() => {});
+          if (!playing) {
+            playing = true;
+            anchor = null;
+            openSession();
+            clearInterval(timer);
+            timer = setInterval(tick, 25);
+          }
+          const t = ctxA.currentTime;
+          musicBus.gain.cancelScheduledValues(t);
+          musicBus.gain.setTargetAtTime(wantMusic ? MUSIC : 0, t, 0.03);
+        } else if (playing) {
+          playing = false;
+          clearInterval(timer);
+          closeSession();
+          sleepTimer = setTimeout(() => ctxA.suspend(), 200);
+        }
+      }
+      reduce.addEventListener("change", update);
+
+      const unlock = () => { if (playing && ctxA && ctxA.state !== "running") ctxA.resume().catch(() => {}); };
+      addEventListener("pointerdown", unlock);
+      addEventListener("keydown", unlock);
+
+      addEventListener("message", (event) => {
+        if (event.origin !== location.origin) return;
+        const data = event.data;
+        if (!data || data.type !== "motionprompt-sound") return;
+        if (typeof data.on === "boolean") wantOn = data.on;
+        if (typeof data.music === "boolean") wantMusic = data.music;
+        update();
+      });
+
+      const fromUrl = params.get("sound");
+      if (fromUrl === "1" || fromUrl === "effects") {
+        wantOn = true;
+        wantMusic = fromUrl === "1";
+        update();
+      }
+      return { replan() { events = plan(); } };
+    })();
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(build, 150);
+    });
+
+    // Wait briefly for the fonts so text is measured in the right face.
+    Promise.race([
+      Promise.all(["400 1em Anton", "500 1em Oswald", "700 1em Oswald", "500 1em 'JetBrains Mono'", "700 1em 'JetBrains Mono'"].map((f) => document.fonts.load(f))),
+      new Promise((resolve) => setTimeout(resolve, 2000)),
+    ]).finally(build);
+  </script>
+</body>
+</html>
