@@ -1,0 +1,989 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Infographic demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource-variable/plus-jakarta-sans@5.3.0/index.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=e7edf7&ink=14213d&accent=2563eb&accent2=ffb627 */
+    :root {
+      --bg: #e7edf7;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    svg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      font-family: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <svg id="stage" role="img" xmlns="http://www.w3.org/2000/svg"></svg>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const hex = (key, fallback) => "#" + (/^[0-9a-f]{6}$/i.test(params.get(key) ?? "") ? params.get(key) : fallback);
+    const C = { bg: hex("bg", "e7edf7"), ink: hex("ink", "14213d"), accent: hex("accent", "2563eb"), accent2: hex("accent2", "ffb627") };
+    document.documentElement.style.setProperty("--bg", C.bg);
+
+    // Mix two hex colours, used for the paper, tints and quiet greys.
+    const mix = (a, b, t) => "#" + [1, 3, 5].map((i) => {
+      const v = Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - t) + parseInt(b.slice(i, i + 2), 16) * t);
+      return v.toString(16).padStart(2, "0");
+    }).join("");
+    const paper = mix(C.bg, "#ffffff", 0.85);
+    const coral = "#ef5350";
+    const muted = mix(C.ink, paper, 0.42);
+    const faint = mix(C.ink, paper, 0.86);
+    const tint = mix(C.accent, paper, 0.87);
+    const tintCoral = mix(coral, paper, 0.89);
+
+    const title = (params.get("text") || "How to renew your road tax").trim().slice(0, 70);
+
+    // Sample content for the poster. A real video uses the visitor's own steps and facts.
+    const STEPS = [
+      { icon: "phone", label: "Open the app", note: "Log in with your IC number" },
+      { icon: "card", label: "Pay by card", note: "Or use online banking" },
+      { icon: "done", label: "All done", note: "Your e-sticker arrives in minutes" },
+    ];
+    const STAT = { n: 7, of: 10, note: "people now renew online" };
+    const BEFORE = { head: "Before", note: "Queue at the counter", value: "2 hours" };
+    const AFTER = { head: "After", note: "Pay on your phone", value: "5 min" };
+
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.getElementById("stage");
+    svg.setAttribute("aria-label", `An infographic poster that the camera travels across: ${title}. Three steps, a people stat and a before and after comparison.`);
+
+    function el(name, attrs, parent) {
+      const node = document.createElementNS(NS, name);
+      for (const k in attrs) node.setAttribute(k, attrs[k]);
+      if (parent) parent.append(node);
+      return node;
+    }
+    function text(parent, str, x, y, size, weight, fill, extra = {}) {
+      const node = el("text", { x, y, "font-size": size, "font-weight": weight, fill, ...extra }, parent);
+      node.textContent = str;
+      return node;
+    }
+
+    // Text measuring and wrapping, with a hidden probe element.
+    let probe = null;
+    function measure(str, size, weight, spacing = 0) {
+      probe.setAttribute("font-size", size);
+      probe.setAttribute("font-weight", weight);
+      probe.setAttribute("letter-spacing", spacing);
+      probe.textContent = str;
+      return probe.getComputedTextLength();
+    }
+    function lay(str, maxW, size, weight) {
+      const lines = [];
+      let cur = "";
+      for (const word of str.split(/\s+/)) {
+        const next = cur ? `${cur} ${word}` : word;
+        if (cur && measure(next, size, weight) > maxW) { lines.push(cur); cur = word; } else cur = next;
+      }
+      if (cur) lines.push(cur);
+      return lines;
+    }
+    // Wrap into at most maxLines lines, shrinking the size until it fits.
+    function wrap(str, maxW, size, weight, maxLines = 2) {
+      let s = size, lines = lay(str, maxW, s, weight);
+      for (let i = 0; i < 14; i++) {
+        if (lines.length <= maxLines && Math.max(...lines.map((l) => measure(l, s, weight))) <= maxW) break;
+        s *= 0.92;
+        lines = lay(str, maxW, s, weight);
+      }
+      return { lines, size: s };
+    }
+
+    // Everything that moves is a "holder": a group whose look follows one value v from 0 to 1.
+    // The GSAP timeline tweens v, and render() turns v into a transform and an opacity.
+    let anims = [], tweens = [], draws = [], cues = [];
+    function holder(parent, x, y, kind = "pop", opts = {}) {
+      const outer = el("g", { transform: `translate(${x} ${y})${opts.rot ? ` rotate(${opts.rot})` : ""}` }, parent);
+      const node = el("g", {}, outer);
+      const a = { node, kind, v: 0, d: opts.d || 30 };
+      anims.push(a);
+      return { g: node, a };
+    }
+    const EASE = { pop: "back.out(2.2)", dot: "back.out(3)", rise: "power3.out", grow: "power3.out", wipe: "power2.inOut", ripple: "power1.out" };
+    function show(a, at, dur = 0.5, ease) {
+      tweens.push({ a, at, dur, ease: ease || EASE[a.kind] });
+      return at + dur;
+    }
+    function drawPath(path, at, dur) { draws.push({ path, at, dur }); }
+    function cue(t, type, extra = {}) { cues.push({ t, type, ...extra }); }
+
+    const cam = { x: 0, y: 0, s: 1 };
+    const fade = { v: 0 };
+    let world = null, overlay = null, camShift = { W: 0, H: 0 };
+
+    function render() {
+      for (const a of anims) {
+        const v = a.v;
+        let tf = "", op = 1;
+        if (a.kind === "pop" || a.kind === "dot") { tf = `scale(${Math.max(v, 0.001)})`; op = Math.min(1, v * 4); }
+        else if (a.kind === "rise") { tf = `translate(0 ${((1 - v) * a.d).toFixed(2)})`; op = Math.min(1, v * 1.5); }
+        else if (a.kind === "grow") { tf = `scale(${0.86 + 0.14 * v})`; op = Math.min(1, v * 1.6); }
+        else if (a.kind === "wipe") { tf = `scale(${Math.max(v, 0.001)} 1)`; op = v > 0.001 ? 1 : 0; }
+        else if (a.kind === "ripple") { tf = `scale(${1 + v * 0.7})`; op = v > 0.001 && v < 1 ? 0.7 * (1 - v) : 0; }
+        if (a.tf !== tf) { a.node.setAttribute("transform", tf); a.tf = tf; }
+        if (a.op !== op) { a.node.style.opacity = op; a.op = op; }
+      }
+      if (world) {
+        world.setAttribute("transform", `translate(${camShift.W / 2 - cam.x * cam.s} ${camShift.H / 2 - cam.y * cam.s}) scale(${cam.s})`);
+        world.style.opacity = 1 - fade.v;
+        overlay.style.opacity = 1 - fade.v;
+      }
+    }
+
+    // Small flat icons, drawn inside a 200 unit tile around 0 0.
+    function drawIcon(g, kind) {
+      if (kind === "phone") {
+        el("rect", { x: -38, y: -64, width: 76, height: 128, rx: 16, fill: C.accent }, g);
+        el("rect", { x: -29, y: -51, width: 58, height: 94, rx: 7, fill: paper }, g);
+        el("rect", { x: -19, y: -40, width: 38, height: 11, rx: 5.5, fill: C.accent2 }, g);
+        el("rect", { x: -19, y: -21, width: 30, height: 7, rx: 3.5, fill: faint }, g);
+        el("rect", { x: -19, y: -9, width: 38, height: 7, rx: 3.5, fill: faint }, g);
+        el("rect", { x: -19, y: 11, width: 38, height: 18, rx: 9, fill: C.accent }, g);
+        el("circle", { cx: 0, cy: 53, r: 5, fill: paper }, g);
+        return null;
+      }
+      if (kind === "card") {
+        el("rect", { x: -66, y: -44, width: 132, height: 88, rx: 15, fill: C.accent }, g);
+        el("rect", { x: -66, y: -24, width: 132, height: 17, fill: C.ink, opacity: 0.35 }, g);
+        el("rect", { x: -50, y: 6, width: 28, height: 21, rx: 5, fill: C.accent2 }, g);
+        el("rect", { x: 4, y: 9, width: 46, height: 7, rx: 3.5, fill: paper, opacity: 0.85 }, g);
+        el("rect", { x: 4, y: 21, width: 28, height: 7, rx: 3.5, fill: paper, opacity: 0.6 }, g);
+        return null;
+      }
+      el("circle", { cx: 0, cy: 0, r: 60, fill: C.accent }, g);
+      return el("path", { d: "M-27 2 L-8 21 L29 -19", fill: "none", stroke: paper, "stroke-width": 14, "stroke-linecap": "round", "stroke-linejoin": "round" }, g);
+    }
+    const sparkle = "M0 -20 Q2.5 -2.5 20 0 Q2.5 2.5 0 20 Q-2.5 2.5 -20 0 Q-2.5 -2.5 0 -20Z";
+
+    // Section header: a small amber bar, a label in capitals and an optional heading.
+    function header(g, w, h, pad, label, heading, t0) {
+      const F = Math.min(w, h) * 0.036;
+      const y = pad + F * 1.1;
+      const lab = holder(g, pad, y, "rise", { d: F });
+      el("rect", { x: 0, y: -F * 0.58, width: F * 1.3, height: F * 0.42, rx: F * 0.21, fill: C.accent2 }, lab.g);
+      text(lab.g, label, F * 1.8, 0, F, 800, C.accent, { "letter-spacing": F * 0.12 });
+      show(lab.a, t0, 0.5);
+      if (!heading) return y + F * 0.5;
+      let H2 = F * 2.3;
+      const width = measure(heading, H2, 800);
+      if (width > w - 2 * pad) H2 *= (w - 2 * pad) / width;
+      const hy = y + F * 0.9 + H2;
+      const hd = holder(g, pad, hy, "rise", { d: H2 * 0.5 });
+      text(hd.g, heading, 0, 0, H2, 800, C.ink);
+      show(hd.a, t0 + 0.1, 0.55);
+      return hy + H2 * 0.35;
+    }
+
+    // Dots that appear one by one along a gentle curve, ending in an arrow head.
+    function dotsAlong(parent, a, c, b, r, t, dur, pan) {
+      const q = (u) => [(1 - u) ** 2 * a[0] + 2 * (1 - u) * u * c[0] + u * u * b[0], (1 - u) ** 2 * a[1] + 2 * (1 - u) * u * c[1] + u * u * b[1]];
+      const samples = [];
+      let len = 0, prev = a;
+      for (let i = 0; i <= 80; i++) {
+        const p = q(i / 80);
+        len += Math.hypot(p[0] - prev[0], p[1] - prev[1]);
+        samples.push({ p, len });
+        prev = p;
+      }
+      const usable = len - r * 3.5, n = Math.max(2, Math.round(usable / (r * 4.2)));
+      let j = 0;
+      for (let k = 0; k <= n; k++) {
+        const target = (k / n) * usable;
+        while (j < samples.length - 1 && samples[j].len < target) j++;
+        const dot = holder(parent, samples[j].p[0], samples[j].p[1], "dot");
+        el("circle", { cx: 0, cy: 0, r, fill: C.accent, opacity: 0.75 }, dot.g);
+        show(dot.a, t + (k / n) * dur, 0.2);
+      }
+      const end = samples[samples.length - 1].p, before = samples[samples.length - 6].p;
+      const rot = (Math.atan2(end[1] - before[1], end[0] - before[0]) * 180) / Math.PI;
+      const head = holder(parent, end[0] - Math.cos(rot * Math.PI / 180) * r, end[1] - Math.sin(rot * Math.PI / 180) * r, "pop", { rot });
+      el("path", { d: `M${r * 1.6} 0 L${-r * 1.6} ${-r * 2} L${-r * 1.6} ${r * 2}Z`, fill: C.accent, "stroke-linejoin": "round", stroke: C.accent, "stroke-width": r * 0.8 }, head.g);
+      show(head.a, t + dur, 0.35);
+      cue(t, "dots", { dur, n: n + 1, p: pan });
+    }
+
+    // Panel 1: the title card, a blue block with the headline and a flat illustration.
+    function titlePanel(g, w, h, shape, t0, pan) {
+      const pad = Math.min(w, h) * 0.06;
+      const pw = w - 2 * pad, ph = h - 2 * pad;
+      const panel = holder(g, w / 2, h / 2, "grow");
+      const clipId = "ig-title-clip";
+      const clip = el("clipPath", { id: clipId }, panel.g);
+      const rx = Math.min(pw, ph) * 0.06;
+      el("rect", { x: -pw / 2, y: -ph / 2, width: pw, height: ph, rx }, clip);
+      el("rect", { x: -pw / 2, y: -ph / 2, width: pw, height: ph, rx, fill: C.accent }, panel.g);
+      const deco = el("g", { "clip-path": `url(#${clipId})` }, panel.g);
+      const m = Math.min(pw, ph);
+      el("circle", { cx: pw * 0.42, cy: -ph * 0.44, r: m * 0.42, fill: paper, opacity: 0.08 }, deco);
+      el("circle", { cx: -pw * 0.5, cy: ph * 0.5, r: m * 0.34, fill: paper, opacity: 0.06 }, deco);
+      el("circle", { cx: -pw * 0.5, cy: ph * 0.5, r: m * 0.2, fill: paper, opacity: 0.06 }, deco);
+      show(panel.a, t0, 0.6);
+      cue(t0, "whoosh", { dur: 0.5, p: pan });
+
+      // Headline block: pill, title lines, subtitle.
+      const wide = shape === "wide";
+      const F = wide ? Math.min(h * 0.105, pw * 0.065) : shape === "tall" ? pw * 0.14 : pw * 0.095;
+      const x0 = pad + pw * (wide ? 0.07 : 0.085);
+      const maxW = wide ? pw * 0.52 : pw * 0.83;
+      const tw = wrap(title, maxW, F, 800, 3);
+      const pf = F * 0.3, pillH = pf * 2.1, subF = F * 0.42;
+      const blockH = pillH + F * 0.5 + tw.lines.length * tw.size * 1.08 + F * 0.3 + subF * 1.2;
+      const top = wide ? h / 2 - blockH / 2 : pad + ph * (shape === "tall" ? 0.09 : 0.08);
+
+      const pill = holder(g, x0, top + pillH / 2, "pop");
+      const pw2 = measure("QUICK GUIDE", pf, 800, pf * 0.12) + pf * 2.2;
+      el("rect", { x: 0, y: -pillH / 2, width: pw2, height: pillH, rx: pillH / 2, fill: C.accent2 }, pill.g);
+      text(pill.g, "QUICK GUIDE", pf * 1.1, pf * 0.36, pf, 800, C.ink, { "letter-spacing": pf * 0.12 });
+      show(pill.a, t0 + 0.25, 0.45);
+      cue(t0 + 0.25, "pop", { f: 520, p: pan });
+
+      let y = top + pillH + F * 0.5;
+      tw.lines.forEach((line, i) => {
+        y += tw.size * (i ? 1.08 : 0.95);
+        const row = holder(g, x0, y, "rise", { d: tw.size * 0.45 });
+        text(row.g, line, 0, 0, tw.size, 800, paper);
+        show(row.a, t0 + 0.35 + i * 0.1, 0.6);
+      });
+      y += F * 0.3 + subF * 1.1;
+      const sub = holder(g, x0, y, "rise", { d: subF });
+      text(sub.g, "3 simple steps, about 5 minutes", 0, 0, subF, 600, paper, { opacity: 0.85 });
+      show(sub.a, t0 + 0.45 + tw.lines.length * 0.1, 0.5);
+      const blockBottom = y + subF * 0.4;
+
+      // Flat illustration: a document with a tick badge and sparkles, 400 units across.
+      let cx, cy, size;
+      if (wide) { cx = pad + pw * 0.8; cy = h / 2; size = Math.min(pw * 0.36, ph * 0.8); }
+      else {
+        const room = h - pad - blockBottom;
+        size = Math.min(pw * 0.66, room * 0.88);
+        cx = w / 2; cy = blockBottom + room / 2 + room * 0.02;
+      }
+      const ig = el("g", { transform: `translate(${cx} ${cy}) scale(${size / 440})` }, g);
+      const halo = holder(ig, 0, 0, "pop");
+      el("circle", { cx: 0, cy: 0, r: 190, fill: paper, opacity: 0.14 }, halo.g);
+      show(halo.a, t0 + 0.45, 0.6);
+      const doc = holder(ig, -12, 0, "pop");
+      el("rect", { x: -112, y: -142, width: 224, height: 292, rx: 24, fill: C.ink, opacity: 0.18, transform: "translate(10 14)" }, doc.g);
+      el("rect", { x: -112, y: -150, width: 224, height: 292, rx: 24, fill: paper }, doc.g);
+      el("path", { d: "M-112 -126 a24 24 0 0 1 24 -24 h176 a24 24 0 0 1 24 24 v40 h-224 z", fill: C.accent2 }, doc.g);
+      el("circle", { cx: -78, cy: -118, r: 10, fill: paper, opacity: 0.8 }, doc.g);
+      show(doc.a, t0 + 0.6, 0.6);
+      cue(t0 + 0.6, "pop", { f: 380, p: pan });
+      [[-58, 148], [-18, 120], [22, 148], [62, 96]].forEach(([ly, lw], i) => {
+        el("circle", { cx: -80, cy: ly, r: 8, fill: i === 1 ? C.accent2 : C.accent }, doc.g);
+        const bar = holder(doc.g, -62, ly, "wipe");
+        el("rect", { x: 0, y: -7, width: lw, height: 14, rx: 7, fill: faint }, bar.g);
+        show(bar.a, t0 + 0.85 + i * 0.07, 0.35);
+      });
+      const badge = holder(ig, 104, 118, "pop");
+      el("circle", { cx: 0, cy: 0, r: 66, fill: C.accent2 }, badge.g);
+      el("circle", { cx: 0, cy: 0, r: 66, fill: "none", stroke: paper, "stroke-width": 8 }, badge.g);
+      const tick = el("path", { d: "M-28 2 L-9 21 L29 -19", fill: "none", stroke: C.ink, "stroke-width": 13, "stroke-linecap": "round", "stroke-linejoin": "round" }, badge.g);
+      show(badge.a, t0 + 1.05, 0.5);
+      drawPath(tick, t0 + 1.25, 0.25);
+      cue(t0 + 1.05, "pop", { f: 640, p: pan });
+      cue(t0 + 1.3, "tick", { p: pan });
+      [[-176, -128, 1.5], [178, -168, 1.05], [-160, 156, 0.8], [196, -40, 0.6]].forEach(([sx, sy, sc], i) => {
+        const sp = holder(ig, sx, sy, "pop");
+        el("path", { d: sparkle, fill: i === 3 ? C.accent2 : paper, transform: `scale(${sc})` }, sp.g);
+        show(sp.a, t0 + 1.3 + i * 0.08, 0.45);
+      });
+    }
+
+    // Panel 2: three numbered steps joined by dotted arrows.
+    function stepsPanel(g, w, h, shape, t0, pan) {
+      const pad = Math.min(w, h) * 0.08;
+      const hb = header(g, w, h, pad, "STEP BY STEP", "How it works", t0);
+      const top = hb + pad * 0.5, bottom = h - pad;
+      const across = shape !== "tall";
+      let T, spots;
+      if (across) {
+        T = Math.min(w * 0.21, (bottom - top) * 0.42);
+        const cy = top + (bottom - top) * 0.34;
+        spots = [0.2, 0.5, 0.8].map((f) => [w * f, cy]);
+      } else {
+        const rowH = (bottom - top) / 3;
+        T = Math.min(w * 0.26, rowH * 0.62);
+        spots = [0, 1, 2].map((i) => [pad + T / 2 + w * 0.02, top + rowH * (i + 0.5)]);
+      }
+      const r = T * 0.028;
+      STEPS.forEach((step, i) => {
+        const [x, y] = spots[i];
+        const ts = t0 + 0.3 + i * 0.85;
+        const tile = holder(g, x, y, "pop");
+        const sg = el("g", { transform: `scale(${T / 200})` }, tile.g);
+        el("rect", { x: -100, y: -100, width: 200, height: 200, rx: 52, fill: tint }, sg);
+        const ic = holder(sg, 0, 0, "pop");
+        const tickPath = drawIcon(ic.g, step.icon);
+        const num = holder(sg, -84, -84, "pop");
+        el("circle", { cx: 0, cy: 0, r: 30, fill: C.accent2 }, num.g);
+        el("circle", { cx: 0, cy: 0, r: 30, fill: "none", stroke: paper, "stroke-width": 6 }, num.g);
+        text(num.g, String(i + 1), 0, 11, 32, 800, C.ink, { "text-anchor": "middle" });
+        show(tile.a, ts, 0.55);
+        show(ic.a, ts + 0.12, 0.5);
+        show(num.a, ts + 0.22, 0.45);
+        cue(ts, "pop", { f: 420 + i * 90, p: pan });
+        cue(ts + 0.22, "pop", { f: 760 + i * 110, p: pan, v: 0.6 });
+        if (tickPath) {
+          drawPath(tickPath, ts + 0.3, 0.3);
+          cue(ts + 0.45, "tick", { p: pan });
+        }
+
+        // Label and note, under the tile or beside it.
+        let lx, ly, anchor, maxW, LF;
+        if (across) { lx = x; ly = y + T * 0.5 + T * 0.36; anchor = "middle"; maxW = w * 0.27; LF = T * 0.19; }
+        else { lx = x + T / 2 + w * 0.06; ly = y - T * 0.04; anchor = "start"; maxW = w - lx - pad; LF = Math.min(T * 0.21, w * 0.055); }
+        const lab = wrap(step.label, maxW, LF, 800, 1);
+        const lh = holder(g, lx, ly, "rise", { d: LF * 0.6 });
+        text(lh.g, lab.lines[0], 0, 0, lab.size, 800, C.ink, { "text-anchor": anchor });
+        show(lh.a, ts + 0.25, 0.5);
+        const NF = LF * 0.76;
+        const note = wrap(step.note, maxW, NF, 500, 2);
+        const nh = holder(g, lx, ly + lab.size * 0.55 + note.size * 1.1, "rise", { d: NF * 0.6 });
+        note.lines.forEach((line, k) => text(nh.g, line, 0, k * note.size * 1.3, note.size, 500, muted, { "text-anchor": anchor }));
+        show(nh.a, ts + 0.35, 0.5);
+
+        if (i < 2) {
+          const [nx, ny] = spots[i + 1];
+          let a, c, b;
+          if (across) {
+            a = [x + T * 0.62, y]; b = [nx - T * 0.62, ny];
+            c = [(a[0] + b[0]) / 2, y - T * 0.35];
+          } else {
+            a = [x, y + T * 0.62]; b = [nx, ny - T * 0.62];
+            c = [x - T * 0.3, (a[1] + b[1]) / 2];
+          }
+          dotsAlong(g, a, c, b, r, ts + 0.45, 0.35, pan);
+        }
+      });
+    }
+
+    // A simple person: round head and rounded shoulders, about 106 units tall.
+    function person(g, fill) {
+      el("circle", { cx: 0, cy: -34, r: 21, fill }, g);
+      el("path", { d: "M-33 52 L-33 22 Q-33 -6 0 -6 Q33 -6 33 22 L33 52 Z", fill }, g);
+    }
+
+    // Panel 3: a people stat, 7 of 10 icons fill with colour.
+    function peoplePanel(g, w, h, shape, t0, pan) {
+      const pad = Math.min(w, h) * 0.08;
+      const hb = header(g, w, h, pad, "DID YOU KNOW?", null, t0);
+      const cols = shape === "wide" ? 10 : 5, rows = 10 / cols;
+      const S = shape === "tall" ? Math.min(w * 0.26, h * 0.16) : Math.min(w * 0.2, h * 0.17);
+      const NF = S * 0.24;
+      const note = wrap(STAT.note, w - 2 * pad, NF, 600, 2);
+      const sp = Math.min((w - 2 * pad) / cols, (h - hb - pad - S * 1.6 - note.lines.length * note.size * 1.3) / (rows * 1.4));
+      const blockH = S * 0.95 + S * 0.35 + note.lines.length * note.size * 1.3 + S * 0.25 + rows * sp * 1.4;
+      let y = hb + (h - pad - hb - blockH) / 2;
+
+      const stat = holder(g, w / 2, y + S * 0.5, "pop");
+      const st = text(stat.g, "", 0, S * 0.4, S, 800, C.ink, { "text-anchor": "middle" });
+      el("tspan", { fill: C.accent }, st).textContent = String(STAT.n);
+      el("tspan", { "font-size": S * 0.55, dx: S * 0.12 }, st).textContent = `in ${STAT.of}`;
+      show(stat.a, t0 + 0.15, 0.6);
+      cue(t0 + 0.15, "ding", { p: pan });
+      y += S * 0.95 + S * 0.35;
+      const nh = holder(g, w / 2, y, "rise", { d: NF });
+      note.lines.forEach((line, k) => text(nh.g, line, 0, k * note.size * 1.3, note.size, 600, muted, { "text-anchor": "middle" }));
+      show(nh.a, t0 + 0.3, 0.5);
+      y += (note.lines.length - 1) * note.size * 1.3 + S * 0.25;
+
+      const ps = sp / 86;
+      for (let i = 0; i < 10; i++) {
+        const col = i % cols, row = Math.floor(i / cols);
+        const px = w / 2 + (col - (cols - 1) / 2) * sp;
+        const py = y + sp * 0.7 + row * sp * 1.4;
+        const grey = holder(g, px, py, "pop");
+        person(el("g", { transform: `scale(${ps})` }, grey.g), faint);
+        show(grey.a, t0 + 0.4 + i * 0.035, 0.4);
+        if (i < STAT.n) {
+          const on = holder(g, px, py, "pop");
+          person(el("g", { transform: `scale(${ps})` }, on.g), i % 3 === 2 ? C.accent2 : C.accent);
+          const at = t0 + 0.85 + i * 0.1;
+          show(on.a, at, 0.45);
+          cue(at, "fill", { m: [72, 74, 76, 79, 81, 84, 86][i], p: pan + (col / (cols - 1) - 0.5) * 0.4 });
+        }
+      }
+    }
+
+    // Panel 4: before and after cards.
+    function card(g, x, y, cw, ch, data, color, bg, cross, t, pan) {
+      const c = holder(g, x, y, "pop");
+      el("rect", { x: -cw / 2, y: -ch / 2, width: cw, height: ch, rx: Math.min(cw, ch) * 0.1, fill: bg }, c.g);
+      const across = cw / ch > 1.25;
+      let bx, by, br, tx, anchor, hy, ny, vy, HF, NF, VF, maxW;
+      if (across) {
+        br = ch * 0.2; bx = -cw / 2 + ch * 0.36; by = 0;
+        tx = bx + br + ch * 0.18; anchor = "start"; maxW = cw / 2 - tx - ch * 0.1;
+        HF = ch * 0.15; NF = ch * 0.1; VF = ch * 0.21;
+        hy = -ch * 0.2; ny = hy + HF * 0.4 + NF * 1.2; vy = ch * 0.3;
+      } else {
+        br = cw * 0.14; bx = 0; by = -ch / 2 + ch * 0.2;
+        tx = 0; anchor = "middle"; maxW = cw * 0.84;
+        HF = cw * 0.12; NF = cw * 0.082; VF = cw * 0.17;
+        hy = -ch / 2 + ch * 0.47; ny = hy + HF * 0.4 + NF * 1.3; vy = ch / 2 - ch * 0.1;
+      }
+      const b = holder(c.g, bx, by, "pop");
+      el("circle", { cx: 0, cy: 0, r: br, fill: color }, b.g);
+      const k = br / 44, sw = 9 * k;
+      const mark = cross
+        ? el("path", { d: `M${-14 * k} ${-14 * k} L${14 * k} ${14 * k} M${14 * k} ${-14 * k} L${-14 * k} ${14 * k}`, fill: "none", stroke: paper, "stroke-width": sw, "stroke-linecap": "round" }, b.g)
+        : el("path", { d: `M${-18 * k} ${1 * k} L${-6 * k} ${13 * k} L${19 * k} ${-13 * k}`, fill: "none", stroke: paper, "stroke-width": sw, "stroke-linecap": "round", "stroke-linejoin": "round" }, b.g);
+      const note = wrap(data.note, maxW, NF, 500, 2);
+      if (across) {
+        // Stack head, note and value from their real heights, centred in the card.
+        const noteH = note.lines.length * note.size * 1.3;
+        const total = HF * 0.75 + HF * 0.45 + noteH + VF * 0.35 + VF * 0.75;
+        hy = -total / 2 + HF * 0.75;
+        ny = hy + HF * 0.45 + note.size;
+        vy = total / 2;
+      }
+      text(c.g, data.head, tx, hy, HF, 800, C.ink, { "text-anchor": anchor });
+      note.lines.forEach((line, i) => text(c.g, line, tx, ny + i * note.size * 1.3, note.size, 500, muted, { "text-anchor": anchor }));
+      const v = wrap(data.value, maxW, VF, 800, 1);
+      text(c.g, v.lines[0], tx, vy, v.size, 800, color, { "text-anchor": anchor });
+      show(c.a, t, 0.55);
+      show(b.a, t + 0.12, 0.45);
+      drawPath(mark, t + 0.28, 0.25);
+      cue(t, "pop", { f: cross ? 330 : 440, p: pan });
+      cue(t + 0.3, cross ? "nope" : "tick", { p: pan });
+    }
+    function comparePanel(g, w, h, shape, t0, pan) {
+      const pad = Math.min(w, h) * 0.08;
+      const hb = header(g, w, h, pad, "BEFORE AND AFTER", "Why it is better", t0);
+      const top = hb + pad * 0.6, bottom = h - pad;
+      const cy = (top + bottom) / 2;
+      let spots, cw, ch, gap;
+      if (shape === "tall") {
+        gap = h * 0.04;
+        cw = w - 2 * pad;
+        ch = Math.min((bottom - top - gap) / 2, cw * 0.6);
+        spots = [[w / 2, cy - gap / 2 - ch / 2], [w / 2, cy + gap / 2 + ch / 2]];
+      } else {
+        gap = w * 0.06;
+        cw = (w - 2 * pad - gap) / 2;
+        ch = Math.min(bottom - top, cw * 1.3);
+        cw = Math.min(cw, ch * 0.95);
+        spots = [[w / 2 - gap / 2 - cw / 2, cy], [w / 2 + gap / 2 + cw / 2, cy]];
+      }
+      card(g, ...spots[0], cw, ch, BEFORE, coral, tintCoral, true, t0 + 0.2, pan);
+      card(g, ...spots[1], cw, ch, AFTER, C.accent, tint, false, t0 + 0.55, pan);
+      const vr = Math.min(Math.max(gap * 0.8, Math.min(w, h) * 0.05), Math.min(w, h) * 0.07);
+      const vs = holder(g, w / 2, cy, "pop");
+      el("circle", { cx: 0, cy: 0, r: vr, fill: C.ink }, vs.g);
+      el("circle", { cx: 0, cy: 0, r: vr, fill: "none", stroke: paper, "stroke-width": vr * 0.14 }, vs.g);
+      text(vs.g, "VS", 0, vr * 0.26, vr * 0.72, 800, paper, { "text-anchor": "middle" });
+      show(vs.a, t0 + 1.0, 0.45);
+      cue(t0 + 1.0, "pop", { f: 560, p: pan });
+    }
+
+    // End bar, drawn in screen space over the zoomed out poster.
+    function endBar(W, H, k, t) {
+      const bh = 130 * k, bw = Math.min(W - 60 * k, 900 * k);
+      const y = H - 56 * k - bh / 2;
+      const bar = holder(overlay, W / 2, y, "rise", { d: 90 * k });
+      el("rect", { x: -bw / 2, y: -bh / 2, width: bw, height: bh, rx: bh * 0.3, fill: paper, filter: "url(#ig-shadow)" }, bar.g);
+      const lx = -bw / 2 + 30 * k;
+      el("rect", { x: lx, y: -35 * k, width: 70 * k, height: 70 * k, rx: 20 * k, fill: C.accent }, bar.g);
+      el("circle", { cx: lx + 35 * k, cy: -16 * k, r: 7 * k, fill: C.accent2 }, bar.g);
+      el("rect", { x: lx + 29 * k, y: -3 * k, width: 12 * k, height: 26 * k, rx: 6 * k, fill: paper }, bar.g);
+      text(bar.g, "Your Brand", lx + 90 * k, -2 * k, 32 * k, 800, C.ink);
+      text(bar.g, "yourbrand.com", lx + 90 * k, 28 * k, 21 * k, 600, muted);
+      show(bar.a, t, 0.55);
+      cue(t, "whoosh", { dur: 0.4, p: 0 });
+
+      const pf = 26 * k, ph = 68 * k;
+      const pw = measure("Save this post", pf, 800) + 90 * k;
+      const px = bw / 2 - 22 * k - pw / 2;
+      const ripple = holder(bar.g, px, 0, "ripple");
+      el("rect", { x: -pw / 2, y: -ph / 2, width: pw, height: ph, rx: ph / 2, fill: "none", stroke: C.accent2, "stroke-width": 5 * k }, ripple.g);
+      const pill = holder(bar.g, px, 0, "pop");
+      el("rect", { x: -pw / 2, y: -ph / 2, width: pw, height: ph, rx: ph / 2, fill: C.accent2 }, pill.g);
+      el("path", { d: `M${-pw / 2 + 26 * k} ${-13 * k} h${18 * k} v${27 * k} l${-9 * k} ${-7 * k} l${-9 * k} ${7 * k}z`, fill: C.ink }, pill.g);
+      text(pill.g, "Save this post", -pw / 2 + 58 * k, pf * 0.36, pf, 800, C.ink);
+      show(pill.a, t + 0.22, 0.5);
+      show(ripple.a, t + 0.5, 0.6);
+      cue(t + 0.22, "pop", { f: 700, p: 0.3 });
+      cue(t + 0.5, "tap", { p: 0.3 });
+    }
+
+    let tl = null;
+    const LOOP = 12; // seconds
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+
+    function build() {
+      const keep = tl ? tl.time() : 0;
+      if (tl) tl.kill();
+      svg.replaceChildren();
+      anims = []; tweens = []; draws = []; cues = [];
+
+      const W = innerWidth, H = innerHeight, aspect = W / H;
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      camShift = { W, H };
+      probe = el("text", { x: -9999, y: -9999 }, svg);
+
+      // The poster is a 2 by 2 grid of panels, each shaped like the window.
+      const shape = aspect < 0.85 ? "tall" : aspect >= 1.3 ? "wide" : "square";
+      const cw = aspect >= 1 ? 1000 * aspect : 1000, ch = aspect >= 1 ? 1000 : 1000 / aspect;
+      const m = Math.min(cw, ch) * 0.035;
+
+      const defs = el("defs", {}, svg);
+      const shadow = el("filter", { id: "ig-shadow", x: "-20%", y: "-20%", width: "140%", height: "160%" }, defs);
+      el("feDropShadow", { dx: 0, dy: 10, stdDeviation: 18, "flood-color": C.ink, "flood-opacity": 0.14 }, shadow);
+      const dots = el("pattern", { id: "ig-dots", width: 44, height: 44, patternUnits: "userSpaceOnUse" }, defs);
+      el("circle", { cx: 22, cy: 22, r: 3, fill: C.ink, opacity: 0.09 }, dots);
+
+      world = el("g", {}, svg);
+      el("rect", { x: -3 * cw, y: -3 * ch, width: 8 * cw, height: 8 * ch, fill: "url(#ig-dots)" }, world);
+      el("rect", { x: -m, y: -m, width: 2 * cw + 2 * m, height: 2 * ch + 2 * m, rx: m * 1.4, fill: paper, filter: "url(#ig-shadow)" }, world);
+      // Dotted guides between the panels.
+      const guide = { stroke: faint, "stroke-width": 5, "stroke-dasharray": "0 18", "stroke-linecap": "round" };
+      el("line", { x1: cw, y1: ch * 0.08, x2: cw, y2: 2 * ch - ch * 0.08, ...guide }, world);
+      el("line", { x1: cw * 0.06, y1: ch, x2: 2 * cw - cw * 0.06, y2: ch, ...guide }, world);
+
+      const cells = [[0, 0], [cw, 0], [0, ch], [cw, ch]];
+      const groups = cells.map(([x, y]) => el("g", { transform: `translate(${x} ${y})` }, world));
+      overlay = el("g", {}, svg);
+
+      titlePanel(groups[0], cw, ch, shape, 0, -0.3);
+      stepsPanel(groups[1], cw, ch, shape, 2.6, 0.3);
+      peoplePanel(groups[2], cw, ch, shape, 6.05, -0.3);
+      comparePanel(groups[3], cw, ch, shape, 8.45, 0.3);
+      const k = Math.min(W, H * 0.8) / 1000;
+      endBar(W, H, k, 10.75);
+
+      // Camera: glide from panel to panel, then pull back to show the whole poster.
+      const fit = Math.min(W / (cw * 1.05), H / (ch * 1.05));
+      const views = cells.map(([x, y]) => ({ x: x + cw / 2, y: y + ch / 2 }));
+      const availH = H - 130 * k - 100 * k;
+      const PW = 2 * cw + 2 * m, PH = 2 * ch + 2 * m;
+      const sAll = Math.min((W * 0.9) / PW, (availH * 0.92) / PH);
+      const overview = { x: cw, y: ch + (H / 2 - availH / 2) / sAll, s: sAll };
+
+      tl = gsap.timeline({ repeat: -1, onUpdate: render });
+      tl.fromTo(cam, { ...views[0], s: fit * 1.12 }, { ...views[0], s: fit * 1.01, duration: 1.9, ease: "power2.out" }, 0);
+      const move = (t, to, dur, next) => {
+        tl.to(cam, { x: to.x, y: to.y, duration: dur, ease: "power3.inOut" }, t);
+        tl.to(cam, { s: fit * 0.8, duration: dur / 2, ease: "power2.out" }, t);
+        tl.to(cam, { s: fit, duration: dur / 2, ease: "power2.inOut" }, t + dur / 2);
+        tl.to(cam, { s: fit * 1.03, duration: next - (t + dur), ease: "none" }, t + dur);
+        cue(t, "whoosh", { dur, p: Math.sign(to.x - cw) * 0.4 });
+      };
+      move(1.9, views[1], 0.95, 5.35);
+      move(5.35, views[2], 1.05, 7.8);
+      move(7.8, views[3], 0.95, 9.95);
+      tl.to(cam, { ...overview, duration: 1.1, ease: "power3.inOut" }, 9.95);
+      tl.to(cam, { s: sAll * 1.015, duration: 0.5, ease: "none" }, 11.05);
+      cue(9.95, "swell", { dur: 1.1 });
+
+      for (const tw of tweens) tl.to(tw.a, { v: 1, duration: tw.dur, ease: tw.ease }, tw.at);
+      for (const d of draws) {
+        const len = d.path.getTotalLength() + 2;
+        gsap.set(d.path, { strokeDasharray: `${len} ${len + 30}`, strokeDashoffset: len + 15 });
+        tl.to(d.path, { strokeDashoffset: 0, duration: d.dur, ease: "power2.out" }, d.at);
+      }
+      tl.addLabel("hold", 11.3)
+        .to(fade, { v: 1, duration: 0.4, ease: "power1.in" }, 11.55)
+        .set({}, {}, LOOP);
+
+      if (reduce.matches) tl.pause(tl.labels.hold);
+      else tl.time(keep % LOOP);
+      render();
+      sound.replan();
+    }
+
+    // For frame by frame capture: jump to an exact time.
+    window.seekDemo = (t) => { tl.pause(); tl.time(t % LOOP); render(); };
+
+    reduce.addEventListener("change", () => {
+      if (!tl) return;
+      if (reduce.matches) tl.pause(tl.labels.hold);
+      else tl.play();
+    });
+
+    // Sound: every sound is made with the Web Audio API. It is off until the
+    // parent page (or ?sound=1 / ?sound=effects) turns it on, and it follows the
+    // GSAP timeline clock. The effects are read from the same cues the build adds
+    // next to each pop, dot trail and camera move, so they always line up.
+    const sound = (() => {
+      const LEVEL = 1.1, MUSIC = 0.16;
+      const BEAT = LOOP / 24; // 120 bpm: six bars fill one 12 s loop exactly
+      const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+      const clock = () => (tl && !tl.paused() ? tl.totalTime() : null);
+      const loopLength = () => tl.duration();
+      // C  G  Am  F  C  G, as marimba arpeggios over a soft bass.
+      const CHORDS = [[60, 64, 67, 72], [59, 62, 67, 71], [57, 60, 64, 69], [57, 60, 65, 69], [60, 64, 67, 72], [59, 62, 67, 74]];
+      const ROOTS = [36, 43, 45, 41, 36, 43];
+      const ARP = [0, 2, 1, 3, 2, 1, 3, 2];
+      let ctx = null, master, impulse, noiseBuf, session = null, fxBus, musicBus, verbSend;
+      let wantOn = false, wantMusic = true, playing = false;
+      let timer = 0, sleepTimer = 0, anchor = null, doneUpTo = 0;
+
+      function plan() {
+        const list = [];
+        const add = (t, type, extra = {}, music = false) => list.push({ t, type, music, ...extra });
+        let s = 5;
+        const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+        for (const c of cues) {
+          if (c.type === "dots") {
+            for (let k = 0; k < c.n; k++) add(c.t + (k / (c.n - 1)) * c.dur, "dot", { f: 2600 + rnd() * 900, p: c.p });
+          } else add(c.t, c.type, { ...c });
+        }
+        add(LOOP - 0.45, "whoosh", { dur: 0.4, p: 0, v: 0.5 });
+
+        // Music: a light, happy corporate bed.
+        CHORDS.forEach((notes, bar) => {
+          const t0 = bar * 4 * BEAT;
+          ARP.forEach((n, e) => add(t0 + (e * BEAT) / 2, "mallet", { f: hz(notes[n] + 12), v: e % 2 ? 0.6 : 0.9 }, true));
+          add(t0, "mallet", { f: hz(notes[0]), v: 0.7, long: true }, true);
+          add(t0, "bass", { f: hz(ROOTS[bar]), dur: BEAT * 1.4 }, true);
+          add(t0 + 2 * BEAT, "bass", { f: hz(ROOTS[bar]), dur: BEAT * 0.8 }, true);
+          add(t0 + 3.5 * BEAT, "bass", { f: hz(ROOTS[bar] + 7), dur: BEAT * 0.4 }, true);
+          for (let b = 0; b < 4; b++) {
+            if (b % 2) add(t0 + b * BEAT, "clap", {}, true);
+            else add(t0 + b * BEAT, "kick", {}, true);
+            for (let q = 0; q < 2; q++) add(t0 + (b + q / 2) * BEAT, "shaker", { v: q ? 0.8 : 0.35 }, true);
+          }
+        });
+        return list.sort((a, b) => a.t - b.t);
+      }
+      let events = [];
+
+      // Audio graph: effects and music buses, a small reverb, a compressor before the speakers.
+      function makeGraph() {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -14;
+        comp.knee.value = 8;
+        comp.ratio.value = 4;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.2;
+        master = ctx.createGain();
+        master.gain.value = LEVEL;
+        master.connect(comp).connect(ctx.destination);
+
+        const len = Math.floor(ctx.sampleRate * 1.3);
+        impulse = ctx.createBuffer(2, len, ctx.sampleRate);
+        for (let ch = 0; ch < 2; ch++) {
+          const d = impulse.getChannelData(ch);
+          for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.5);
+        }
+        noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+        const nd = noiseBuf.getChannelData(0);
+        for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+      }
+
+      // Each time sound is turned on it gets fresh buses, so sounds queued before a
+      // stop can never leak out later.
+      function openSession() {
+        const t = ctx.currentTime;
+        session = ctx.createGain();
+        session.gain.setValueAtTime(0, t);
+        session.gain.linearRampToValueAtTime(1, t + 0.05);
+        session.connect(master);
+        fxBus = ctx.createGain();
+        fxBus.connect(session);
+        musicBus = ctx.createGain();
+        musicBus.gain.value = wantMusic ? MUSIC : 0;
+        musicBus.connect(session);
+        const verb = ctx.createConvolver();
+        verb.buffer = impulse;
+        const tone = filter("lowpass", 4200);
+        const verbOut = ctx.createGain();
+        verbOut.gain.value = 0.28;
+        verbSend = ctx.createGain();
+        verbSend.connect(verb).connect(tone).connect(verbOut).connect(session);
+      }
+      function closeSession() {
+        const old = session, t = ctx.currentTime;
+        session = null;
+        old.gain.cancelScheduledValues(t);
+        old.gain.setValueAtTime(old.gain.value, t);
+        old.gain.linearRampToValueAtTime(0, t + 0.15);
+        setTimeout(() => old.disconnect(), 250);
+      }
+
+      // Small building blocks.
+      function amp(when, peak, attack, decay, out) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, when);
+        g.gain.exponentialRampToValueAtTime(peak, when + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay);
+        g.connect(out);
+        return g;
+      }
+      function osc(type, freq, when, dur) {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.setValueAtTime(freq, when);
+        o.start(when);
+        o.stop(when + dur + 0.05);
+        return o;
+      }
+      function noise(when, dur) {
+        const src = ctx.createBufferSource();
+        src.buffer = noiseBuf;
+        src.loop = true;
+        src.start(when, Math.random() * 1.5);
+        src.stop(when + dur + 0.05);
+        return src;
+      }
+      function filter(type, freq, q = 0.7) {
+        const f = ctx.createBiquadFilter();
+        f.type = type;
+        f.frequency.value = freq;
+        f.Q.value = q;
+        return f;
+      }
+      function pan(value, out) {
+        const p = ctx.createStereoPanner();
+        p.pan.value = Math.max(-0.8, Math.min(0.8, value || 0));
+        p.connect(out);
+        return p;
+      }
+      function send(node, amount) {
+        const g = ctx.createGain();
+        g.gain.value = amount;
+        node.connect(g).connect(verbSend);
+      }
+      function shape(when, points, out) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, when);
+        for (const [dt, v] of points) g.gain.linearRampToValueAtTime(v, when + dt);
+        g.connect(out);
+        return g;
+      }
+
+      // One function per sound.
+      const voices = {
+        pop(when, e) {
+          // A soft bubble pop as something lands on the poster.
+          const v = e.v ?? 1;
+          const out = pan(e.p, fxBus);
+          const g = amp(when, 0.2 * v, 0.003, 0.11, out);
+          const o = osc("sine", e.f, when, 0.14);
+          o.frequency.exponentialRampToValueAtTime(e.f * 1.9, when + 0.05);
+          o.connect(g);
+          noise(when, 0.02).connect(filter("highpass", 3500)).connect(amp(when, 0.05 * v, 0.001, 0.015, out));
+          send(g, 0.25);
+        },
+        dot(when, e) {
+          // One dot of the dotted arrow: a tiny felt pen dab.
+          const out = pan(e.p, fxBus);
+          noise(when, 0.03).connect(filter("bandpass", e.f, 2.2)).connect(amp(when, 0.11, 0.002, 0.022, out));
+          osc("sine", e.f * 0.6, when, 0.03).connect(amp(when, 0.025, 0.001, 0.02, out));
+        },
+        tick(when, e) {
+          // A bright two note check.
+          const out = pan(e.p, fxBus);
+          [[88, 0], [95, 0.07]].forEach(([m, dt]) => {
+            const g = amp(when + dt, 0.12, 0.002, 0.2, out);
+            osc("triangle", hz(m), when + dt, 0.22).connect(g);
+            send(g, 0.35);
+          });
+        },
+        nope(when, e) {
+          // A soft, friendly "nope" for the cross.
+          const out = pan(e.p, fxBus);
+          [[50, 0], [47, 0.12]].forEach(([m, dt]) => {
+            const g = amp(when + dt, 0.12, 0.004, 0.14, out);
+            const lp = filter("lowpass", 900, 1);
+            lp.connect(g);
+            osc("square", hz(m), when + dt, 0.16).connect(lp);
+          });
+        },
+        ding(when, e) {
+          // The big stat lands: a warm bell.
+          const out = pan(e.p, fxBus);
+          const g = amp(when, 0.22, 0.003, 1.2, out);
+          osc("sine", hz(84), when, 1.3).connect(g);
+          osc("sine", hz(91), when + 0.06, 1).connect(amp(when + 0.06, 0.09, 0.004, 0.9, out));
+          osc("sine", hz(96), when, 0.6).connect(amp(when, 0.05, 0.002, 0.4, out));
+          send(g, 0.6);
+        },
+        fill(when, e) {
+          // Each person fills in with a rising marimba note.
+          const out = pan(e.p, fxBus);
+          const f = hz(e.m);
+          const g = amp(when, 0.16, 0.002, 0.35, out);
+          osc("sine", f, when, 0.4).connect(g);
+          osc("sine", f * 3.93, when, 0.08).connect(amp(when, 0.04, 0.001, 0.06, out));
+          send(g, 0.3);
+        },
+        whoosh(when, e) {
+          // Camera glide: filtered air that rises and falls, moving across.
+          const d = e.dur, v = e.v ?? 1;
+          const p = ctx.createStereoPanner();
+          p.pan.setValueAtTime(-(e.p || 0), when);
+          p.pan.linearRampToValueAtTime(e.p || 0, when + d);
+          p.connect(fxBus);
+          const g = shape(when, [[d * 0.5, 0.2 * v], [d, 0.0001]], p);
+          const bp = filter("bandpass", 350, 1.1);
+          bp.frequency.setValueAtTime(350, when);
+          bp.frequency.exponentialRampToValueAtTime(1900, when + d * 0.5);
+          bp.frequency.exponentialRampToValueAtTime(500, when + d);
+          noise(when, d + 0.05).connect(bp).connect(g);
+        },
+        swell(when, e) {
+          // The pull back: a long airy rise with a soft chord shimmer.
+          const d = e.dur;
+          const g = shape(when, [[d * 0.7, 0.16], [d + 0.4, 0.0001]], fxBus);
+          const bp = filter("bandpass", 250, 0.9);
+          bp.frequency.setValueAtTime(250, when);
+          bp.frequency.exponentialRampToValueAtTime(2600, when + d);
+          noise(when, d + 0.4).connect(bp).connect(g);
+          [72, 76, 79].forEach((m) => osc("sine", hz(m), when + d * 0.6, 1).connect(amp(when + d * 0.6, 0.035, 0.2, 0.7, fxBus)));
+          send(g, 0.4);
+        },
+        tap(when, e) {
+          const out = pan(e.p, fxBus);
+          const o = osc("sine", 1000, when, 0.06);
+          o.frequency.exponentialRampToValueAtTime(600, when + 0.05);
+          o.connect(amp(when, 0.12, 0.001, 0.05, out));
+        },
+        mallet(when, e) {
+          // Soft marimba: a sine with a short bright overtone.
+          const g = amp(when, 0.2 * e.v, 0.003, e.long ? 0.9 : 0.35, musicBus);
+          osc("sine", e.f, when, e.long ? 1 : 0.4).connect(g);
+          osc("sine", e.f * 3.93, when, 0.07).connect(amp(when, 0.035 * e.v, 0.001, 0.05, musicBus));
+          send(g, 0.2);
+        },
+        bass(when, e) {
+          const g = amp(when, 0.34, 0.006, e.dur, musicBus);
+          const lp = filter("lowpass", 520, 1);
+          lp.connect(g);
+          osc("triangle", e.f, when, e.dur + 0.02).connect(lp);
+        },
+        kick(when) {
+          const g = amp(when, 0.35, 0.002, 0.18, musicBus);
+          const o = osc("sine", 120, when, 0.2);
+          o.frequency.exponentialRampToValueAtTime(48, when + 0.12);
+          o.connect(g);
+        },
+        clap(when) {
+          const g = ctx.createGain();
+          g.connect(musicBus);
+          const bp = filter("bandpass", 1400, 1.2);
+          bp.connect(g);
+          [0, 0.011, 0.022].forEach((dt, k) => noise(when + dt, 0.12).connect(amp(when + dt, k === 2 ? 0.15 : 0.09, 0.002, k === 2 ? 0.1 : 0.012, bp)));
+          send(g, 0.6);
+        },
+        shaker(when, e) {
+          noise(when, 0.06).connect(filter("highpass", 6500)).connect(amp(when, 0.07 * e.v, 0.006, 0.04, musicBus));
+        },
+      };
+
+      // Look-ahead scheduler: every 25 ms, schedule sounds due in the next 100 ms.
+      // Animation time is mapped to audio time by an anchor that is re-set after any jump
+      // (a pause, a hidden tab, a restart), so missed sounds never pile up.
+      function tick() {
+        const now = playing && ctx.state === "running" && !document.hidden && !reduce.matches ? clock() : null;
+        if (now === null) { anchor = null; return; }
+        const loopLen = loopLength();
+        const at = ctx.currentTime;
+        if (anchor) {
+          const err = now - (anchor.tl + (at - anchor.audio));
+          if (Math.abs(err) > 0.08) anchor = null;
+          else anchor.tl += err * 0.05;
+        }
+        if (!anchor) {
+          anchor = { tl: now, audio: at };
+          doneUpTo = now;
+        }
+        const cur = anchor.tl + (at - anchor.audio);
+        const from = Math.max(doneUpTo, cur - 0.05);
+        const to = cur + 0.1;
+        if (to <= from) return;
+        for (let k = Math.floor(from / loopLen); k <= Math.floor(to / loopLen); k++) {
+          for (const e of events) {
+            const t = k * loopLen + e.t;
+            if (t < from || t >= to) continue;
+            if (e.music && !wantMusic) continue;
+            voices[e.type](Math.max(at, anchor.audio + (t - anchor.tl)), e);
+          }
+        }
+        doneUpTo = to;
+      }
+
+      // Turn sound on or off to match what was asked for.
+      function update() {
+        const on = wantOn && !reduce.matches;
+        if (on) {
+          if (!ctx) makeGraph();
+          clearTimeout(sleepTimer);
+          if (ctx.state !== "running") ctx.resume().catch(() => {});
+          if (!playing) {
+            playing = true;
+            anchor = null;
+            openSession();
+            clearInterval(timer);
+            timer = setInterval(tick, 25);
+          }
+          const t = ctx.currentTime;
+          musicBus.gain.cancelScheduledValues(t);
+          musicBus.gain.setTargetAtTime(wantMusic ? MUSIC : 0, t, 0.03);
+        } else if (playing) {
+          playing = false;
+          clearInterval(timer);
+          closeSession();
+          sleepTimer = setTimeout(() => ctx.suspend(), 200);
+        }
+      }
+      reduce.addEventListener("change", update);
+
+      // Browsers may block audio until the first click or key press.
+      const unlock = () => { if (playing && ctx && ctx.state !== "running") ctx.resume().catch(() => {}); };
+      addEventListener("pointerdown", unlock);
+      addEventListener("keydown", unlock);
+
+      addEventListener("message", (event) => {
+        if (event.origin !== location.origin) return;
+        const data = event.data;
+        if (!data || data.type !== "motionprompt-sound") return;
+        if (typeof data.on === "boolean") wantOn = data.on;
+        if (typeof data.music === "boolean") wantMusic = data.music;
+        update();
+      });
+
+      const fromUrl = params.get("sound");
+      if (fromUrl === "1" || fromUrl === "effects") {
+        wantOn = true;
+        wantMusic = fromUrl === "1";
+        update();
+      }
+      return { replan() { events = plan(); } };
+    })();
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(build, 150);
+    });
+
+    // Wait briefly for the font so text is measured in the right face.
+    Promise.race([
+      document.fonts.load('800 1em "Plus Jakarta Sans Variable"'),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(build);
+  </script>
+</body>
+</html>

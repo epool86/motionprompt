@@ -1,0 +1,972 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Radial infographic demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/oswald@5.3.0/latin-700.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/inter@5.3.0/latin-400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/inter@5.3.0/latin-500-italic.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=0b1020&ink=ffffff&accent=f57c1f&accent2=7b3fb8
+       Giving accent (and accent2) swaps the rainbow wheel for a blend of those colours. */
+    :root {
+      --bg: #0b1020;
+      --ink: #ffffff;
+      --accent: #f57c1f;
+      --accent2: #7b3fb8;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    canvas, svg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .head { font-family: "Oswald", "Arial Narrow", sans-serif; font-weight: 700; fill: var(--ink); }
+    .sub { font-family: "Inter", system-ui, sans-serif; font-style: italic; font-weight: 500; fill: var(--ink); fill-opacity: 0.72; letter-spacing: 0.04em; }
+    .body { font-family: "Inter", system-ui, sans-serif; font-weight: 400; fill: var(--ink); fill-opacity: 0.58; }
+    .icon { fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; }
+    .lead { fill: none; stroke: var(--ink); stroke-opacity: 0.85; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+</head>
+<body>
+  <canvas id="backdrop"></canvas>
+  <svg id="stage" role="img" xmlns="http://www.w3.org/2000/svg"></svg>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const root = document.documentElement;
+    const custom = {};
+    for (const key of ["bg", "ink", "accent", "accent2"]) {
+      const value = params.get(key);
+      if (/^[0-9a-f]{6}$/i.test(value ?? "")) {
+        root.style.setProperty(`--${key}`, `#${value}`);
+        custom[key] = `#${value}`;
+      }
+    }
+    const cssVar = (k) => getComputedStyle(root).getPropertyValue(`--${k}`).trim();
+    const text = (params.get("text") || "Our 2027 plan").trim().slice(0, 60);
+
+    // Six points around the wheel. "seg" is the wheel segment each one belongs to
+    // (0 is the top segment, counting clockwise), so #1 sits bottom right like a classic cycle chart.
+    const POINTS = [
+      { seg: 3, title: "Introduction", sub: "What is the plan about?", body: "One clear goal for the year ahead: grow sales and serve our customers better." },
+      { seg: 2, title: "Innovation", sub: "What is new?", body: "Fresh ideas we will test this year. Small trials first, then we scale what works." },
+      { seg: 1, title: "Marketing", sub: "How will people find us?", body: "Short videos every week, local partners and a loyal customer club." },
+      { seg: 7, title: "Strategy", sub: "How do we win?", body: "Focus on our three best products and say no to everything else." },
+      { seg: 6, title: "Locations", sub: "Where will we operate?", body: "Two new branches in the Klang Valley, with online orders nationwide." },
+      { seg: 5, title: "Work plan", sub: "What are the next steps?", body: "Hire the team in March, launch in June and review every quarter." },
+    ];
+
+    // Colour helpers.
+    const hexRgb = (h) => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+    const rgbHex = (r, g, b) => "#" + [r, g, b].map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, "0")).join("");
+    const mix = (a, b, t) => { const A = hexRgb(a), B = hexRgb(b); return rgbHex(...A.map((v, i) => v + (B[i] - v) * t)); };
+    const rgba = (h, a) => { const [r, g, b] = hexRgb(h); return `rgba(${r},${g},${b},${a})`; };
+    function toHsl(hex) {
+      const [r, g, b] = hexRgb(hex).map((v) => v / 255);
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+      let h = 0, s = 0;
+      if (mx !== mn) {
+        const d = mx - mn;
+        s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+        h = (mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4) * 60;
+      }
+      return [h, s, l];
+    }
+    function fromHsl(h, s, l) {
+      h = ((h % 360) + 360) % 360;
+      const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2;
+      const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+      return rgbHex((r + m) * 255, (g + m) * 255, (b + m) * 255);
+    }
+
+    // The wheel colours, clockwise from the top: a rainbow by default, or a blend of the brand colours.
+    const RAINBOW = ["#f57c1f", "#e53935", "#8e44c9", "#1f74d6", "#139e9b", "#2fa84f", "#8cc63f", "#f4bf1c"];
+    function palette() {
+      if (!custom.accent && !custom.accent2) return RAINBOW;
+      const a = toHsl(custom.accent || cssVar("accent"));
+      const b = custom.accent2 ? toHsl(custom.accent2) : [a[0] + 200, a[1], a[2]];
+      const dh = ((((b[0] - a[0]) % 360) + 540) % 360) - 180;
+      return Array.from({ length: 8 }, (_, i) => {
+        const t = i / 7;
+        const s = Math.max(0.45, a[1] + (b[1] - a[1]) * t);
+        const l = Math.max(0.4, Math.min(0.6, a[2] + (b[2] - a[2]) * t)) + (i % 2 ? -0.03 : 0.02);
+        return fromHsl(a[0] + dh * t, s, l);
+      });
+    }
+
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.getElementById("stage");
+    const backdrop = document.getElementById("backdrop");
+    svg.setAttribute("aria-label", `A radial infographic wheel with six key points around: ${text}`);
+
+    function el(name, attrs, parent) {
+      const node = document.createElementNS(NS, name);
+      for (const k in attrs) node.setAttribute(k, attrs[k]);
+      if (parent) parent.append(node);
+      return node;
+    }
+
+    // Small seeded random, so the backdrop looks the same on every build.
+    let seed = 1;
+    function rand() {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    }
+
+    // Wheel geometry: an octagon ring of 8 slanted blades, like a camera shutter.
+    const D = Math.PI / 180;
+    const TWIST = 16;
+    const centreAngle = (k) => -90 + k * 45;
+    const pt = (deg, r) => [Math.cos(deg * D) * r, Math.sin(deg * D) * r];
+    const ptsAttr = (pts) => pts.map((p) => p.map((v) => v.toFixed(1)).join(",")).join(" ");
+    function blade(k, R, ri) {
+      const c = centreAngle(k);
+      return [pt(c - 22.5, R), pt(c + 22.5, R), pt(c + 22.5 + TWIST, ri), pt(c - 22.5 + TWIST, ri)];
+    }
+    const octagon = (r, turn = 0) => Array.from({ length: 8 }, (_, k) => pt(-112.5 + turn + k * 45, r));
+
+    // White line icons, drawn on a 100 unit grid around their own centre.
+    const circ = (cx, cy, r) => `M${cx - r} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`;
+    function gear() {
+      let d = "";
+      for (let i = 0; i < 8; i++) {
+        const b = i * 45;
+        const p = [pt(b - 15, 25), pt(b - 8, 35), pt(b + 8, 35), pt(b + 15, 25)];
+        d += p.map((q, j) => `${i === 0 && j === 0 ? "M" : "L"}${q[0].toFixed(1)} ${q[1].toFixed(1)}`).join("");
+      }
+      return [d + "Z", circ(0, 0, 11)];
+    }
+    const ICONS = [
+      { paths: gear(), spin: true },
+      { paths: ["M-32 34H34", "M-26 34V14H-14V34", "M-6 34V2H6V34", "M14 34V-12H26V34", "M-30 2L-10 -14L2 -6L26 -30", "M14 -30H26V-18"] },
+      { paths: ["M-18 16H18L13 38H-13Z", "M0 16V-14", "M0 -2C-6 -16 -20 -20 -30 -14C-24 -2 -10 2 0 -2Z", "M0 -14C4 -28 18 -34 30 -30C26 -16 12 -10 0 -14Z"] },
+      { paths: ["M-13 16C-13 6 -25 0 -25 -13A25 25 0 0 1 25 -13C25 0 13 6 13 16Z", "M-11 25H11", "M-7 33H7", "M-6 14V0L0 -6L6 0V14"] },
+      { paths: [circ(0, -24, 9), circ(-24, 20, 9), circ(24, 20, 9), "M-4.3 -16.1L-19.7 12.1", "M4.3 -16.1L19.7 12.1", "M-15 20H15"] },
+      { paths: ["M-6 33V-9C-18 -13 -22 -27 -15 -39L-7 -30H7L15 -39C22 -27 18 -13 6 -9V33A6 6 0 0 1 -6 33Z", circ(0, 28, 2)], rot: 45 },
+      { paths: ["M0 38C-8 24 -24 10 -24 -8A24 24 0 0 1 24 -8C24 10 8 24 0 38Z", circ(0, -8, 9)] },
+      { paths: [circ(-6, 6, 30), circ(-6, 6, 18), circ(-6, 6, 6), "M-6 6L28 -28", "M20 -20V-32M20 -20H32", "M28 -28V-38M28 -28H38"] },
+    ];
+
+    // Layouts, picked by the shape of the window. Units are scene units, scaled to fit.
+    // "sides": labels left and right of the wheel with elbow leader lines.
+    // "grid": wheel on top, labels in a tidy grid underneath.
+    const layouts = {
+      wide: { w: 1600, h: 900, cx: 800, cy: 430, R: 250, mode: "sides", colW: 410, left: 60, right: 1130, rows: [200, 440, 680], head: 46, sub: 16, body: 19, lh: 26, lean: 0.8 },
+      square: { w: 1000, h: 1000, cx: 500, cy: 470, R: 160, mode: "sides", colW: 280, left: 30, right: 690, rows: [262, 482, 702], head: 34, sub: 12.5, body: 15.5, lh: 21, lean: 0.5 },
+      portrait: { w: 1000, h: 1250, cx: 500, cy: 400, R: 220, mode: "grid", cols: 3, colW: 290, xs: [30, 355, 680], rows: [800, 1060], head: 38, sub: 14, body: 17, lh: 23 },
+      column: { w: 900, h: 1600, cx: 450, cy: 455, R: 285, mode: "grid", cols: 2, colW: 380, xs: [50, 470], rows: [925, 1165, 1405], head: 44, sub: 17, body: 21, lh: 28 },
+    };
+
+    // Timing (seconds). 120 bpm: one beat is 0.5 s and the loop is six bars.
+    const LOOP = 12;
+    const lockAt = (i) => 1.0 + i * 0.25;          // blade i snaps into place (on the 8th notes)
+    const pointAt = (j) => 3.5 + j;                 // point j is highlighted (every two beats)
+    const FINALE = 10.0;                            // bright chord, shine and ripple
+    const EXIT = 11.0;                              // blades fold away
+    const headDur = (n) => Math.min(0.45, n * 0.032);
+    const bladeColours = () => palette();
+
+    let tl = null;
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+
+    // The backdrop: a moody, out of focus arena at night, painted once per build.
+    function paintBackdrop(W, H, wheel) {
+      const dpr = Math.min(2, devicePixelRatio || 1);
+      backdrop.width = Math.round(W * dpr);
+      backdrop.height = Math.round(H * dpr);
+      const c = backdrop.getContext("2d");
+      c.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const M = Math.max(W, H);
+      const base = cssVar("bg") || "#0b1020";
+      const floor = Math.min(H * 0.97, wheel.floor);
+      seed = 11;
+
+      const sky = c.createLinearGradient(0, 0, 0, H);
+      sky.addColorStop(0, mix(base, "#2c3854", 0.35));
+      sky.addColorStop(Math.max(0.01, (floor / H) * 0.55), mix(base, "#18202f", 0.4));
+      sky.addColorStop(Math.max(0.02, floor / H - 0.01), mix(base, "#3d4a66", 0.3));
+      sky.addColorStop(Math.min(0.99, floor / H + 0.01), mix(base, "#000000", 0.15));
+      sky.addColorStop(1, mix(base, "#000000", 0.6));
+      c.fillStyle = sky;
+      c.fillRect(0, 0, W, H);
+
+      // Everything behind the wheel is soft, like a shallow depth of field.
+      c.filter = `blur(${(M * 0.009).toFixed(1)}px)`;
+      // Stands: a few long bands with faint seat lights.
+      [[0.34, 0.1], [0.52, 0.12], [0.7, 0.13]].forEach(([y, h], i) => {
+        c.fillStyle = rgba(mix(base, "#5b6886", 0.35), 0.35 + i * 0.1);
+        c.fillRect(-20, floor * y, W + 40, floor * h);
+        for (let x = 0; x < W; x += M * 0.012) {
+          if (rand() < 0.45) continue;
+          c.fillStyle = `rgba(255, 240, 210, ${0.08 + rand() * 0.18})`;
+          c.fillRect(x, floor * (y + rand() * h), M * 0.005, M * 0.003);
+        }
+      });
+      // Floodlight rows high up.
+      [0.1, 0.19].forEach((row, r) => {
+        const n = Math.round(W / (M * 0.07)) + 2;
+        for (let i = 0; i < n; i++) {
+          const x = (i + 0.5 + (rand() - 0.5) * 0.4) * (W / n);
+          const y = floor * (row + (rand() - 0.5) * 0.03);
+          const halo = c.createRadialGradient(x, y, 0, x, y, M * (0.035 + rand() * 0.02));
+          halo.addColorStop(0, `rgba(255, 246, 225, ${0.45 - r * 0.15})`);
+          halo.addColorStop(1, "rgba(255, 246, 225, 0)");
+          c.fillStyle = halo;
+          c.fillRect(x - M * 0.06, y - M * 0.06, M * 0.12, M * 0.12);
+          c.fillStyle = "rgba(255, 255, 255, 0.9)";
+          c.beginPath();
+          c.arc(x, y, M * 0.004, 0, Math.PI * 2);
+          c.fill();
+        }
+      });
+      // Bokeh: soft coloured lights scattered in the distance.
+      const tints = ["#ffd9a0", "#ffffff", "#9fc4ff", "#ffb38a"];
+      for (let i = 0; i < 46; i++) {
+        const x = rand() * W, y = floor * (0.06 + rand() * 0.74), r = M * (0.006 + rand() * 0.016);
+        const g = c.createRadialGradient(x, y, 0, x, y, r);
+        const tint = tints[i % tints.length];
+        g.addColorStop(0, rgba(tint, 0.12 + rand() * 0.3));
+        g.addColorStop(0.7, rgba(tint, 0.06));
+        g.addColorStop(1, rgba(tint, 0));
+        c.fillStyle = g;
+        c.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+      // Big soft wash of light from above.
+      [[0.2, 0.05], [0.8, 0.1], [0.5, 0.02]].forEach(([fx, fy]) => {
+        const x = W * fx, y = floor * fy, r = M * 0.35;
+        const g = c.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, "rgba(200, 215, 255, 0.16)");
+        g.addColorStop(1, "rgba(200, 215, 255, 0)");
+        c.fillStyle = g;
+        c.fillRect(0, 0, W, H);
+      });
+      // A bright horizon where the floor meets the stands.
+      const horizon = c.createLinearGradient(0, floor - M * 0.03, 0, floor + M * 0.01);
+      horizon.addColorStop(0, "rgba(170, 190, 230, 0)");
+      horizon.addColorStop(0.8, "rgba(170, 190, 230, 0.16)");
+      horizon.addColorStop(1, "rgba(170, 190, 230, 0)");
+      c.fillStyle = horizon;
+      c.fillRect(0, floor - M * 0.03, W, M * 0.04);
+      c.filter = "none";
+
+      // Floor: faint lines running to a point behind the wheel, and a pool of light under it.
+      c.strokeStyle = "rgba(190, 205, 240, 0.05)";
+      c.lineWidth = Math.max(1, M * 0.0012);
+      for (let i = -12; i <= 12; i++) {
+        c.beginPath();
+        c.moveTo(wheel.x + i * M * 0.012, floor);
+        c.lineTo(wheel.x + i * M * 0.14, H + 10);
+        c.stroke();
+      }
+      const pool = c.createRadialGradient(wheel.x, floor, 0, wheel.x, floor, wheel.r * 1.9);
+      pool.addColorStop(0, "rgba(200, 215, 255, 0.12)");
+      pool.addColorStop(1, "rgba(200, 215, 255, 0)");
+      c.save();
+      c.translate(wheel.x, floor);
+      c.scale(1, 0.22);
+      c.translate(-wheel.x, -floor);
+      c.fillStyle = pool;
+      c.fillRect(wheel.x - wheel.r * 2, floor - wheel.r * 2, wheel.r * 4, wheel.r * 4);
+      c.restore();
+
+      // A cool glow behind the wheel, then a vignette.
+      const glow = c.createRadialGradient(wheel.x, wheel.y, wheel.r * 0.4, wheel.x, wheel.y, wheel.r * 2.2);
+      glow.addColorStop(0, "rgba(120, 140, 210, 0.2)");
+      glow.addColorStop(1, "rgba(120, 140, 210, 0)");
+      c.fillStyle = glow;
+      c.fillRect(0, 0, W, H);
+      const vig = c.createRadialGradient(W / 2, H * 0.45, Math.min(W, H) * 0.3, W / 2, H * 0.45, M * 0.8);
+      vig.addColorStop(0, "rgba(0, 0, 0, 0)");
+      vig.addColorStop(1, "rgba(0, 0, 0, 0.72)");
+      c.fillStyle = vig;
+      c.fillRect(0, 0, W, H);
+    }
+
+    // Text helpers. A hidden probe measures text in the real font.
+    let probe = null;
+    function measure(str, size, cls) {
+      probe.setAttribute("class", cls);
+      probe.setAttribute("font-size", size);
+      probe.textContent = str;
+      return probe.getComputedTextLength();
+    }
+    function wrap(str, size, maxW, cls) {
+      const lines = [];
+      let cur = "";
+      for (const word of str.split(/\s+/)) {
+        const test = cur ? `${cur} ${word}` : word;
+        if (cur && measure(test, size, cls) > maxW) { lines.push(cur); cur = word; } else cur = test;
+      }
+      if (cur) lines.push(cur);
+      return lines;
+    }
+    // Split the title into 1 to 4 lines and pick the split that allows the biggest type in the hub.
+    function fitTitle(str, boxW, boxH, maxSize) {
+      const words = str.toUpperCase().split(/\s+/);
+      const widths = words.map((w) => measure(w, 100, "head"));
+      const space = measure("A A", 100, "head") - measure("AA", 100, "head");
+      let best = { size: 0, lines: [str.toUpperCase()] };
+      const n = words.length;
+      for (let count = 1; count <= Math.min(4, n); count++) {
+        // Try every way to break the words into "count" lines.
+        const tryBreaks = (start, left, acc) => {
+          if (left === 1) {
+            const lines = [...acc, [start, n]];
+            const widest = Math.max(...lines.map(([a, b]) => widths.slice(a, b).reduce((s, w) => s + w, 0) + space * (b - a - 1)));
+            const size = Math.min(maxSize, (boxW / widest) * 100, boxH / (count * 1.05));
+            if (size > best.size) best = { size, lines: lines.map(([a, b]) => words.slice(a, b).join(" ")) };
+            return;
+          }
+          for (let end = start + 1; end <= n - left + 1; end++) tryBreaks(end, left - 1, [...acc, [start, end]]);
+        };
+        tryBreaks(0, count, []);
+      }
+      return best;
+    }
+
+    function drawOn(tlRef, node, at, dur, ease = "power2.inOut") {
+      const len = node.getTotalLength() + 2;
+      gsap.set(node, { strokeDasharray: `${len} ${len + 40}`, strokeDashoffset: len + 20 });
+      tlRef.to(node, { strokeDashoffset: 0, duration: dur, ease }, at);
+    }
+
+    function build() {
+      const keep = tl ? tl.time() : 0;
+      if (tl) tl.kill();
+      svg.replaceChildren();
+
+      const W = innerWidth, H = innerHeight, aspect = W / H;
+      const L = aspect >= 1.3 ? layouts.wide : aspect >= 0.9 ? layouts.square : aspect >= 0.68 ? layouts.portrait : layouts.column;
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      const s = Math.min((W * 0.96) / L.w, (H * 0.96) / L.h);
+      const ox = (W - L.w * s) / 2, oy = (H - L.h * s) / 2;
+      const R = L.R, ri = R * 0.5, cx = L.cx, cy = L.cy;
+      const floorY = cy + R * Math.cos(22.5 * D) + R * 0.05;
+      paintBackdrop(W, H, { x: ox + cx * s, y: oy + cy * s, r: R * s, floor: oy + floorY * s });
+
+      const colours = bladeColours();
+      const ink = cssVar("ink") || "#ffffff";
+      const hubFill = mix(cssVar("bg") || "#0b1020", "#000000", 0.35);
+
+      const defs = el("defs", {}, svg);
+      const glowF = el("filter", { id: "ri-glow", x: "-60%", y: "-60%", width: "220%", height: "220%" }, defs);
+      el("feGaussianBlur", { stdDeviation: (R * 0.07).toFixed(1) }, glowF);
+      const shine = el("linearGradient", { id: "ri-shine", gradientUnits: "userSpaceOnUse", x1: 0, y1: -R, x2: 0, y2: R }, defs);
+      [[0, "#fff", 0.24], [0.45, "#fff", 0.04], [0.55, "#000", 0], [1, "#000", 0.22]].forEach(([o, c, a]) => el("stop", { offset: o, "stop-color": c, "stop-opacity": a }, shine));
+      const band = el("linearGradient", { id: "ri-band" }, defs);
+      [[0, 0], [0.5, 0.38], [1, 0]].forEach(([o, a]) => el("stop", { offset: o, "stop-color": "#fff", "stop-opacity": a }, band));
+      const clip = el("clipPath", { id: "ri-clip" }, defs);
+      el("polygon", { points: ptsAttr(octagon(R * 1.01)) }, clip);
+      const shadowG = el("radialGradient", { id: "ri-shadow" }, defs);
+      [[0, 0.6], [1, 0]].forEach(([o, a]) => el("stop", { offset: o, "stop-color": "#000", "stop-opacity": a }, shadowG));
+      const fade = el("linearGradient", { id: "ri-fade", gradientUnits: "userSpaceOnUse", x1: 0, y1: floorY, x2: 0, y2: floorY + R * 0.55 }, defs);
+      [[0, 0.3], [1, 0]].forEach(([o, a]) => el("stop", { offset: o, "stop-color": "#fff", "stop-opacity": a }, fade));
+      const reflMask = el("mask", { id: "ri-refl", maskUnits: "userSpaceOnUse", x: 0, y: floorY, width: L.w, height: R }, defs);
+      el("rect", { x: 0, y: floorY, width: L.w, height: R, fill: "url(#ri-fade)" }, reflMask);
+
+      const scene = el("g", { transform: `translate(${ox.toFixed(1)} ${oy.toFixed(1)}) scale(${s.toFixed(4)})` }, svg);
+      const cam = el("g", {}, scene);
+      probe = el("text", { x: -9999, y: -9999, class: "head" }, scene);
+
+      // Floor shadow and a faint mirror image of the wheel on the floor.
+      const shadow = el("ellipse", { cx, cy: floorY, rx: R * 0.95, ry: R * 0.07, fill: "url(#ri-shadow)" }, cam);
+      const refl = el("g", { mask: "url(#ri-refl)" }, cam);
+      el("use", { href: "#ri-wheel", transform: `translate(0 ${(2 * floorY).toFixed(1)}) scale(1 -1)` }, refl);
+
+      const wheelPos = el("g", { id: "ri-wheel", transform: `translate(${cx} ${cy})` }, cam);
+      const bob = el("g", {}, wheelPos);
+      const glowLayer = el("g", {}, bob);
+      const ring = el("g", {}, bob);
+
+      // Blades: fly group (spins in around the wheel centre) > pop group (pushes out when active).
+      const blades = [];
+      for (let k = 0; k < 8; k++) {
+        const pts = blade(k, R, ri);
+        const mid = pts.reduce((a, p) => [a[0] + p[0] / 4, a[1] + p[1] / 4], [0, 0]);
+        const glow = el("polygon", { points: ptsAttr(pts), fill: colours[k], filter: "url(#ri-glow)", opacity: 0 }, glowLayer);
+        const fly = el("g", {}, ring);
+        const pop = el("g", {}, fly);
+        el("polygon", { points: ptsAttr(pts), fill: colours[k], stroke: "rgba(0,0,0,0.28)", "stroke-width": R * 0.008, "stroke-linejoin": "round" }, pop);
+        el("polygon", { points: ptsAttr([pts[0], pts[2], pts[3]]), fill: "#000", "fill-opacity": 0.14 }, pop);
+        el("polygon", { points: ptsAttr(pts), fill: "url(#ri-shine)" }, pop);
+        el("line", { x1: pts[0][0], y1: pts[0][1], x2: pts[1][0], y2: pts[1][1], stroke: "#fff", "stroke-opacity": 0.3, "stroke-width": R * 0.008 }, pop);
+        const sc = R * 0.0034;
+        const iconPos = el("g", { transform: `translate(${mid[0].toFixed(1)} ${mid[1].toFixed(1)}) scale(${sc.toFixed(4)})${ICONS[k].rot ? ` rotate(${ICONS[k].rot})` : ""}` }, pop);
+        const spin = el("g", {}, iconPos);
+        const strokes = ICONS[k].paths.map((d) => el("path", { d, class: "icon", "stroke-width": 4.6 }, spin));
+        const dir = pt(centreAngle(k), 1);
+        blades.push({ k, fly, pop, glow, spin, strokes, mid, dir });
+      }
+
+      // Hub: a dark octagon with a dashed outline and the title.
+      const hub = el("g", {}, bob);
+      el("polygon", { points: ptsAttr(octagon(ri * 0.92, TWIST)), fill: hubFill, stroke: "rgba(255,255,255,0.08)", "stroke-width": R * 0.008 }, hub);
+      const dashR = ri * 0.78;
+      const dashed = el("polygon", { points: ptsAttr(octagon(dashR, TWIST)), fill: "none", stroke: ink, "stroke-width": R * 0.012, "stroke-dasharray": `${(R * 0.035).toFixed(1)} ${(R * 0.025).toFixed(1)}`, "stroke-linecap": "round" }, hub);
+      const boxW = dashR * 1.45, boxH = dashR * 1.3;
+      const fit = fitTitle(text, boxW, boxH, ri * 0.42);
+      const lh = fit.size * 1.05;
+      const titleLines = fit.lines.map((line, i) => {
+        const y = (i - (fit.lines.length - 1) / 2) * lh + fit.size * 0.36;
+        const t = el("text", { x: 0, y: y.toFixed(1), class: "head", "font-size": fit.size.toFixed(1), "text-anchor": "middle", "letter-spacing": "0.01em" }, hub);
+        t.textContent = line;
+        return t;
+      });
+
+      // Shine: a soft white band that sweeps across the finished wheel.
+      const shineClip = el("g", { "clip-path": "url(#ri-clip)" }, bob);
+      const sweep = el("g", {}, shineClip);
+      el("rect", { x: -R * 0.25, y: -R * 1.6, width: R * 0.5, height: R * 3.2, fill: "url(#ri-band)", transform: "rotate(22)" }, sweep);
+
+      // Labels.
+      const labels = el("g", {}, cam);
+      const items = POINTS.map((p, j) => {
+        const b = blades[p.seg];
+        const colour = colours[p.seg];
+        let x, uy, lead = null, dot;
+        if (L.mode === "sides") {
+          const side = b.dir[0] > 0 ? 1 : -1;
+          const row = side > 0 ? p.seg - 1 : 7 - p.seg;
+          uy = L.rows[row];
+          x = side > 0 ? L.right : L.left;
+          const r0 = R * Math.cos(22.5 * D) + R * 0.085;
+          const P = [cx + b.dir[0] * r0, cy + b.dir[1] * r0];
+          const E = [P[0] + side * Math.abs(P[1] - uy) * L.lean, uy];
+          const far = side > 0 ? L.right + L.colW : L.left;
+          lead = el("path", { d: `M${P[0].toFixed(1)} ${P[1].toFixed(1)}L${E[0].toFixed(1)} ${E[1].toFixed(1)}H${far}`, class: "lead", "stroke-width": R * 0.008 }, labels);
+          dot = el("circle", { cx: P[0], cy: P[1], r: R * 0.022, fill: colour, stroke: ink, "stroke-width": R * 0.008 }, labels);
+        } else {
+          x = L.xs[j % L.cols];
+          uy = L.rows[Math.floor(j / L.cols)];
+          lead = el("path", { d: `M${x} ${uy}H${x + L.colW}`, class: "lead", "stroke-width": 1.8, "stroke-opacity": 0.55 }, labels);
+          dot = el("circle", { cx: x + 7, cy: uy, r: 7, fill: colour, stroke: ink, "stroke-width": 2 }, labels);
+        }
+        gsap.set(dot, { svgOrigin: `${dot.getAttribute("cx")} ${dot.getAttribute("cy")}` });
+
+        // Heading: "#1 INTRODUCTION", the number in the blade colour. It types on behind a clip.
+        const headStr = `#${j + 1} ${p.title.toUpperCase()}`;
+        let hs = L.head;
+        const hw = measure(headStr, hs, "head");
+        if (hw > L.colW) hs *= L.colW / hw;
+        const hx = L.mode === "grid" ? x : x;
+        const clipId = `ri-head-${j}`;
+        const hclip = el("clipPath", { id: clipId }, defs);
+        const hrect = el("rect", { x: hx - 4, y: uy - hs * 1.3, width: 0, height: hs * 1.25 }, hclip);
+        const head = el("text", { x: hx, y: (uy - hs * 0.26).toFixed(1), class: "head", "font-size": hs.toFixed(1), "letter-spacing": "0.01em", "clip-path": `url(#${clipId})` }, labels);
+        const num = el("tspan", { fill: mix(colour, "#ffffff", 0.25) }, head);
+        num.textContent = `#${j + 1} `;
+        const word = el("tspan", {}, head);
+        word.textContent = p.title.toUpperCase();
+        const headW = measure(headStr, hs, "head");
+
+        const subStr = `// ${p.sub.toUpperCase()}`;
+        let ss = L.sub;
+        const sw = measure(subStr, ss, "sub");
+        if (sw > L.colW) ss *= L.colW / sw;
+        const sub = el("text", { x: hx, y: (uy + L.sub * 1.85).toFixed(1), class: "sub", "font-size": ss.toFixed(2) }, labels);
+        sub.textContent = subStr;
+
+        const bodyLines = wrap(p.body, L.body, L.colW, "body").slice(0, 3).map((line, i) => {
+          const t = el("text", { x: hx, y: (uy + L.sub * 1.85 + L.body * 1.65 + i * L.lh).toFixed(1), class: "body", "font-size": L.body }, labels);
+          t.textContent = line;
+          return t;
+        });
+        return { p, j, b, lead, dot, hrect, headW, chars: headStr.length, sub, bodyLines };
+      });
+      probe.remove();
+
+      // Timeline.
+      tl = gsap.timeline({ repeat: -1 });
+      gsap.set(cam, { svgOrigin: `${cx} ${cy}` });
+      gsap.set([hub, ...blades.map((b) => b.fly), ...blades.map((b) => b.spin)], { svgOrigin: "0 0" });
+      blades.forEach((b) => gsap.set(b.pop, { svgOrigin: `${b.mid[0].toFixed(1)} ${b.mid[1].toFixed(1)}` }));
+
+      tl.fromTo(backdrop, { opacity: 0.35 }, { opacity: 1, duration: 0.9, ease: "power1.out" }, 0)
+        .fromTo(cam, { scale: 1.06 }, { scale: 1, duration: 2.6, ease: "power2.out" }, 0)
+        .fromTo(bob, { y: 0 }, { y: -R * 0.022, duration: 3, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0)
+        .fromTo(dashed, { strokeDashoffset: 0 }, { strokeDashoffset: -R * 0.06 * 12, duration: LOOP, ease: "none" }, 0);
+
+      // Hub pops in on beat 2, then the title.
+      tl.fromTo(hub, { scale: 0, rotation: -30 }, { scale: 1, rotation: 0, duration: 0.5, ease: "back.out(1.8)" }, 0.32)
+        .fromTo(titleLines, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.4, stagger: 0.08, ease: "power2.out" }, 0.55)
+        .fromTo(shadow, { opacity: 0 }, { opacity: 1, duration: 1.6 }, 0.8);
+
+      // Blades spin in one per 8th note and snap into place, then their icons draw on.
+      blades.forEach((b, i) => {
+        const at = lockAt(i);
+        tl.fromTo(b.fly, { rotation: -40, scale: 1.35, opacity: 0 }, { rotation: 0, scale: 1, opacity: 1, duration: 0.45, ease: "back.out(1.7)" }, at - 0.167);
+        b.strokes.forEach((node) => drawOn(tl, node, at + 0.04, 0.4));
+        if (ICONS[b.k].spin) tl.fromTo(b.spin, { rotation: 0 }, { rotation: 90, duration: LOOP, ease: "none" }, 0);
+      });
+
+      // One point every two beats: the blade pops out and glows, the leader draws, the text types on.
+      items.forEach((it) => {
+        const T = pointAt(it.j);
+        const b = it.b;
+        const dx = b.dir[0] * R * 0.06, dy = b.dir[1] * R * 0.06;
+        tl.to(b.pop, { x: dx, y: dy, scale: 1.05, duration: 0.3, ease: "back.out(2)" }, T)
+          .to(b.glow, { x: dx, y: dy, opacity: 0.85, duration: 0.3 }, T)
+          .to(b.pop, { x: 0, y: 0, scale: 1, duration: 0.35, ease: "power2.inOut" }, T + 0.8)
+          .to(b.glow, { x: 0, y: 0, opacity: 0, duration: 0.45 }, T + 0.8)
+          .fromTo(it.dot, { scale: 0 }, { scale: 1, duration: 0.3, ease: "back.out(3)" }, T + 0.05);
+        drawOn(tl, it.lead, T + 0.05, 0.35, "power2.out");
+        tl.to(it.hrect, { attr: { width: it.headW + 8 }, duration: headDur(it.chars), ease: `steps(${it.chars})` }, T + 0.2)
+          .fromTo(it.sub, { opacity: 0, x: -12 }, { opacity: 1, x: 0, duration: 0.3, ease: "power2.out" }, T + 0.42)
+          .fromTo(it.bodyLines, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.3, stagger: 0.07, ease: "power2.out" }, T + 0.52);
+      });
+
+      // Finale: a ripple around the ring and a shine across it.
+      blades.forEach((b, i) => {
+        tl.to(b.pop, { scale: 1.035, duration: 0.14, ease: "power2.out", yoyo: true, repeat: 1 }, FINALE + i * 0.05);
+      });
+      tl.fromTo(sweep, { x: -R * 1.7 }, { x: R * 1.7, duration: 0.85, ease: "power2.inOut" }, FINALE);
+      tl.addLabel("hold", EXIT - 0.05);
+
+      // Exit: labels fade, blades fold back the way they came, the hub shrinks away.
+      tl.to(labels, { opacity: 0, duration: 0.3, ease: "power1.in" }, EXIT)
+        .to(shadow, { opacity: 0, duration: 0.6 }, EXIT + 0.2);
+      blades.forEach((b, i) => {
+        tl.to(b.fly, { rotation: 30, scale: 0.3, opacity: 0, duration: 0.35, ease: "power2.in" }, EXIT + (7 - i) * 0.045);
+      });
+      tl.to(titleLines, { opacity: 0, duration: 0.2 }, EXIT + 0.35)
+        .to(hub, { scale: 0, rotation: 30, duration: 0.3, ease: "back.in(1.5)" }, EXIT + 0.52)
+        .to(backdrop, { opacity: 0.35, duration: 0.6, ease: "power1.in" }, EXIT + 0.35)
+        .to(cam, { scale: 1.06, duration: 0.95, ease: "power2.in" }, EXIT)
+        .set({}, {}, LOOP);
+
+      if (reduce.matches) tl.pause(tl.labels.hold);
+      else tl.time(keep % LOOP);
+      sound.replan(items);
+    }
+
+    reduce.addEventListener("change", () => {
+      if (!tl) return;
+      if (reduce.matches) tl.pause(tl.labels.hold);
+      else tl.play();
+    });
+
+    // Sound: every sound is made with the Web Audio API. It is off until the
+    // parent page (or ?sound=1 / ?sound=effects) turns it on, and it follows the
+    // GSAP timeline clock. The effects are planned from the same timing the
+    // timeline uses, so each snap lands with its blade and each tick with a letter.
+    const sound = (() => {
+      const LEVEL = 1.1, MUSIC = 0.15;
+      const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+      const clock = () => (tl && !tl.paused() ? tl.totalTime() : null);
+      const loopLength = () => tl.duration();
+      // Six bars at 120 bpm: Am F C G F C, so the finale lands on a bright C.
+      const CHORDS = [[57, 60, 64], [53, 57, 60], [55, 60, 64], [55, 59, 62], [53, 57, 60], [55, 60, 64]];
+      const ROOTS = [45, 41, 48, 43, 41, 48];
+      const SNAPS = [72, 74, 76, 79, 81, 84, 86, 88];
+      const PINGS = [76, 79, 81, 84, 86, 88];
+      let ctx = null, master, impulse, noiseBuf, session = null, fxBus, musicBus, verbSend;
+      let wantOn = false, wantMusic = true, playing = false;
+      let timer = 0, sleepTimer = 0, anchor = null, doneUpTo = 0;
+
+      function plan(items) {
+        const list = [];
+        const add = (t, type, extra = {}, music = false) => list.push({ t, type, music, ...extra });
+        let sd = 5;
+        const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+        const panOf = (k) => Math.cos(centreAngle(k) * D) * 0.55;
+
+        add(0, "swell", { dur: 0.9 });
+        add(0.5, "thump", {});
+        for (let i = 0; i < 8; i++) {
+          add(lockAt(i) - 0.2, "whoosh", { dur: 0.2, p: panOf(i), v: 0.1 });
+          add(lockAt(i), "snap", { f: hz(SNAPS[i]), p: panOf(i) });
+        }
+        (items || []).forEach((it) => {
+          const T = pointAt(it.j), p = panOf(it.p.seg);
+          add(T, "ping", { f: hz(PINGS[it.j]), p });
+          add(T + 0.05, "zip", { dur: 0.35, p });
+          const d = headDur(it.chars);
+          for (let c = 0; c < it.chars; c++) {
+            if (c === 2) continue; // the space after the number
+            add(T + 0.2 + (c / it.chars) * d, "tick", { f: 2800 + rnd() * 1800, p });
+          }
+        });
+        add(FINALE, "chord", {});
+        add(FINALE + 0.02, "whoosh", { dur: 0.8, p: 0, v: 0.07 });
+        add(EXIT, "whoosh", { dur: 0.55, p: 0, v: 0.12, down: true });
+        for (let i = 0; i < 8; i++) add(EXIT + (7 - i) * 0.045 + 0.3, "snap", { f: hz(SNAPS[7 - i] - 12), p: panOf(i), v: 0.35 });
+        add(EXIT + 0.75, "thump", { soft: true });
+
+        // Music: warm pads, a pulsing 8th note synth bass, light drums (kick and clap from bar 2).
+        CHORDS.forEach((notes, bar) => {
+          const t0 = bar * 2;
+          add(t0, "pad", { notes, dur: 2 }, true);
+          for (let e = 0; e < 8; e++) add(t0 + e * 0.25, "pulse", { f: hz(ROOTS[bar] + (e % 4 === 3 ? 12 : 0)), v: e % 2 ? 0.75 : 1 }, true);
+          for (let b = 0; b < 4; b++) {
+            const t = t0 + b * 0.5;
+            if (bar > 0) add(t, "kick", {}, true);
+            if (bar > 0 && b % 2) add(t, "clap", {}, true);
+            add(t + 0.25, "hat", { v: 1 }, true);
+            add(t + 0.125, "hat", { v: 0.35 }, true);
+            add(t + 0.375, "hat", { v: 0.35 }, true);
+          }
+        });
+        return list.sort((a, b) => a.t - b.t);
+      }
+      let events = plan();
+
+      function makeGraph() {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -14;
+        comp.knee.value = 8;
+        comp.ratio.value = 4;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.2;
+        master = ctx.createGain();
+        master.gain.value = LEVEL;
+        master.connect(comp).connect(ctx.destination);
+
+        const len = Math.floor(ctx.sampleRate * 1.8);
+        impulse = ctx.createBuffer(2, len, ctx.sampleRate);
+        for (let ch = 0; ch < 2; ch++) {
+          const d = impulse.getChannelData(ch);
+          for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+        }
+        noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+        const nd = noiseBuf.getChannelData(0);
+        for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+      }
+
+      // Each time sound is turned on it gets fresh buses, so sounds queued before a
+      // stop can never leak out later.
+      function openSession() {
+        const t = ctx.currentTime;
+        session = ctx.createGain();
+        session.gain.setValueAtTime(0, t);
+        session.gain.linearRampToValueAtTime(1, t + 0.05);
+        session.connect(master);
+        fxBus = ctx.createGain();
+        fxBus.connect(session);
+        musicBus = ctx.createGain();
+        musicBus.gain.value = wantMusic ? MUSIC : 0;
+        musicBus.connect(session);
+        const verb = ctx.createConvolver();
+        verb.buffer = impulse;
+        const tone = ctx.createBiquadFilter();
+        tone.type = "lowpass";
+        tone.frequency.value = 5000;
+        const verbOut = ctx.createGain();
+        verbOut.gain.value = 0.3;
+        verbSend = ctx.createGain();
+        verbSend.connect(verb).connect(tone).connect(verbOut).connect(session);
+      }
+      function closeSession() {
+        const old = session, t = ctx.currentTime;
+        session = null;
+        old.gain.cancelScheduledValues(t);
+        old.gain.setValueAtTime(old.gain.value, t);
+        old.gain.linearRampToValueAtTime(0, t + 0.15);
+        setTimeout(() => old.disconnect(), 250);
+      }
+
+      // Small building blocks.
+      function amp(when, peak, attack, decay, out) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, when);
+        g.gain.exponentialRampToValueAtTime(peak, when + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay);
+        g.connect(out);
+        return g;
+      }
+      function osc(type, freq, when, dur) {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.setValueAtTime(freq, when);
+        o.start(when);
+        o.stop(when + dur + 0.05);
+        return o;
+      }
+      function noise(when, dur) {
+        const src = ctx.createBufferSource();
+        src.buffer = noiseBuf;
+        src.loop = true;
+        src.start(when, Math.random() * 1.5);
+        src.stop(when + dur + 0.05);
+        return src;
+      }
+      function filter(type, freq, q = 0.7) {
+        const f = ctx.createBiquadFilter();
+        f.type = type;
+        f.frequency.value = freq;
+        f.Q.value = q;
+        return f;
+      }
+      function pan(value, out) {
+        const p = ctx.createStereoPanner();
+        p.pan.value = value;
+        p.connect(out);
+        return p;
+      }
+      function send(node, amount) {
+        const g = ctx.createGain();
+        g.gain.value = amount;
+        node.connect(g).connect(verbSend);
+      }
+      function shape(when, points, out) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, when);
+        for (const [dt, v] of points) g.gain.linearRampToValueAtTime(v, when + dt);
+        g.connect(out);
+        return g;
+      }
+
+      // One function per sound.
+      const voices = {
+        swell(when, e) {
+          // The backdrop fades up: a soft airy rise with a low hum under it.
+          const d = e.dur;
+          const g = shape(when, [[d * 0.75, 0.1], [d, 0.05], [d + 0.3, 0]], fxBus);
+          const lp = filter("lowpass", 200, 1.2);
+          lp.frequency.setValueAtTime(200, when);
+          lp.frequency.exponentialRampToValueAtTime(2800, when + d);
+          noise(when, d + 0.35).connect(lp).connect(g);
+          const o = osc("sine", 55, when, d + 0.3);
+          o.frequency.exponentialRampToValueAtTime(110, when + d);
+          o.connect(shape(when, [[d * 0.8, 0.12], [d + 0.3, 0]], fxBus));
+          send(g, 0.4);
+        },
+        thump(when, e) {
+          // The hub lands: a round low thump with a little shimmer on top.
+          const v = e.soft ? 0.45 : 1;
+          const o = osc("sine", 130, when, 0.35);
+          o.frequency.exponentialRampToValueAtTime(42, when + 0.25);
+          o.connect(amp(when, 0.55 * v, 0.004, 0.3, fxBus));
+          noise(when, 0.03).connect(filter("bandpass", 1800, 1)).connect(amp(when, 0.1 * v, 0.001, 0.025, fxBus));
+          if (!e.soft) {
+            const sh = amp(when + 0.02, 0.05, 0.01, 0.9, fxBus);
+            osc("triangle", hz(88), when + 0.02, 1).connect(sh);
+            osc("sine", hz(95), when + 0.05, 0.8).connect(amp(when + 0.05, 0.03, 0.01, 0.7, fxBus));
+            send(sh, 0.8);
+          }
+        },
+        whoosh(when, e) {
+          // Air moving as a blade spins in (or everything folds away, going down).
+          const d = e.dur;
+          const p = ctx.createStereoPanner();
+          p.pan.setValueAtTime(e.p * 0.4, when);
+          p.pan.linearRampToValueAtTime(e.p, when + d);
+          p.connect(fxBus);
+          const g = shape(when, [[d * 0.75, e.v ?? 0.12], [d + 0.04, 0]], p);
+          const bp = filter("bandpass", e.down ? 3000 : 600, 1.1);
+          bp.frequency.setValueAtTime(e.down ? 3000 : 600, when);
+          bp.frequency.exponentialRampToValueAtTime(e.down ? 400 : 3200, when + d);
+          noise(when, d + 0.08).connect(bp).connect(g);
+        },
+        snap(when, e) {
+          // A blade locks in: a crisp click, a woody tock that rises blade by blade, a small low knock.
+          const out = pan(e.p, fxBus), v = e.v ?? 1;
+          noise(when, 0.03).connect(filter("highpass", 2500)).connect(amp(when, 0.2 * v, 0.001, 0.02, out));
+          const o = osc("sine", e.f, when, 0.12);
+          o.frequency.exponentialRampToValueAtTime(e.f * 0.72, when + 0.08);
+          const g = amp(when, 0.2 * v, 0.002, 0.09, out);
+          o.connect(g);
+          osc("triangle", e.f * 2, when, 0.05).connect(amp(when, 0.04 * v, 0.001, 0.04, out));
+          const low = osc("sine", 95, when, 0.1);
+          low.frequency.exponentialRampToValueAtTime(50, when + 0.08);
+          low.connect(amp(when, 0.16 * v, 0.002, 0.08, out));
+          send(g, 0.25);
+        },
+        ping(when, e) {
+          // A point lights up: a soft bell.
+          const out = pan(e.p, fxBus);
+          const g = amp(when, 0.14, 0.003, 1.3, out);
+          osc("sine", e.f, when, 1.4).connect(g);
+          osc("sine", e.f * 2.01, when, 0.6).connect(amp(when, 0.035, 0.002, 0.5, out));
+          osc("sine", e.f * 3.02, when, 0.3).connect(amp(when, 0.012, 0.001, 0.25, out));
+          send(g, 0.6);
+        },
+        zip(when, e) {
+          // The leader line draws out: a light, rising zip.
+          const d = e.dur;
+          const g = shape(when, [[0.02, 0.04], [d * 0.8, 0.05], [d + 0.03, 0]], pan(e.p, fxBus));
+          const bp = filter("bandpass", 1500, 2);
+          bp.frequency.setValueAtTime(1500, when);
+          bp.frequency.exponentialRampToValueAtTime(5500, when + d);
+          noise(when, d + 0.05).connect(bp).connect(g);
+        },
+        tick(when, e) {
+          // One letter typing on.
+          noise(when, 0.02).connect(filter("bandpass", e.f, 2.5)).connect(amp(when, 0.07, 0.001, 0.014, pan(e.p, fxBus)));
+        },
+        chord(when) {
+          // The wheel is complete: a bright, wide chord with a quick bell run on top.
+          const lp = filter("lowpass", 900, 0.8);
+          lp.frequency.setValueAtTime(900, when);
+          lp.frequency.exponentialRampToValueAtTime(4200, when + 0.08);
+          lp.frequency.exponentialRampToValueAtTime(1400, when + 1.4);
+          const g = amp(when, 0.16, 0.01, 1.6, fxBus);
+          lp.connect(g);
+          send(g, 0.7);
+          const mixer = ctx.createGain();
+          mixer.gain.value = 0.09;
+          mixer.connect(lp);
+          [60, 64, 67, 72, 74, 79].forEach((m) => [-7, 7].forEach((cents) => {
+            const o = osc("sawtooth", hz(m), when, 1.7);
+            o.detune.value = cents;
+            o.connect(mixer);
+          }));
+          osc("sine", hz(36), when, 1).connect(amp(when, 0.22, 0.005, 0.9, fxBus));
+          [72, 76, 79, 84, 88, 91].forEach((m, k) => {
+            const t = when + 0.05 + k * 0.07;
+            const bell = amp(t, 0.045, 0.002, 0.5, fxBus);
+            osc("sine", hz(m), t, 0.6).connect(bell);
+            send(bell, 0.5);
+          });
+        },
+        pad(when, e) {
+          // Warm pad: two slightly detuned saws per note, softened.
+          const d = e.dur;
+          const g = shape(when, [[0.35, 0.05], [d - 0.2, 0.045], [d + 0.4, 0]], musicBus);
+          const lp = filter("lowpass", 1100, 0.6);
+          lp.connect(g);
+          send(g, 0.5);
+          e.notes.forEach((m) => [-8, 8].forEach((cents) => {
+            const o = osc("sawtooth", hz(m), when, d + 0.45);
+            o.detune.value = cents;
+            o.connect(lp);
+          }));
+        },
+        pulse(when, e) {
+          // Pulsing synth bass with a plucky filter.
+          const g = amp(when, 0.16 * e.v, 0.004, 0.2, musicBus);
+          const lp = filter("lowpass", 1400, 3);
+          lp.frequency.setValueAtTime(1400, when);
+          lp.frequency.exponentialRampToValueAtTime(250, when + 0.18);
+          lp.connect(g);
+          osc("sawtooth", e.f, when, 0.24).connect(lp);
+          osc("square", e.f / 2, when, 0.24).connect(amp(when, 0.5, 0.004, 0.2, lp));
+        },
+        kick(when) {
+          const o = osc("sine", 150, when, 0.35);
+          o.frequency.exponentialRampToValueAtTime(45, when + 0.12);
+          o.connect(amp(when, 0.9, 0.002, 0.3, musicBus));
+          noise(when, 0.01).connect(filter("highpass", 3000)).connect(amp(when, 0.1, 0.001, 0.008, musicBus));
+        },
+        clap(when) {
+          const g = ctx.createGain();
+          g.connect(musicBus);
+          const bp = filter("bandpass", 1300, 1.2);
+          bp.connect(g);
+          [0, 0.011, 0.022].forEach((dt, k) => noise(when + dt, 0.12).connect(amp(when + dt, k === 2 ? 0.2 : 0.12, 0.002, k === 2 ? 0.1 : 0.012, bp)));
+          send(g, 0.6);
+        },
+        hat(when, e) {
+          noise(when, 0.05).connect(filter("highpass", 7500)).connect(amp(when, 0.09 * e.v, 0.001, 0.03, musicBus));
+        },
+      };
+
+      // Look-ahead scheduler: every 25 ms, schedule sounds due in the next 100 ms.
+      // Animation time is mapped to audio time by an anchor that is re-set after any jump
+      // (a pause, a hidden tab, a restart), so missed sounds never pile up.
+      function tick() {
+        const now = playing && ctx.state === "running" && !document.hidden && !reduce.matches ? clock() : null;
+        if (now === null) { anchor = null; return; }
+        const loopLen = loopLength();
+        const at = ctx.currentTime;
+        if (anchor) {
+          const err = now - (anchor.tl + (at - anchor.audio));
+          if (Math.abs(err) > 0.08) anchor = null;
+          else anchor.tl += err * 0.05;
+        }
+        if (!anchor) {
+          anchor = { tl: now, audio: at };
+          doneUpTo = now;
+        }
+        const cur = anchor.tl + (at - anchor.audio);
+        const from = Math.max(doneUpTo, cur - 0.05);
+        const to = cur + 0.1;
+        if (to <= from) return;
+        for (let k = Math.floor(from / loopLen); k <= Math.floor(to / loopLen); k++) {
+          for (const e of events) {
+            const t = k * loopLen + e.t;
+            if (t < from || t >= to) continue;
+            if (e.music && !wantMusic) continue;
+            voices[e.type](Math.max(at, anchor.audio + (t - anchor.tl)), e);
+          }
+        }
+        doneUpTo = to;
+      }
+
+      function update() {
+        const on = wantOn && !reduce.matches;
+        if (on) {
+          if (!ctx) makeGraph();
+          clearTimeout(sleepTimer);
+          if (ctx.state !== "running") ctx.resume().catch(() => {});
+          if (!playing) {
+            playing = true;
+            anchor = null;
+            openSession();
+            clearInterval(timer);
+            timer = setInterval(tick, 25);
+          }
+          const t = ctx.currentTime;
+          musicBus.gain.cancelScheduledValues(t);
+          musicBus.gain.setTargetAtTime(wantMusic ? MUSIC : 0, t, 0.03);
+        } else if (playing) {
+          playing = false;
+          clearInterval(timer);
+          closeSession();
+          sleepTimer = setTimeout(() => ctx.suspend(), 200);
+        }
+      }
+      reduce.addEventListener("change", update);
+
+      // Browsers may block audio until the first click or key press.
+      const unlock = () => { if (playing && ctx && ctx.state !== "running") ctx.resume().catch(() => {}); };
+      addEventListener("pointerdown", unlock);
+      addEventListener("keydown", unlock);
+
+      addEventListener("message", (event) => {
+        if (event.origin !== location.origin) return;
+        const data = event.data;
+        if (!data || data.type !== "motionprompt-sound") return;
+        if (typeof data.on === "boolean") wantOn = data.on;
+        if (typeof data.music === "boolean") wantMusic = data.music;
+        update();
+      });
+
+      const fromUrl = params.get("sound");
+      if (fromUrl === "1" || fromUrl === "effects") {
+        wantOn = true;
+        wantMusic = fromUrl === "1";
+        update();
+      }
+      return { replan(items) { events = plan(items); } };
+    })();
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(build, 150);
+    });
+
+    // Wait briefly for the fonts so text is measured in the right face.
+    Promise.race([
+      Promise.all([document.fonts.load("700 1em Oswald"), document.fonts.load("400 1em Inter"), document.fonts.load("italic 500 1em Inter")]),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(build);
+  </script>
+</body>
+</html>

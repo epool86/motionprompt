@@ -1,0 +1,26 @@
+Make my video in this style: Kaiju attack.
+
+Look and motion
+- A 1950s monster movie, shot on old film: black and white with a faded teal and sepia tint, heavy grain, flicker, scratches, dust specks, a dark vignette and a slight gate weave.
+- The joke: my message is so big it attacks the city. Keep it fun and charming, like a low budget movie made with models.
+- Set it in a miniature model city at night: a hazy back row and a dark front row of buildings with lit windows, a big pale moon and searchlights sweeping the sky. No real landmarks.
+- Open with an iris and a newsreel "BULLETIN" strip that types out a short warning. Then the ground shakes, the model buildings rock and dust falls from the rooftops.
+- A giant monster rises slowly behind the buildings. Design an original monster, not a copy of any famous movie monster: a chunky rubber suit look, a horned and frilled head, a row of cone spikes down the back, big glowing eyes and tiny arms. Its eyes open, then it roars with a hard camera shake.
+- Its back spikes light up one by one, and it fires a glowing beam that burns my headline into the sky in huge poster letters. The letters glow white hot where the beam touches them, then cool to the accent colour and smoulder with rising embers.
+- Add low budget gags: a toy plane on a visible string that the roar blows away, and little toy tanks that roll in and fire tiny shots.
+- The monster stomps, one model building crumbles into rubble, then a vintage "NOW SHOWING" ribbon pops in with my extra line. Close with an iris onto the headline.
+- Keep every line of text short and easy to read in a second.
+
+Type and colour
+- A tall, bold condensed poster font (like Anton) for the headline, slanted a little, with a deep 3D extrusion. A typewriter font (like Special Elite) for the bulletin strip.
+- Use my brand colours if I give them. Otherwise use a night teal black #0e1517, old film cream #efe3c2, a burning amber #ffb03a for the headline and eyes, and an atomic cyan #7df3ff for the beam and the glowing spikes.
+
+Sound
+- Effects: a soft projector whir the whole time, typewriter clicks for the bulletin, a deep ground rumble, heavy rubber foot thuds, an eerie shimmer as the eyes open, a big growling monster roar with a screech on top, crystal pings as each spike lights up, a rising power charge, an electric beam buzz with crackles as the letters burn, tiny toy cannon pops, a model building crumbling into little chunks, a pop for the ribbon, and the film reel running out at the end.
+- Music: a dramatic B movie orchestra at about 114 bpm in a minor key: pulsing low strings, timpani rolls and hits, brass stabs like "dun dun DUNNN" when the monster appears, a brass swell under the beam, and a big brass chord for the ending.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with Canvas and GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

@@ -1,0 +1,24 @@
+Make my video in this style: Slide deck.
+
+Look and motion
+- A clean, modern presentation template, shown as a mockup: about ten white 16:9 slides spread out in a neat grid on a light grey table, tilted in 3D perspective, each with a soft shadow.
+- Turn my message into four to six main slides: a title slide, a slide or two with the key facts, a chart or a timeline, and a team or contact slide. Fill the rest of the grid with simple matching slides (contents, features, a map, thank you) so the table looks full.
+- Give every slide the same design: plenty of white space, a small logo mark top left, a small ring and cross motif top right, rounded photo areas, bold accent colour blocks and one key word of each title in the accent colour.
+- Start wide: the slides drop onto the table one after another. Then fly the camera smoothly from slide to slide, banking gently, and stop on each main slide long enough to read it.
+- As the camera lands, bring that slide to life: title words rise in, numbers count up, the chart line draws, timeline dots pop, speech bubbles pop. End by pulling back to the full table, then lift the slides away.
+- Use my logo, photos and screenshots on the slides if I attach them. Otherwise draw simple flat pictures that feel like photos (a room, a building, people at a table).
+- Keep every line of text short and easy to read in a second.
+
+Type and colour
+- A clean geometric sans serif (like Poppins): semibold titles with the key word in bold accent colour, light grey body text.
+- Use my brand colours if I give them. Otherwise use white slides #ffffff on a light grey table #e7e6ea, dark grey text #2b2b33, warm orange #e8591a for accents and a soft peach #f4c3ab for photo tints.
+
+Sound
+- Effects: a soft paper tap as each slide lands on the table, a smooth whoosh that follows every camera glide, a gentle bell as the title slide arrives, small rounded pops for bubbles, dots and icons, a light rising swish as a line or chart draws, quick ticks while a number counts up, and an airy lift as the slides float away at the end.
+- Music: a clean modern corporate bed at about 120 bpm: a soft electric piano, a plucky arpeggio, a warm pad, a light kick and finger snaps, and a round bass. Keep it calm and confident, well under the effects, and let it loop cleanly.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example HTML slides with CSS 3D transforms and GSAP for the camera) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

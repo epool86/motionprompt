@@ -1,0 +1,25 @@
+Make my video in this style: Radial infographic.
+
+Look and motion
+- A bold business "cycle wheel" infographic, like a polished presentation slide that comes to life.
+- Turn my message into 4 to 8 key points. Put them around a wheel shaped like an octagon, split into slanted colour blades like a camera shutter, one blade per point, each with a simple white line icon that matches it (like a lightbulb, a chart, a map pin or a gear).
+- In the middle, a dark hub with a dashed outline holds my main idea or title in bold capitals. If I attach my logo, put it in the hub instead.
+- Around the wheel, each point gets a numbered heading ("#1 INTRODUCTION"), a small italic question line under it ("// WHAT IS THE PLAN ABOUT?") and one or two short sentences. Thin white leader lines with an elbow join each heading to its blade. On a tall video, put the wheel on top and the points in a neat grid under it.
+- The hub pops in first, then the blades spin in one by one and snap into place, and their icons draw on. Then go round the points in order: the blade pushes out and glows, its leader line draws out and the heading types on, followed by the text.
+- Finish with the whole wheel complete, a quick ripple around it and a soft shine sweeping across. Keep it floating gently, then fold the blades away at the end.
+- Set it in a dark, moody, out of focus arena or city at night, with soft bokeh lights, a floor that reflects the wheel and a vignette.
+- Keep every text short and easy to read. Only use the points I give you, and ask me if they are missing.
+
+Type and colour
+- A tall, bold condensed font (like Oswald) in capitals for the headings and the hub, and a clean sans serif (like Inter) for the small text.
+- Use my brand colours if I give them, blended around the wheel. Otherwise use a rainbow wheel: orange #f57c1f, red #e53935, purple #8e44c9, blue #1f74d6, teal #139e9b, green #2fa84f, lime #8cc63f and yellow #f4bf1c, with white #ffffff text on a dark navy background #0b1020. Colour each heading number to match its blade.
+
+Sound
+- Effects: a soft airy rise as the scene fades up, a round thump when the hub lands, a quick whoosh and a crisp, satisfying click as each blade snaps in (rising a note each time), a soft bell ping as each point lights up, a light zip as each leader line draws, tiny typing ticks for the headings, a bright, wide chord with a sparkle of bells when the wheel is complete, and a falling whoosh with small clicks as it folds away.
+- Music: a confident modern corporate bed, about 120 bpm: a pulsing synth bass, warm pads, a light kick, claps and hi hats, with the blade clicks and point pings on the beat. Keep it well under the effects and let it loop cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with SVG and GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

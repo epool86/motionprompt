@@ -1,0 +1,24 @@
+Make my video in this style: Flat illustration.
+
+Look and motion
+- A clean flat vector illustration, like a modern business explainer: a solid bright blue background with a few darker rounded bars tucked into the corners.
+- A big bold title in white capitals at the top, with a thin, spaced out subtitle under it.
+- Below the title, tell my message with one to three simple scenes of flat illustrated people doing things that match my topic (for example presenting at a flip chart, working at a laptop, chatting at a table, celebrating a win). Draw them yourself in the popular flat style: no outlines, simple shapes, small friendly faces, a mix of skin tones and hairstyles, white shirts and dark clothes.
+- Props and charts are flat too: a flip chart with a pie chart and a wave chart, a checklist, a speech bubble with a lightbulb, and a few white four point sparkles.
+- Build each scene with bouncy pops: the title words rise in one by one, then props and people spring up from the floor. Charts draw themselves: the pie sweeps round and one slice pops out, the wave rises, checkmarks tick on one by one.
+- Keep the people alive: someone points with a marker, heads nod, arms gesture, eyes blink, and the sparkles twinkle.
+- Change scenes with a flip chart page flip or a quick slide. Keep every line of text short and easy to read in a second, and end on a clean, full composition with the title.
+
+Type and colour
+- A tall condensed sans serif (like Oswald or Bebas Neue) in bold capitals for the title, and a light weight of the same font for the subtitle.
+- Use my brand colours if I give them. Otherwise use bright blue #1565d8 for the background, white #ffffff for text and shirts, light blue #a6c9f2 for the board, navy #0d2152 for dark clothes and details, and pink #ff5c93 for the marker and checkmarks.
+
+Sound
+- Effects: a soft whoosh as the title slides in with a light tap for each word, a bubbly pop as each person and prop springs up, a smooth rising tone as the pie chart draws, a marker squeak when someone points, a papery flip for the page change, a bright tick for each checkmark, glassy chimes for the sparkles, and a gentle bell for the lightbulb idea.
+- Music: a light, upbeat corporate bed at about 130 bpm: a plucky synth arpeggio, a soft kick, claps and a shaker, a round plucked bass and a warm pad underneath. Keep it well under the effects and let it loop cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with SVG and GSAP) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

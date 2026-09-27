@@ -1,0 +1,1741 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kaiju attack demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/anton@5.3.0/400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/special-elite@5.3.0/400.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=0e1517&ink=efe3c2&accent=ffb03a&accent2=7df3ff */
+    :root {
+      --bg: #0e1517;
+      --ink: #efe3c2;
+      --accent: #ffb03a;
+      --accent2: #7df3ff;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="film" role="img"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const root = document.documentElement;
+    for (const key of ["bg", "ink", "accent", "accent2"]) {
+      const value = params.get(key);
+      if (/^[0-9a-f]{6}$/i.test(value ?? "")) root.style.setProperty(`--${key}`, `#${value}`);
+    }
+    const text = (params.get("text") || "Mega sale").trim().slice(0, 60).toUpperCase();
+    // Long headlines go on two lines, split where the longer line is shortest.
+    const words = text.split(/\s+/);
+    let lines = [text];
+    if (text.length > 11 && words.length > 1) {
+      for (let i = 1; i < words.length; i++) {
+        const pair = [words.slice(0, i).join(" "), words.slice(i).join(" ")];
+        if (lines.length === 1 || Math.max(...pair.map((x) => x.length)) < Math.max(...lines.map((x) => x.length))) lines = pair;
+      }
+    }
+    const NEWS = ["STRANGE TREMORS REPORTED DOWNTOWN", "GIANT MONSTER SIGHTED!"];
+
+    const canvas = document.getElementById("film");
+    const g2d = canvas.getContext("2d");
+    canvas.setAttribute("aria-label", `A retro monster movie: a giant monster rises over a model city and burns the words ${text} into the sky`);
+
+    // Colours: the whole film is tinted from the four colours, so any palette still reads as old film.
+    const css = getComputedStyle(root);
+    const hex = (v) => { v = v.trim().replace("#", ""); return [0, 2, 4].map((i) => parseInt(v.slice(i, i + 2), 16)); };
+    const BG = hex(css.getPropertyValue("--bg")), INK = hex(css.getPropertyValue("--ink"));
+    const A1 = hex(css.getPropertyValue("--accent")), A2 = hex(css.getPropertyValue("--accent2"));
+    const BLACK = [0, 0, 0], WHITE = [255, 255, 255];
+    const mix = (a, b, t) => a.map((x, i) => Math.round(x + (b[i] - x) * t));
+    const rgb = (c, a = 1) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+    const COL = {
+      skyTop: mix(BG, BLACK, 0.2), skyLow: mix(BG, INK, 0.2), moon: mix(BG, INK, 0.78),
+      back: mix(BG, INK, 0.13), front: mix(BG, BLACK, 0.4), frontEdge: mix(BG, INK, 0.16),
+      window: mix(INK, A1, 0.35), ground: mix(BG, BLACK, 0.3), groundLow: mix(BG, BLACK, 0.65),
+      body: mix(BG, INK, 0.12), dark: mix(BG, INK, 0.055), belly: mix(BG, INK, 0.27), spike: mix(BG, INK, 0.19),
+      horn: mix(BG, INK, 0.4), rim: mix(BG, INK, 0.85), mouth: mix(BG, BLACK, 0.55), teeth: mix(INK, BG, 0.12),
+      dust: mix(BG, INK, 0.42),
+    };
+
+    // Small helpers: easing, ramps and a hash that gives the same "random" number for the same inputs.
+    const clamp01 = (x) => Math.max(0, Math.min(1, x));
+    const ramp = (t, a, b) => clamp01((t - a) / (b - a));
+    const out2 = (x) => 1 - (1 - x) * (1 - x);
+    const out3 = (x) => 1 - Math.pow(1 - x, 3);
+    const in2 = (x) => x * x;
+    const backOut = (x) => { const c1 = 2, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+    function hash(a, b = 0) {
+      let h = (Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263)) | 0;
+      h = Math.imul(h ^ (h >>> 13), 1274126177);
+      return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+    }
+    let seed = 1;
+    function rand() {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    }
+
+    // The timing of the whole reel, in seconds. The picture and the sound both read from here.
+    const LOOP = 10.5, STILL = 8.95;
+    const T = {
+      barIn: 0.5, type1: 0.9, tremor: 1.5, rise: 2.2, thud1: 2.3, thud2: 3.05, eyes: 3.35, roar: 3.9,
+      type2: 4.05, charge: 4.95, beam: 5.9, beamEnd: 7.3, barOut: 7.35, stomp: 7.7, ribbon: 8.2, irisOut: 9.75,
+    };
+    const TYPE_GAP = 0.045;
+
+    // The monster, our own design: a rubber suit with a horned, frilled head, cone spikes and tiny arms.
+    // Drawn in its own units, 1000 tall, feet at 0, facing left.
+    const P2 = (d) => new Path2D(d);
+    const MON = {
+      tail: P2("M 90 -330 C 260 -300 380 -170 470 -40 C 480 -20 470 -5 450 -10 C 340 -80 230 -160 80 -210 Z"),
+      legBack: P2("M 40 -340 C 25 -210 35 -100 45 -20 L 45 0 L 200 0 C 205 -25 195 -40 185 -45 C 180 -140 170 -250 150 -340 Z"),
+      legFront: P2("M -160 -340 C -195 -210 -205 -100 -200 -25 L -215 0 L -40 0 C -35 -20 -45 -35 -45 -45 C -40 -140 -30 -250 -10 -340 Z"),
+      toes: P2("M -215 0 L -238 -6 L -212 -26 Z M -170 0 L -190 -4 L -168 -22 Z M 45 0 L 24 -5 L 46 -24 Z"),
+      torso: P2("M -200 -300 C -235 -480 -195 -650 -115 -725 C -60 -775 60 -775 115 -700 C 175 -620 225 -460 195 -300 C 150 -225 -150 -225 -200 -300 Z"),
+      belly: P2("M -178 -330 C -205 -470 -178 -600 -125 -672 C -95 -702 -48 -694 -38 -652 C -66 -560 -62 -420 -22 -296 C -72 -272 -150 -278 -178 -330 Z"),
+      arm: P2("M 0 -32 C -60 -44 -112 -12 -138 30 L -116 46 C -96 20 -60 4 0 26 Z"),
+      claws: P2("M -138 30 L -162 40 L -132 42 Z M -128 40 L -146 62 L -120 48 Z M -116 46 L -124 72 L -104 52 Z"),
+      head: P2("M 70 -30 C 80 -150 10 -210 -100 -205 C -190 -200 -250 -160 -285 -105 C -305 -75 -305 -30 -290 -5 L 45 12 Z"),
+      brow: P2("M -236 -150 C -196 -178 -134 -178 -96 -150 L -106 -128 C -142 -150 -186 -150 -226 -130 Z"),
+      horn1: P2("M -46 -192 C -36 -272 16 -322 112 -334 C 50 -292 26 -244 20 -186 Z"),
+      horn2: P2("M 8 -172 C 38 -232 88 -252 150 -254 C 100 -222 76 -192 62 -150 Z"),
+      frill: P2("M 55 -150 L 150 -178 L 92 -118 L 176 -96 L 84 -66 L 146 -24 L 58 -14 Z"),
+      jaw: P2("M 45 12 L -265 -2 C -270 25 -245 50 -195 55 L 20 55 C 55 50 65 25 45 12 Z"),
+    };
+    // Back spikes: [x, y, lean in degrees, length, base width], neck first.
+    const SPIKES = [[10, -765, -15, 120, 72], [92, -722, 18, 135, 82], [150, -650, 36, 128, 80], [192, -560, 52, 118, 76],
+      [212, -462, 68, 104, 70], [214, -372, 84, 90, 62], [268, -292, 104, 72, 54], [352, -212, 118, 58, 46], [428, -110, 130, 42, 36]];
+    const spikePaths = SPIKES.map(([x, y, deg, len, w]) => {
+      const a = (deg * Math.PI) / 180, dx = Math.sin(a), dy = -Math.cos(a), nx = Math.cos(a), ny = Math.sin(a);
+      const p = new Path2D();
+      p.moveTo(x - nx * w / 2, y - ny * w / 2);
+      p.quadraticCurveTo(x + dx * len * 0.55 - nx * w * 0.26, y + dy * len * 0.55 - ny * w * 0.26, x + dx * len + nx * 6, y + dy * len + ny * 6);
+      p.quadraticCurveTo(x + dx * len * 0.5 + nx * w * 0.3, y + dy * len * 0.5 + ny * w * 0.3, x + nx * w / 2, y + ny * w / 2);
+      p.closePath();
+      return p;
+    });
+    // Rubber suit bumps, placed once.
+    seed = 11;
+    const BUMPS = Array.from({ length: 46 }, () => [-220 + rand() * 430, -760 + rand() * 470, 8 + rand() * 12]);
+    const UPPER_TEETH = [], LOWER_TEETH = [];
+    for (let x = -268; x <= -104; x += 33) UPPER_TEETH.push([x, -5 + ((x + 285) / 330) * 17]);
+    for (let x = -248; x <= -118; x += 33) LOWER_TEETH.push([x, -2 + ((x + 265) / 310) * 14]);
+
+    let W = 0, H = 0, dpr = 1, L = null, U = 1, S = 1;
+    let back = [], front = [], crumbler = null, rubble = [], specks = [], puffs = [], embers = [];
+    let head = null, grain = [], vignette = null;
+    let tl = null, mouth = { x: 0, y: 0 }, groupM = null;
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+
+    // Three layouts, picked by the shape of the window.
+    function layout() {
+      const aspect = W / H;
+      if (aspect >= 1.3) {
+        L = { G: 0.8 * H, Mh: 0.7 * H, mx: 0.73 * W, hb: { x: 0.05 * W, y: 0.15 * H, w: 0.48 * W, h: 0.34 * H }, planeY: 0.075 * H,
+          bar: { x: 0.04 * W, y: 0.855 * H, w: 0.55 * W, h: 0.085 * H } };
+      } else if (aspect <= 0.85) {
+        L = { G: 0.79 * H, Mh: Math.min(0.45 * H, 1.3 * W), mx: 0.6 * W, hb: { x: 0.06 * W, y: 0.065 * H, w: 0.88 * W, h: 0.19 * H }, planeY: 0.35 * H, ribbonY: 0.9 * H,
+          bar: { x: 0.05 * W, y: 0.86 * H, w: 0.9 * W, h: Math.min(0.055 * H, 0.1 * W) } };
+      } else {
+        L = { G: 0.8 * H, Mh: 0.47 * H, mx: 0.64 * W, hb: { x: 0.06 * W, y: 0.05 * H, w: 0.88 * W, h: 0.18 * H }, planeY: 0.31 * H, ribbonY: 0.9 * H,
+          bar: { x: 0.05 * W, y: 0.865 * H, w: 0.9 * W, h: 0.068 * H } };
+      }
+      U = L.Mh / 1000;
+      S = Math.min(W, H) / 100;
+    }
+
+    // A model city: a hazy back row and a dark front row, each building with lit windows.
+    function makeCity() {
+      seed = 5;
+      const ref = Math.max(W * 0.9, H * 0.75);
+      const row = (hMin, hMax, wMin, wMax, lit) => {
+        const list = [];
+        let x = -0.06 * W;
+        while (x < 1.06 * W) {
+          const w = (wMin + rand() * (wMax - wMin)) * ref, h = (hMin + rand() * (hMax - hMin)) * L.Mh;
+          const b = { x, w, h, type: Math.floor(rand() * 4), phase: rand() * 6, k: 0.6 + rand() * 0.8, wins: [] };
+          const ws = L.Mh * 0.034, cols = Math.max(1, Math.floor((w * 0.8) / ws)), rows = Math.max(1, Math.floor((h * 0.86) / ws));
+          const x0 = -((cols - 1) * ws) / 2;
+          for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (rand() < lit) b.wins.push([x0 + c * ws, -h + ws * 0.9 + r * ws, rand()]);
+          list.push(b);
+          x += w * (0.82 + rand() * 0.28);
+        }
+        return list;
+      };
+      back = row(0.3, 0.62, 0.05, 0.1, 0.22);
+      front = row(0.14, 0.34, 0.06, 0.12, 0.3);
+      // The building by the monster's front foot is the one that gets stomped.
+      const target = L.mx - 0.12 * L.Mh;
+      crumbler = front.reduce((a, b) => (Math.abs(b.x + b.w / 2 - target) < Math.abs(a.x + a.w / 2 - target) ? b : a));
+      crumbler.h = Math.max(crumbler.h, 0.26 * L.Mh);
+      crumbler.type = 2;
+    }
+
+    // Things that fly about: rubble, falling specks of plaster, dust puffs and embers from the letters.
+    function makeParticles() {
+      seed = 9;
+      const b = crumbler;
+      rubble = [];
+      for (let r = 0; r < 5; r++) for (let c = 0; c < 3; c++) {
+        const pw = b.w / 3, ph = (b.h * 0.85) / 5;
+        const cx = b.x + pw * (c + 0.5), cy = L.G - b.h * 0.15 - ph * (r + 0.5);
+        const side = (c - 1) + (rand() - 0.5);
+        rubble.push({ cx, cy, pw: pw * (0.8 + rand() * 0.3), ph: ph * (0.8 + rand() * 0.3), vx: side * L.Mh * (0.12 + rand() * 0.2) - L.Mh * 0.05,
+          vy: -L.Mh * (0.15 + rand() * 0.3 + r * 0.06), spin: (rand() - 0.5) * 9, rest: L.G + rand() * (H - L.G) * 0.25 });
+      }
+      specks = [];
+      const all = [...back, ...front];
+      for (const [a, z, n] of [[1.7, 2.6, 34], [3.95, 4.8, 46], [7.7, 8.2, 26]]) {
+        for (let i = 0; i < n; i++) {
+          const bb = all[Math.floor(rand() * all.length)];
+          specks.push({ t0: a + rand() * (z - a), x: bb.x + rand() * bb.w, y: L.G - bb.h, vx: (rand() - 0.5) * L.Mh * 0.08, s: 1 + rand() * 2.2 });
+        }
+      }
+      puffs = [];
+      for (const t0 of [T.thud1, T.thud2]) {
+        for (let i = 0; i < 7; i++) puffs.push({ t0: t0 + rand() * 0.15, x: L.mx + (rand() - 0.5) * L.Mh * 0.9, y: L.G - rand() * L.Mh * 0.08, r0: L.Mh * 0.03, r1: L.Mh * (0.08 + rand() * 0.05), life: 1.2 + rand() * 0.4, rise: L.Mh * 0.05 });
+      }
+      for (let i = 0; i < 12; i++) {
+        puffs.push({ t0: T.stomp + 0.02 + rand() * 0.25, x: b.x + b.w / 2 + (rand() - 0.5) * b.w * 2.2, y: L.G - rand() * b.h * 0.5, r0: L.Mh * 0.04, r1: L.Mh * (0.11 + rand() * 0.08), life: 1.4 + rand() * 0.6, rise: L.Mh * 0.08 });
+      }
+      embers = [];
+      head.lines.forEach((ln, li) => {
+        for (let i = 0; i < 26; i++) {
+          const f = rand();
+          const tb = burnTime(li, f);
+          embers.push({ t0: tb + rand() * 2.4, x: ln.left + f * ln.w, y: ln.base - ln.cap * (0.2 + rand() * 0.6), life: 0.8 + rand() * 0.9, vy: H * (0.05 + rand() * 0.07), ph: rand() * 6, s: 1 + rand() * 1.8 });
+        }
+      });
+    }
+
+    // The headline, drawn once into three layers: the burnt poster letters, a glow, and a white hot copy.
+    function makeHeadline() {
+      const hb = L.hb, c = document.createElement("canvas").getContext("2d");
+      const at = 100;
+      c.font = `${at}px Anton, Impact, sans-serif`;
+      const cap = c.measureText("H").actualBoundingBoxAscent / at || 0.8;
+      const widest = Math.max(...lines.map((s) => c.measureText(s).width)) / at;
+      const n = lines.length, gap = 0.2;
+      let size = Math.min(hb.w / (widest * 1.08), hb.h / (cap * (n + (n - 1) * gap) + 0.08));
+      const capPx = cap * size, ext = size * 0.075;
+      const blockH = capPx * (n + (n - 1) * gap) + ext;
+      const top = hb.y + (hb.h - blockH) / 2;
+      const cx = hb.x + hb.w / 2;
+      c.font = `${size}px Anton, Impact, sans-serif`;
+      const list = lines.map((s, i) => {
+        const w = c.measureText(s).width;
+        const base = top + capPx * (i + 1) + capPx * gap * i;
+        return { s, w, left: cx - w / 2, base, cap: capPx, mid: base - capPx / 2 };
+      });
+      const layer = (paint, only = list) => {
+        const cv = document.createElement("canvas");
+        cv.width = Math.round(W * dpr);
+        cv.height = Math.round(H * dpr);
+        const x = cv.getContext("2d");
+        x.setTransform(dpr, 0, 0, dpr, 0, 0);
+        x.font = `${size}px Anton, Impact, sans-serif`;
+        x.textAlign = "center";
+        for (const ln of only) {
+          x.save();
+          x.translate(cx, ln.base);
+          x.transform(1, 0, -0.08, 1, 0, 0);
+          paint(x, ln);
+          x.restore();
+        }
+        return cv;
+      };
+      const face = layer((x, ln) => {
+        // Poster letters: a deep extrusion, then a face that burns from pale yellow to the accent.
+        const steps = 9;
+        for (let k = steps; k >= 1; k--) {
+          x.fillStyle = rgb(mix(mix(A1, BG, 0.72), BLACK, k / steps * 0.5));
+          x.fillText(ln.s, (k * ext) / steps * 0.8, (k * ext) / steps);
+        }
+        const g = x.createLinearGradient(0, -ln.cap, 0, 0);
+        g.addColorStop(0, rgb(mix(A1, INK, 0.6)));
+        g.addColorStop(0.55, rgb(A1));
+        g.addColorStop(1, rgb(mix(A1, BLACK, 0.2)));
+        x.fillStyle = g;
+        x.fillText(ln.s, 0, 0);
+        x.lineWidth = size * 0.012;
+        x.strokeStyle = rgb(mix(A1, WHITE, 0.55), 0.55);
+        x.strokeText(ln.s, 0, 0);
+      });
+      // One glow layer per line, so a glow is never cut off by the next line's band.
+      const glows = list.map((one) => layer((x, ln) => {
+        x.shadowColor = rgb(A1, 1);
+        x.shadowBlur = size * 0.35 * dpr;
+        x.fillStyle = rgb(A1, 0.9);
+        x.fillText(ln.s, 0, 0);
+        x.fillText(ln.s, 0, 0);
+      }, [one]));
+      const hot = layer((x, ln) => {
+        x.shadowColor = rgb(mix(A1, WHITE, 0.5), 1);
+        x.shadowBlur = size * 0.15 * dpr;
+        x.fillStyle = rgb(mix(INK, WHITE, 0.7));
+        x.fillText(ln.s, 0, 0);
+      });
+      const pad = size * 0.12;
+      const total = list.reduce((a, ln) => a + ln.w + pad * 2, 0);
+      let acc = 0;
+      for (const ln of list) {
+        ln.from = acc / total;
+        acc += ln.w + pad * 2;
+        ln.to = acc / total;
+        ln.pad = pad;
+      }
+      head = { lines: list, size, ext, face, glows, hot, cx, bottom: top + blockH };
+    }
+
+    // When does the beam reach fraction f of line li?
+    function burnTime(li, f) {
+      const ln = head.lines[li];
+      const g = ln.from + (ln.to - ln.from) * ((ln.pad + f * ln.w) / (ln.w + ln.pad * 2));
+      return T.beam + 0.12 + g * (T.beamEnd - T.beam - 0.2);
+    }
+    // Where the beam tip is at time t, and how far each line has burnt.
+    function beamState(t) {
+      const g = clamp01((t - T.beam - 0.12) / (T.beamEnd - T.beam - 0.2));
+      const burnt = head.lines.map((ln) => clamp01((g - ln.from) / (ln.to - ln.from)));
+      let li = head.lines.findIndex((ln) => g < ln.to);
+      if (li < 0) li = head.lines.length - 1;
+      const ln = head.lines[li], p = burnt[li];
+      return { g, burnt, tip: { x: ln.left - ln.pad + p * (ln.w + ln.pad * 2), y: ln.mid } };
+    }
+
+    // Film grain: a few noise tiles, reused in turn like frames of film.
+    function makeFilm() {
+      grain = [];
+      for (let i = 0; i < 6; i++) {
+        const cv = document.createElement("canvas");
+        cv.width = cv.height = 220;
+        const x = cv.getContext("2d"), img = x.createImageData(220, 220);
+        for (let p = 0; p < img.data.length; p += 4) {
+          const v = 128 + (Math.random() + Math.random() + Math.random() - 1.5) * 150;
+          img.data[p] = img.data[p + 1] = img.data[p + 2] = v;
+          img.data[p + 3] = 255;
+        }
+        x.putImageData(img, 0, 0);
+        grain.push(g2d.createPattern(cv, "repeat"));
+      }
+      vignette = g2d.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.hypot(W, H) * 0.62);
+      vignette.addColorStop(0, "rgba(0,0,0,0)");
+      vignette.addColorStop(1, "rgba(0,0,0,0.78)");
+    }
+
+    // How hard the camera shakes, and how the model buildings rock.
+    function shake(t) {
+      let s = 0.35 * ramp(t, 1.5, 2.3) * (1 - ramp(t, 2.4, 2.8));
+      if (t > 2.2 && t < 3.9) s += 0.2;
+      for (const [t0, a, d] of [[T.thud1, 1, 0.25], [T.thud2, 1.2, 0.25], [T.stomp, 2.6, 0.35]]) if (t >= t0) s += a * Math.exp(-(t - t0) / d);
+      s += 1.1 * ramp(t, 3.92, 4.05) * (1 - ramp(t, 4.6, 4.95));
+      if (t > T.beam && t < T.beamEnd) s += 0.3;
+      return s * L.Mh * 0.01;
+    }
+    const KICKS = [[1.6, 0.006, 1.2], [T.thud1, 0.02, 0.5], [T.thud2, 0.024, 0.5], [3.95, 0.03, 0.9], [T.stomp, 0.05, 0.7]];
+    function wobble(t, ph) {
+      let a = 0;
+      for (const [t0, amp, dec] of KICKS) if (t >= t0) a += amp * Math.exp(-(t - t0) / dec) * Math.sin((t - t0) * 17 + ph);
+      if (t > 1.5 && t < 2.6) a += 0.008 * Math.sin(t * 31 + ph) * ramp(t, 1.5, 2.2);
+      if (t > 3.95 && t < 4.9) a += 0.02 * Math.sin(t * 23 + ph);
+      return a;
+    }
+
+    // The monster's pose at time t.
+    function pose(t) {
+      const rise = t < T.rise ? 0 : t < 3 ? 0.55 * out2(ramp(t, T.rise, 3)) : 0.55 + 0.45 * out2(ramp(t, 3, 3.8));
+      const lift = t < 7.45 ? 0 : t < 7.62 ? out2(ramp(t, 7.45, 7.62)) : 1 - in2(ramp(t, 7.62, T.stomp));
+      const roarK = ramp(t, 3.88, 4.06) * (1 - ramp(t, 4.7, 4.95));
+      const beamK = ramp(t, T.charge, 5.6) * (1 - ramp(t, T.beamEnd, 7.75));
+      const jaw = Math.max(0.5 * out2(roarK) + 0.05 * Math.sin(t * 40) * roarK,
+        0.3 * ramp(t, 5.7, T.beam) * (1 - ramp(t, T.beamEnd, 7.5)),
+        0.2 * ramp(t, 7.6, 7.68) * (1 - ramp(t, 7.85, 8.1)));
+      const blink = 1 - Math.max(0, 1 - Math.abs(t - 9.2) / 0.07);
+      const eyes = (0.12 + 0.88 * out3(ramp(t, T.eyes, 3.55))) * blink;
+      const lean = 0.045 * out2(roarK) - 0.02 * lift + Math.sin(t * 1.3) * 0.006;
+      const arm = roarK * (0.5 + 0.45 * Math.sin(t * 19)) + Math.sin(t * 2.6) * 0.08 - lift * 0.2;
+      const gx = L.mx, gy = L.G + (1 - rise) * L.Mh * 1.12 - lift * L.Mh * 0.05 + Math.sin(t * 2.3) * 5 * U;
+      return { rise, lift, roarK, beamK, jaw, eyes, lean, arm, gx, gy };
+    }
+
+    function frame(t) {
+      const c = g2d, fr = Math.floor(t * 24);
+      c.setTransform(dpr, 0, 0, dpr, 0, 0);
+      c.globalCompositeOperation = "source-over";
+      c.globalAlpha = 1;
+      c.shadowBlur = 0;
+      c.fillStyle = "#000";
+      c.fillRect(0, 0, W, H);
+
+      const P = pose(t), B = beamState(t);
+      const s = shake(t);
+      const sx = s * (Math.sin(t * 61) * 0.6 + Math.sin(t * 37.3 + 1.3) * 0.4);
+      const sy = s * (Math.sin(t * 53.7 + 0.4) * 0.6 + Math.sin(t * 29.1 + 2.1) * 0.4);
+      // Gate weave: the whole picture drifts a hair each frame, like film in an old projector.
+      const wx = (hash(fr, 1) - 0.5) * 1.4, wy = (hash(fr, 2) - 0.5) * 1.8;
+      c.save();
+      c.translate(W / 2 + sx + wx, H / 2 + sy + wy);
+      c.scale(1.04, 1.04);
+      c.translate(-W / 2, -H / 2);
+      groupM = c.getTransform();
+
+      const headAt = { x: P.gx - 200 * U, y: P.gy - 850 * U };
+      drawSky(c, t, P, headAt);
+      back.forEach((b, i) => drawBuilding(c, b, t, fr, i, COL.back, 0.35));
+      // Low haze over the back row pushes it into the distance, so the monster stands out.
+      const fog = c.createLinearGradient(0, L.G - L.Mh * 0.6, 0, L.G);
+      fog.addColorStop(0, rgb(COL.skyLow, 0));
+      fog.addColorStop(1, rgb(COL.skyLow, 0.55));
+      c.fillStyle = fog;
+      c.fillRect(-W * 0.1, L.G - L.Mh * 0.6, W * 1.2, L.Mh * 0.6);
+      drawMonster(c, t, P, B);
+      if (P.rise > 0) {
+        // Searchlight spot on the monster.
+        const k = ramp(t, 2.8, 3.4) * (1 - ramp(t, 9.6, 10));
+        if (k > 0) {
+          const g = c.createRadialGradient(headAt.x, headAt.y + 80 * U, 0, headAt.x, headAt.y + 80 * U, 320 * U);
+          g.addColorStop(0, rgb(INK, 0.16 * k));
+          g.addColorStop(1, rgb(INK, 0));
+          c.globalCompositeOperation = "lighter";
+          c.fillStyle = g;
+          c.fillRect(0, 0, W, L.G);
+          c.globalCompositeOperation = "source-over";
+        }
+      }
+      front.forEach((b, i) => { if (b !== crumbler || t < T.stomp + 0.02) drawBuilding(c, b, t, fr, i + 50, COL.front, 1); });
+      if (t >= T.stomp + 0.02) drawStump(c);
+      drawGround(c);
+      drawDebris(c, t);
+      drawTanks(c, t);
+      drawBeam(c, t, fr, B);
+      drawHeadline(c, t, B);
+      drawPlane(c, t);
+      drawRibbon(c, t);
+      c.restore();
+
+      drawNewsBar(c, t);
+      drawFilm(c, t, fr);
+      drawIris(c, t);
+    }
+
+    function drawSky(c, t, P, headAt) {
+      const g = c.createLinearGradient(0, 0, 0, L.G);
+      g.addColorStop(0, rgb(COL.skyTop));
+      g.addColorStop(1, rgb(COL.skyLow));
+      c.fillStyle = g;
+      c.fillRect(-W * 0.1, -H * 0.1, W * 1.2, L.G + H * 0.1);
+      // A big pale moon behind where the monster's head will be.
+      const mr = L.Mh * 0.15, mx = L.mx - L.Mh * 0.1, my = L.G - L.Mh * 0.86;
+      const halo = c.createRadialGradient(mx, my, mr * 0.8, mx, my, mr * 3.2);
+      halo.addColorStop(0, rgb(COL.moon, 0.3));
+      halo.addColorStop(1, rgb(COL.moon, 0));
+      c.fillStyle = halo;
+      c.fillRect(mx - mr * 3.2, my - mr * 3.2, mr * 6.4, mr * 6.4);
+      const disc = c.createRadialGradient(mx - mr * 0.3, my - mr * 0.3, mr * 0.1, mx, my, mr);
+      disc.addColorStop(0, rgb(mix(COL.moon, WHITE, 0.2)));
+      disc.addColorStop(1, rgb(mix(COL.moon, BG, 0.18)));
+      c.fillStyle = disc;
+      c.beginPath();
+      c.arc(mx, my, mr, 0, Math.PI * 2);
+      c.fill();
+      c.fillStyle = rgb(mix(COL.moon, BG, 0.25), 0.5);
+      for (const [dx, dy, r] of [[-0.3, -0.2, 0.18], [0.25, 0.1, 0.24], [-0.05, 0.42, 0.12], [0.4, -0.35, 0.1]]) {
+        c.beginPath();
+        c.arc(mx + dx * mr, my + dy * mr, r * mr, 0, Math.PI * 2);
+        c.fill();
+      }
+      // Searchlights sweep the sky, then lock on to the monster.
+      const lock = ramp(t, 2.6, 3.4) * (1 - ramp(t, 9.5, 10.2));
+      c.globalCompositeOperation = "lighter";
+      [0.1, 0.46, 0.9].forEach((fx, i) => {
+        const bx = fx * W, by = L.G;
+        const sweep = Math.sin(t * 0.7 + i * 2.1) * 0.5;
+        const aim = Math.atan2(headAt.x - bx, -(headAt.y - by)) + Math.sin(t * 1.7 + i) * 0.04;
+        const a = sweep + (aim - sweep) * out2(lock);
+        const len = H * 1.6, half = len * 0.055;
+        const ex = bx + Math.sin(a) * len, ey = by - Math.cos(a) * len;
+        const nx = Math.cos(a) * half, ny = Math.sin(a) * half;
+        const lg = c.createLinearGradient(bx, by, ex, ey);
+        lg.addColorStop(0, rgb(INK, 0.2));
+        lg.addColorStop(0.6, rgb(INK, 0.05));
+        lg.addColorStop(1, rgb(INK, 0));
+        c.fillStyle = lg;
+        c.beginPath();
+        c.moveTo(bx - 4, by);
+        c.lineTo(ex - nx, ey - ny);
+        c.lineTo(ex + nx, ey + ny);
+        c.lineTo(bx + 4, by);
+        c.fill();
+      });
+      c.globalCompositeOperation = "source-over";
+    }
+
+    function drawBuilding(c, b, t, fr, idx, col, haze) {
+      c.save();
+      c.translate(b.x + b.w / 2, L.G);
+      let ang = wobble(t, b.phase) * b.k;
+      if (b === crumbler) ang += 0.05 * ramp(t, 7.5, T.stomp) * Math.sin(t * 60);
+      c.rotate(ang);
+      const w = b.w, h = b.h;
+      c.fillStyle = rgb(col);
+      c.beginPath();
+      c.rect(-w / 2, -h, w, h + 2);
+      if (b.type === 0) {
+        // Water tower on legs.
+        const tw = w * 0.3;
+        c.rect(w * 0.08, -h - tw * 1.35, tw, tw * 0.85);
+        c.rect(w * 0.08 + tw * 0.1, -h - tw * 0.55, tw * 0.1, tw * 0.55);
+        c.rect(w * 0.08 + tw * 0.8, -h - tw * 0.55, tw * 0.1, tw * 0.55);
+        c.moveTo(w * 0.08 - tw * 0.08, -h - tw * 1.35);
+        c.lineTo(w * 0.08 + tw * 0.5, -h - tw * 1.75);
+        c.lineTo(w * 0.08 + tw * 1.08, -h - tw * 1.35);
+      } else if (b.type === 1) {
+        // Stepped top.
+        c.rect(-w * 0.32, -h - h * 0.12, w * 0.64, h * 0.12 + 1);
+        c.rect(-w * 0.14, -h - h * 0.2, w * 0.28, h * 0.08 + 1);
+      } else if (b.type === 2) {
+        // Antenna.
+        c.rect(-w * 0.2, -h - h * 0.06, w * 0.4, h * 0.06 + 1);
+        c.rect(-w * 0.025, -h - h * 0.34, w * 0.05, h * 0.3);
+      } else {
+        // Little dome.
+        c.moveTo(-w * 0.3, -h);
+        c.arc(0, -h, w * 0.3, Math.PI, 0);
+      }
+      c.fill();
+      // A thin moonlit edge.
+      c.fillStyle = rgb(haze < 1 ? mix(col, INK, 0.08) : COL.frontEdge, 0.9);
+      c.fillRect(-w / 2, -h, Math.max(1.5, w * 0.06), h);
+      if (b.type === 2) {
+        const on = Math.sin(t * 5 + b.phase) > 0.2;
+        c.fillStyle = rgb(A1, on ? 0.9 : 0.25);
+        c.beginPath();
+        c.arc(0, -h - h * 0.34, Math.max(1.5, w * 0.04), 0, Math.PI * 2);
+        c.fill();
+      }
+      // Windows flicker when the ground shakes.
+      const shaky = (t > 1.6 && t < 2.8) || (t > 3.9 && t < 4.9) || (t > T.stomp && t < 8.1);
+      const ws = L.Mh * 0.034 * 0.42;
+      c.fillStyle = rgb(COL.window, haze < 1 ? 0.35 : 0.85);
+      b.wins.forEach(([x, y, r], k) => {
+        if (shaky && hash(fr * 7 + k, idx) < 0.35) return;
+        if (r < 0.1 && Math.sin(t * 3 + k) > 0.6) return;
+        c.fillRect(x - ws / 2, y, ws, ws * 1.3);
+      });
+      c.restore();
+    }
+
+    function drawStump(c) {
+      const b = crumbler;
+      c.fillStyle = rgb(COL.front);
+      c.beginPath();
+      c.moveTo(b.x, L.G + 2);
+      c.lineTo(b.x, L.G - b.h * 0.18);
+      for (let i = 1; i <= 6; i++) c.lineTo(b.x + (b.w * i) / 6, L.G - b.h * (0.1 + hash(i, 4) * 0.14));
+      c.lineTo(b.x + b.w, L.G + 2);
+      c.fill();
+    }
+
+    function drawGround(c) {
+      const g = c.createLinearGradient(0, L.G, 0, H);
+      g.addColorStop(0, rgb(COL.ground));
+      g.addColorStop(1, rgb(COL.groundLow));
+      c.fillStyle = g;
+      c.fillRect(-W * 0.1, L.G, W * 1.2, H - L.G + H * 0.1);
+      c.fillStyle = rgb(COL.frontEdge, 0.8);
+      c.fillRect(-W * 0.1, L.G, W * 1.2, Math.max(1, H * 0.002));
+      c.fillStyle = rgb(INK, 0.05);
+      for (let i = 1; i < 5; i++) c.fillRect(-W * 0.1, L.G + (H - L.G) * (i * i) / 30, W * 1.2, 1);
+    }
+
+    function drawMonster(c, t, P, B) {
+      if (P.rise <= 0) return;
+      c.save();
+      c.beginPath();
+      c.rect(-W, -H, W * 3, L.G + H);
+      c.clip();
+      c.translate(P.gx, P.gy);
+      c.rotate(P.lean);
+      c.scale(U, U);
+      const blur = (v) => v * U * dpr;
+      const fill = (p, col) => { c.fillStyle = rgb(col); c.fill(p); };
+      const rim = c.createLinearGradient(-340, -1080, 240, -300);
+      rim.addColorStop(0, rgb(COL.rim, 1));
+      rim.addColorStop(0.3, rgb(COL.rim, 0.7));
+      rim.addColorStop(0.7, rgb(COL.rim, 0));
+      const edge = (p, w = 9) => { c.strokeStyle = rim; c.lineWidth = w; c.stroke(p); };
+
+      fill(MON.tail, COL.dark);
+      edge(MON.tail);
+      // Back spikes light up from the tail to the neck, then fade after the beam.
+      SPIKES.forEach((sp, i) => {
+        const order = SPIKES.length - 1 - i;
+        const on = ramp(t, T.charge + order * 0.1, T.charge + order * 0.1 + 0.12) * (1 - ramp(t, T.beamEnd + 0.1, 8.1));
+        const flick = t > T.beam && t < T.beamEnd ? 0.85 + 0.15 * Math.sin(t * 50 + i) : 1;
+        const k = on * flick;
+        if (k > 0) {
+          c.save();
+          c.shadowColor = rgb(A2, 1);
+          c.shadowBlur = blur(60) * k;
+          fill(spikePaths[i], mix(COL.spike, mix(A2, WHITE, 0.3), k));
+          c.restore();
+        } else fill(spikePaths[i], COL.spike);
+        edge(spikePaths[i], 5);
+      });
+      fill(MON.legBack, COL.dark);
+      c.save();
+      c.translate(-40, -590);
+      c.rotate(P.arm * 0.8 + 0.15);
+      c.scale(0.9, 0.9);
+      fill(MON.arm, COL.dark);
+      fill(MON.claws, COL.dark);
+      c.restore();
+      fill(MON.torso, COL.body);
+      // Rubber suit bumps and a few seams.
+      c.save();
+      c.clip(MON.torso);
+      c.fillStyle = rgb(COL.belly, 0.35);
+      for (const [x, y, r] of BUMPS) {
+        c.beginPath();
+        c.arc(x, y, r, 0, Math.PI * 2);
+        c.fill();
+      }
+      c.restore();
+      edge(MON.torso, 9);
+      fill(MON.belly, COL.belly);
+      c.save();
+      c.clip(MON.belly);
+      c.strokeStyle = rgb(COL.body, 0.9);
+      c.lineWidth = 7;
+      for (let y = -340; y > -680; y -= 42) {
+        c.beginPath();
+        c.moveTo(-230, y);
+        c.quadraticCurveTo(-120, y + 14, -10, y - 4);
+        c.stroke();
+      }
+      c.restore();
+      fill(MON.legFront, COL.body);
+      edge(MON.legFront);
+      fill(MON.toes, COL.horn);
+      c.fillStyle = rgb(COL.body);
+      c.beginPath();
+      c.ellipse(-80, -700, 105, 80, 0, 0, Math.PI * 2);
+      c.fill();
+
+      // Head: aims at the words during the beam.
+      const hx = P.gx + -120 * U, hy = P.gy - 730 * U;
+      const aimAt = t < T.beam ? { x: head.lines[0].left, y: head.lines[0].mid } : B.tip;
+      const aim = Math.max(-0.25, Math.min(0.85, Math.atan2(-(aimAt.y - hy), -(aimAt.x - hx))));
+      const tilt = P.roarK * 0.32 + P.beamK * aim + Math.sin(t * 1.9) * 0.03;
+      c.save();
+      c.translate(-120, -730);
+      c.rotate(tilt);
+      fill(MON.frill, COL.dark);
+      edge(MON.frill, 5);
+      fill(MON.horn2, COL.spike);
+      // Mouth: the gap between the upper head and the jaw.
+      const a = P.jaw, ca = Math.cos(-a), sa = Math.sin(-a);
+      const rot = (x, y) => [30 + (x - 30) * ca - (y - 10) * sa, 10 + (x - 30) * sa + (y - 10) * ca];
+      const tip = rot(-265, -2);
+      const charge = ramp(t, T.charge, T.beam) * (1 - ramp(t, T.beamEnd, 7.6));
+      c.fillStyle = rgb(mix(COL.mouth, A2, charge * 0.8));
+      c.beginPath();
+      c.moveTo(40, 10);
+      c.lineTo(-290, -6);
+      c.lineTo(tip[0] - 6, tip[1]);
+      c.closePath();
+      c.fill();
+      c.save();
+      c.translate(30, 10);
+      c.rotate(-a);
+      c.translate(-30, -10);
+      fill(MON.jaw, COL.body);
+      edge(MON.jaw, 5);
+      c.fillStyle = rgb(COL.teeth);
+      for (const [x, y] of LOWER_TEETH) {
+        c.beginPath();
+        c.moveTo(x - 8, y + 2);
+        c.lineTo(x, y - 18);
+        c.lineTo(x + 8, y + 2);
+        c.fill();
+      }
+      c.restore();
+      fill(MON.head, COL.body);
+      edge(MON.head, 8);
+      c.fillStyle = rgb(COL.teeth);
+      for (const [x, y] of UPPER_TEETH) {
+        c.beginPath();
+        c.moveTo(x - 9, y - 2);
+        c.lineTo(x, y + 21);
+        c.lineTo(x + 9, y - 2);
+        c.fill();
+      }
+      fill(MON.brow, COL.dark);
+      c.fillStyle = rgb(COL.dark);
+      c.beginPath();
+      c.ellipse(-272, -84, 10, 6, -0.4, 0, Math.PI * 2);
+      c.fill();
+      // Glowing eyes, big and a little goofy.
+      c.save();
+      c.translate(-165, -118);
+      c.scale(1, Math.max(0.08, P.eyes));
+      c.shadowColor = rgb(A1, 1);
+      c.shadowBlur = blur(40) * P.eyes;
+      c.fillStyle = rgb(mix(A1, WHITE, 0.45));
+      c.beginPath();
+      c.arc(0, 0, 25, 0, Math.PI * 2);
+      c.fill();
+      c.shadowBlur = 0;
+      c.fillStyle = rgb(COL.mouth);
+      c.beginPath();
+      c.ellipse(-7, 0, 5.5, 16, 0, 0, Math.PI * 2);
+      c.fill();
+      c.restore();
+      fill(MON.horn1, COL.horn);
+      edge(MON.horn1, 4);
+      // Remember where the mouth is, in picture coordinates, for the beam.
+      const mxl = (-280 + tip[0]) / 2 + 24, myl = (-5 + tip[1]) / 2;
+      const dev = c.getTransform().transformPoint(new DOMPoint(mxl, myl));
+      const loc = groupM.inverse().transformPoint(dev);
+      mouth = { x: loc.x, y: loc.y };
+      c.restore();
+
+      c.save();
+      c.translate(-150, -560);
+      c.rotate(P.arm);
+      fill(MON.arm, COL.body);
+      edge(MON.arm, 5);
+      fill(MON.claws, COL.horn);
+      c.restore();
+      c.restore();
+    }
+
+    function drawDebris(c, t) {
+      // Dust puffs.
+      for (const p of puffs) {
+        const d = t - p.t0;
+        if (d < 0 || d > p.life) continue;
+        const k = d / p.life, r = p.r0 + (p.r1 - p.r0) * out2(k);
+        c.fillStyle = rgb(COL.dust, 0.2 * (1 - k) * (1 - k));
+        c.beginPath();
+        c.arc(p.x, p.y - p.rise * k, r, 0, Math.PI * 2);
+        c.fill();
+      }
+      // Rubble from the stomped building.
+      if (t >= T.stomp + 0.02) {
+        const d = t - T.stomp - 0.02, g = L.Mh * 2.4;
+        c.fillStyle = rgb(COL.front);
+        for (const r of rubble) {
+          let y = r.cy + r.vy * d + 0.5 * g * d * d, x = r.cx + r.vx * d, rot = r.spin * d;
+          if (y > r.rest) {
+            // Landed: find when it hit the ground and freeze there.
+            const a = 0.5 * g, bq = r.vy, cq = r.cy - r.rest;
+            const land = (-bq + Math.sqrt(bq * bq - 4 * a * cq)) / (2 * a);
+            y = r.rest;
+            x = r.cx + r.vx * land;
+            rot = r.spin * land;
+          }
+          c.save();
+          c.translate(x, y);
+          c.rotate(rot);
+          c.fillRect(-r.pw / 2, -r.ph / 2, r.pw, r.ph);
+          c.fillStyle = rgb(COL.window, 0.5);
+          c.fillRect(-r.pw * 0.2, -r.ph * 0.2, r.pw * 0.14, r.ph * 0.2);
+          c.fillStyle = rgb(COL.front);
+          c.restore();
+        }
+      }
+      // Specks of plaster falling from the rooftops.
+      c.fillStyle = rgb(COL.dust, 0.8);
+      const g = L.Mh * 2.6;
+      for (const p of specks) {
+        const d = t - p.t0;
+        if (d < 0 || d > 0.9) continue;
+        c.fillRect(p.x + p.vx * d, p.y + 0.5 * g * d * d, p.s, p.s);
+      }
+    }
+
+    function drawBeam(c, t, fr, B) {
+      const charge = ramp(t, T.charge, T.beam) * (1 - ramp(t, T.beam, T.beam + 0.1));
+      const on = t >= T.beam && t < T.beamEnd + 0.12;
+      c.globalCompositeOperation = "lighter";
+      // Charging: sparks gather at the mouth.
+      if (charge > 0 && t < T.beam) {
+        for (let k = 0; k < 14; k++) {
+          const q = ((t - T.charge) * 1.6 + k / 14) % 1;
+          const a = hash(k, 3) * Math.PI * 2, r = L.Mh * 0.22 * (1 - q);
+          c.fillStyle = rgb(mix(A2, WHITE, 0.4), 0.8 * q * charge);
+          c.beginPath();
+          c.arc(mouth.x + Math.cos(a) * r, mouth.y + Math.sin(a) * r, 1.5 + q * 2, 0, Math.PI * 2);
+          c.fill();
+        }
+      }
+      const ball = Math.max(charge, on ? 1 : 0) * (t > T.beamEnd ? 1 - ramp(t, T.beamEnd, T.beamEnd + 0.12) : 1);
+      if (ball > 0) {
+        const r = L.Mh * (0.05 + 0.05 * ball) * (1 + 0.1 * Math.sin(t * 70));
+        const g = c.createRadialGradient(mouth.x, mouth.y, 0, mouth.x, mouth.y, r);
+        g.addColorStop(0, rgb(WHITE, 0.9 * ball));
+        g.addColorStop(0.35, rgb(A2, 0.6 * ball));
+        g.addColorStop(1, rgb(A2, 0));
+        c.fillStyle = g;
+        c.fillRect(mouth.x - r, mouth.y - r, r * 2, r * 2);
+      }
+      if (on) {
+        const grow = out2(ramp(t, T.beam, T.beam + 0.12));
+        const fade = 1 - ramp(t, T.beamEnd, T.beamEnd + 0.12);
+        const tx = mouth.x + (B.tip.x - mouth.x) * grow, ty = mouth.y + (B.tip.y - mouth.y) * grow;
+        const bw = L.Mh * 0.028 * fade * (1 + 0.15 * Math.sin(t * 90) + 0.1 * hash(fr, 5));
+        c.lineCap = "round";
+        const line = (w, col) => {
+          c.strokeStyle = col;
+          c.lineWidth = w;
+          c.beginPath();
+          c.moveTo(mouth.x, mouth.y);
+          c.lineTo(tx, ty);
+          c.stroke();
+        };
+        c.save();
+        c.shadowColor = rgb(A2, 1);
+        c.shadowBlur = bw * 3 * dpr;
+        line(bw * 3.2, rgb(A2, 0.16));
+        c.restore();
+        line(bw * 1.5, rgb(A2, 0.6));
+        line(bw * 0.5, rgb(mix(A2, WHITE, 0.75), 0.95));
+        // Pulses running up the beam.
+        for (let k = 0; k < 6; k++) {
+          const q = (t * 2.8 + k / 6) % 1;
+          c.fillStyle = rgb(WHITE, 0.6 * fade);
+          c.beginPath();
+          c.arc(mouth.x + (tx - mouth.x) * q, mouth.y + (ty - mouth.y) * q, bw * 0.9, 0, Math.PI * 2);
+          c.fill();
+        }
+        // Impact: a hot flash and sparks where the beam meets the letters.
+        const r = bw * 5;
+        const g = c.createRadialGradient(tx, ty, 0, tx, ty, r);
+        g.addColorStop(0, rgb(WHITE, 0.95 * fade));
+        g.addColorStop(0.4, rgb(A1, 0.55 * fade));
+        g.addColorStop(1, rgb(A1, 0));
+        c.fillStyle = g;
+        c.fillRect(tx - r, ty - r, r * 2, r * 2);
+        c.lineWidth = Math.max(1, bw * 0.18);
+        for (let k = 0; k < 14; k++) {
+          const a = -Math.PI / 2 + (hash(fr, k * 3) - 0.5) * 3.4, len = bw * (1.5 + hash(fr, k * 3 + 1) * 5);
+          const d0 = bw * (0.5 + hash(fr, k * 3 + 2) * 2);
+          c.strokeStyle = rgb(k % 3 ? A1 : WHITE, 0.9 * fade);
+          c.beginPath();
+          c.moveTo(tx + Math.cos(a) * d0, ty + Math.sin(a) * d0);
+          c.lineTo(tx + Math.cos(a) * (d0 + len), ty + Math.sin(a) * (d0 + len));
+          c.stroke();
+        }
+        // The whole scene lights up in the beam's colour.
+        c.fillStyle = rgb(A2, (0.05 + 0.03 * hash(fr, 8)) * fade);
+        c.fillRect(-W * 0.1, -H * 0.1, W * 1.2, H * 1.2);
+      }
+      c.globalCompositeOperation = "source-over";
+    }
+
+    function drawHeadline(c, t, B) {
+      if (t < T.beam) return;
+      const smolder = t < T.beamEnd ? 0.6 : 0.42 + 0.12 * Math.sin(t * 7) + 0.08 * Math.sin(t * 17.3);
+      const fadeOut = 1;
+      head.lines.forEach((ln, i) => {
+        const p = B.burnt[i];
+        if (p <= 0) return;
+        const edge = ln.left - ln.pad + p * (ln.w + ln.pad * 2);
+        // Each line owns the band up to halfway to its neighbours, so a line never shows early.
+        const prev = head.lines[i - 1], next = head.lines[i + 1];
+        const top = prev ? (prev.base + head.ext + ln.base - ln.cap) / 2 : ln.base - ln.cap - head.size * 0.3;
+        const h = (next ? (ln.base + head.ext + next.base - next.cap) / 2 : ln.base + head.ext + head.size * 0.3) - top;
+        c.save();
+        c.beginPath();
+        c.rect(-W, -H, edge + W + head.size * 0.15, H * 3);
+        c.clip();
+        c.globalCompositeOperation = "lighter";
+        c.globalAlpha = smolder * fadeOut;
+        c.drawImage(head.glows[i], 0, 0, W, H);
+        c.restore();
+        c.save();
+        c.beginPath();
+        c.rect(-W, top, edge + W, h);
+        c.clip();
+        c.globalCompositeOperation = "source-over";
+        c.globalAlpha = fadeOut;
+        c.drawImage(head.face, 0, 0, W, H);
+        c.restore();
+        // Freshly burnt letters glow white hot, then cool down behind the beam.
+        if (p < 1 || t < T.beamEnd + 0.4) {
+          const band = head.size * 0.28, cool = p < 1 ? 1 : 1 - ramp(t, T.beamEnd, T.beamEnd + 0.4);
+          for (let k = 0; k < 4; k++) {
+            c.save();
+            c.beginPath();
+            c.rect(edge - band * (k + 1), top, band, h);
+            c.clip();
+            c.globalAlpha = (1 - k / 4) * 0.85 * cool;
+            c.drawImage(head.hot, 0, 0, W, H);
+            c.restore();
+          }
+        }
+      });
+      c.globalAlpha = 1;
+      // Embers drift up from the burnt letters.
+      c.globalCompositeOperation = "lighter";
+      for (const e of embers) {
+        const d = t - e.t0;
+        if (d < 0 || d > e.life || e.t0 > T.irisOut) continue;
+        const k = d / e.life;
+        c.fillStyle = rgb(k < 0.3 ? mix(A1, WHITE, 0.5) : A1, 0.9 * (1 - k));
+        c.beginPath();
+        c.arc(e.x + Math.sin(d * 4 + e.ph) * S * 0.8, e.y - e.vy * d, e.s * (1 - k * 0.5), 0, Math.PI * 2);
+        c.fill();
+      }
+      c.globalCompositeOperation = "source-over";
+    }
+
+    // Toy tanks roll in along the street and fire tiny shots at the monster.
+    const SHOTS = [4.95, 5.35, 8.45, 8.9, 9.3];
+    function drawTanks(c, t) {
+      const ts = Math.min(L.Mh * 0.1, W * 0.09), y = L.G + Math.min((L.bar.y - L.G) * 0.62, ts * 0.7);
+      [0.06, 0.24, 0.4].forEach((fx, i) => {
+        const x = -ts * 2 + (fx * W + ts * 2) * out2(ramp(t, 2.7 + i * 0.25, 4.2 + i * 0.25));
+        if (t < 2.7 + i * 0.25) return;
+        const bump = Math.sin(t * 30 + i) * ts * 0.02 * (1 - ramp(t, 4.1, 4.5));
+        c.save();
+        c.translate(x, y + bump);
+        c.scale(-1, 1);
+        c.rotate(0.02 * Math.sin(t * 3 + i));
+        c.fillStyle = rgb(mix(BG, BLACK, 0.5));
+        c.beginPath();
+        c.moveTo(-ts * 0.55, 0);
+        c.lineTo(ts * 0.55, 0);
+        c.lineTo(ts * 0.62, -ts * 0.18);
+        c.lineTo(-ts * 0.62, -ts * 0.18);
+        c.fill();
+        c.fillStyle = rgb(mix(BG, INK, 0.2));
+        c.fillRect(-ts * 0.5, -ts * 0.34, ts, ts * 0.17);
+        c.beginPath();
+        c.ellipse(0, -ts * 0.36, ts * 0.26, ts * 0.14, 0, Math.PI, 0);
+        c.fill();
+        // The gun points up at the monster.
+        c.save();
+        c.translate(-ts * 0.1, -ts * 0.4);
+        c.rotate(-0.55);
+        c.fillRect(-ts * 0.62, -ts * 0.035, ts * 0.62, ts * 0.07);
+        c.restore();
+        c.fillStyle = rgb(INK, 0.25);
+        for (let k = 0; k < 4; k++) {
+          c.beginPath();
+          c.arc(-ts * 0.4 + k * ts * 0.27, -ts * 0.08, ts * 0.05, 0, Math.PI * 2);
+          c.fill();
+        }
+        c.restore();
+        // Muzzle flash and a little smoke ring.
+        for (const s0 of SHOTS) {
+          const d = t - s0 - i * 0.08;
+          if (d < 0 || d > 0.6) continue;
+          const mx = x + ts * 0.1 + Math.cos(-0.55) * ts * 0.62, my = y - ts * 0.4 + Math.sin(-0.55) * ts * 0.62;
+          if (d < 0.08) {
+            c.fillStyle = rgb(mix(A1, WHITE, 0.4), 1 - d / 0.08);
+            c.beginPath();
+            c.arc(mx, my, ts * 0.16, 0, Math.PI * 2);
+            c.fill();
+          }
+          c.fillStyle = rgb(COL.dust, 0.35 * (1 - d / 0.6));
+          c.beginPath();
+          c.arc(mx + d * ts * 0.8, my - d * ts * 0.9, ts * (0.08 + d * 0.3), 0, Math.PI * 2);
+          c.fill();
+        }
+      });
+    }
+
+    // A toy plane on a visible string, a proper low budget effect. The roar blows it away.
+    function drawPlane(c, t) {
+      if (t < 0.2 || t > 5.2) return;
+      const ps = L.Mh * 0.075;
+      let x = W * 1.1 - ramp(t, 0.2, T.roar + 0.1) * W * 0.78;
+      let y = L.planeY + Math.sin(t * 2.3) * S * 0.6, rot = Math.sin(t * 1.7) * 0.07;
+      const blown = t - (T.roar + 0.1);
+      if (blown > 0) {
+        x -= blown * blown * W * 1.6 + blown * W * 0.3;
+        y -= blown * H * 0.35 - blown * blown * H * 0.1;
+        rot -= blown * 9;
+      } else {
+        c.strokeStyle = rgb(INK, 0.35);
+        c.lineWidth = 1;
+        c.beginPath();
+        c.moveTo(x - ps * 0.05, -20);
+        c.lineTo(x - ps * 0.05, y - ps * 0.12);
+        c.stroke();
+      }
+      c.save();
+      c.translate(x, y);
+      c.rotate(rot);
+      c.fillStyle = rgb(mix(BG, INK, 0.5));
+      c.beginPath();
+      c.ellipse(0, 0, ps * 0.62, ps * 0.14, 0, 0, Math.PI * 2);
+      c.fill();
+      c.fillStyle = rgb(mix(BG, INK, 0.38));
+      c.beginPath();
+      c.moveTo(-ps * 0.12, -ps * 0.02);
+      c.lineTo(ps * 0.18, -ps * 0.02);
+      c.lineTo(ps * 0.32, ps * 0.2);
+      c.lineTo(ps * 0.0, ps * 0.2);
+      c.closePath();
+      c.fill();
+      c.beginPath();
+      c.moveTo(ps * 0.42, -ps * 0.05);
+      c.lineTo(ps * 0.62, -ps * 0.34);
+      c.lineTo(ps * 0.66, -ps * 0.02);
+      c.closePath();
+      c.fill();
+      c.fillStyle = rgb(INK, 0.25 + 0.2 * Math.abs(Math.sin(t * 50)));
+      c.beginPath();
+      c.ellipse(-ps * 0.64, 0, ps * 0.03, ps * 0.2, 0, 0, Math.PI * 2);
+      c.fill();
+      c.restore();
+    }
+
+    function drawRibbon(c, t) {
+      const k = ramp(t, T.ribbon, T.ribbon + 0.4);
+      if (k <= 0) return;
+      const sc = backOut(k);
+      const low = L.ribbonY !== undefined;
+      const rh = low ? Math.max(18, Math.min(head.size * 0.45, (H - L.G) * 0.3, W * 0.09)) : Math.max(18, head.size * 0.3);
+      c.font = `${rh * 0.62}px Anton, Impact, sans-serif`;
+      const label = "NOW SHOWING";
+      const tw = c.measureText(label).width + rh * 0.4;
+      const w = tw + rh * 1.6;
+      const cx = low ? W / 2 : head.cx, cy = low ? L.ribbonY : Math.min(head.bottom + rh * 0.95, L.G - rh);
+      c.save();
+      c.translate(cx, cy);
+      c.scale(sc, sc);
+      c.rotate(-0.02);
+      // Ribbon tails.
+      c.fillStyle = rgb(mix(INK, BG, 0.35));
+      for (const s of [-1, 1]) {
+        c.beginPath();
+        c.moveTo(s * (w / 2 - rh * 0.2), -rh * 0.25);
+        c.lineTo(s * (w / 2 + rh * 0.7), -rh * 0.25);
+        c.lineTo(s * (w / 2 + rh * 0.45), rh * 0.25);
+        c.lineTo(s * (w / 2 + rh * 0.7), rh * 0.75);
+        c.lineTo(s * (w / 2 - rh * 0.2), rh * 0.75);
+        c.fill();
+      }
+      c.fillStyle = rgb(INK);
+      c.fillRect(-w / 2, -rh / 2, w, rh);
+      c.strokeStyle = rgb(mix(INK, BG, 0.5));
+      c.lineWidth = Math.max(1, rh * 0.05);
+      c.strokeRect(-w / 2 + rh * 0.12, -rh / 2 + rh * 0.12, w - rh * 0.24, rh - rh * 0.24);
+      c.fillStyle = rgb(mix(BG, BLACK, 0.3));
+      c.textAlign = "center";
+      c.textBaseline = "middle";
+      c.fillText(label, 0, rh * 0.03);
+      for (const s of [-1, 1]) star(c, s * (tw / 2 + rh * 0.25), 0, rh * 0.2, rgb(A1));
+      c.restore();
+      c.textAlign = "start";
+      c.textBaseline = "alphabetic";
+    }
+    function star(c, x, y, r, col) {
+      c.fillStyle = col;
+      c.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r * 0.45 : r;
+        c.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+      }
+      c.fill();
+    }
+
+    // Newsreel bulletin strip, typed out like a wire report.
+    function drawNewsBar(c, t) {
+      const inK = out3(ramp(t, T.barIn, T.barIn + 0.35)), outK = in2(ramp(t, T.barOut, T.barOut + 0.3));
+      if (inK <= 0 || outK >= 1) return;
+      const b = L.bar;
+      const x = b.x - (1 - inK) * (b.w + b.x + 20) - outK * (b.w + b.x + 20);
+      const lw = b.h * 2.5;
+      c.save();
+      c.translate(x, b.y);
+      c.fillStyle = "rgba(0,0,0,0.45)";
+      c.fillRect(4, 5, b.w, b.h);
+      c.fillStyle = rgb(A1);
+      c.fillRect(0, 0, lw, b.h);
+      c.fillStyle = rgb(INK);
+      c.fillRect(lw, 0, b.w - lw, b.h);
+      c.fillStyle = rgb(mix(BG, BLACK, 0.4));
+      c.textBaseline = "middle";
+      c.textAlign = "center";
+      c.font = `${b.h * 0.5}px Anton, Impact, sans-serif`;
+      c.fillText("BULLETIN", lw / 2, b.h * 0.53);
+      const second = t >= T.type2;
+      const msg = second ? NEWS[1] : NEWS[0];
+      const start = second ? T.type2 : T.type1;
+      const n = Math.max(0, Math.min(msg.length, Math.floor((t - start) / TYPE_GAP)));
+      let fs = b.h * 0.44;
+      c.font = `${fs}px "Special Elite", "Courier New", monospace`;
+      const room = b.w - lw - b.h * 0.6;
+      const full = c.measureText(msg).width;
+      if (full > room) {
+        fs *= room / full;
+        c.font = `${fs}px "Special Elite", "Courier New", monospace`;
+      }
+      c.textAlign = "start";
+      const shown = msg.slice(0, n);
+      c.fillText(shown, lw + b.h * 0.3, b.h * 0.54);
+      if (Math.floor(t * 3) % 2 === 0 || n < msg.length) {
+        const cw = c.measureText(shown).width;
+        c.fillRect(lw + b.h * 0.3 + cw + 2, b.h * 0.3, fs * 0.5, b.h * 0.42);
+      }
+      c.restore();
+      c.textBaseline = "alphabetic";
+    }
+
+    function drawFilm(c, t, fr) {
+      // Grain.
+      c.save();
+      c.globalCompositeOperation = "overlay";
+      c.globalAlpha = 0.3;
+      c.fillStyle = grain[fr % grain.length];
+      c.translate(-hash(fr, 11) * 220, -hash(fr, 12) * 220);
+      c.fillRect(0, 0, W + 220, H + 220);
+      c.restore();
+      // Scratches, specks and the odd hair.
+      const f2 = Math.floor(fr / 2);
+      for (let k = 0; k < 3; k++) {
+        if (hash(f2, k + 20) > 0.35) continue;
+        const x = hash(f2, k + 30) * W;
+        c.strokeStyle = k % 2 ? rgb(INK, 0.22) : "rgba(0,0,0,0.35)";
+        c.lineWidth = 0.6 + hash(f2, k + 40) * 1.2;
+        c.beginPath();
+        c.moveTo(x, 0);
+        c.quadraticCurveTo(x + (hash(f2, k + 50) - 0.5) * 12, H / 2, x + (hash(f2, k + 60) - 0.5) * 8, H);
+        c.stroke();
+      }
+      for (let k = 0; k < 5; k++) {
+        c.fillStyle = hash(fr, k + 70) > 0.5 ? rgb(INK, 0.5) : "rgba(0,0,0,0.6)";
+        c.beginPath();
+        c.arc(hash(fr, k + 80) * W, hash(fr, k + 90) * H, 0.6 + hash(fr, k + 100) * 2.2, 0, Math.PI * 2);
+        c.fill();
+      }
+      if (hash(fr, 120) < 0.06) {
+        const x = hash(fr, 121) * W, y = hash(fr, 122) * H, r = S * 3;
+        c.strokeStyle = "rgba(0,0,0,0.5)";
+        c.lineWidth = 1;
+        c.beginPath();
+        c.moveTo(x, y);
+        c.bezierCurveTo(x + r, y - r, x + r * 2, y + r, x + r * 2.5, y + r * 0.2);
+        c.stroke();
+      }
+      // Flicker and vignette.
+      c.fillStyle = `rgba(0,0,0,${0.03 + hash(fr, 130) * 0.07})`;
+      c.fillRect(0, 0, W, H);
+      c.fillStyle = vignette;
+      c.fillRect(0, 0, W, H);
+    }
+
+    // An iris opens the reel and closes it on the headline, like an old movie.
+    function drawIris(c, t) {
+      const max = Math.hypot(W, H) * 0.62;
+      let r = max, cx = W / 2, cy = H / 2;
+      if (t < 0.6) r = max * out2(ramp(t, 0, 0.6));
+      else if (t > T.irisOut) {
+        r = max * (1 - in2(ramp(t, T.irisOut, T.irisOut + 0.5)));
+        const k = ramp(t, T.irisOut, T.irisOut + 0.3);
+        cx = W / 2 + (head.cx - W / 2) * k;
+        cy = H / 2 + ((head.lines[0].base + head.bottom) / 2 - H / 2) * k;
+      }
+      if (r >= max) return;
+      c.fillStyle = "#000";
+      c.beginPath();
+      c.rect(0, 0, W, H);
+      c.arc(cx, cy, Math.max(0, r), 0, Math.PI * 2, true);
+      c.fill("evenodd");
+    }
+
+    function build() {
+      const keep = tl ? tl.totalTime() : 0;
+      if (tl) tl.kill();
+      W = innerWidth;
+      H = innerHeight;
+      dpr = Math.min(2, devicePixelRatio || 1);
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
+      layout();
+      makeCity();
+      makeHeadline();
+      makeParticles();
+      makeFilm();
+      const st = { t: 0 };
+      tl = gsap.timeline({ repeat: -1 });
+      tl.to(st, { t: LOOP, duration: LOOP, ease: "none", onUpdate: () => frame(st.t) });
+      if (reduce.matches) {
+        tl.pause(STILL);
+        frame(STILL);
+      } else tl.totalTime(keep % LOOP);
+      sound.replan();
+    }
+
+    reduce.addEventListener("change", () => {
+      if (!tl) return;
+      if (reduce.matches) {
+        tl.pause(STILL);
+        frame(STILL);
+      } else tl.play();
+    });
+
+    // Sound: every sound is made with the Web Audio API. It is off until the
+    // parent page (or ?sound=1 / ?sound=effects) turns it on, and it follows the
+    // GSAP timeline clock, using the same timings as the picture.
+    const sound = (() => {
+      const LEVEL = 1, MUSIC = 0.2;
+      const BEAT = LOOP / 20; // 114 bpm: five bars fill one 10.5 s loop
+      const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+      const clock = () => (tl && !tl.paused() ? tl.totalTime() : null);
+      const loopLength = () => tl.duration();
+      let ctx = null, master, impulse, noiseBuf, session = null, fxBus, musicBus, verbSend;
+      let wantOn = false, wantMusic = true, playing = false;
+      let timer = 0, sleepTimer = 0, anchor = null, doneUpTo = 0;
+
+      function plan() {
+        const list = [];
+        const add = (t, type, extra = {}, music = false) => list.push({ t, type, music, ...extra });
+        let s = 7;
+        const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+
+        // Projector whir, in one second pieces so it starts at once when sound is turned on.
+        for (let k = 0; k < LOOP; k++) add(k, "projector", { dur: Math.min(1.04, LOOP - k) });
+        add(T.barIn, "whoosh", { dur: 0.35, p: -0.4, v: 0.5 });
+        [[NEWS[0], T.type1], [NEWS[1], T.type2]].forEach(([msg, t0]) => {
+          [...msg].forEach((ch, i) => { if (ch !== " ") add(t0 + i * TYPE_GAP, "type", { f: 1600 + rnd() * 900, p: -0.3 + rnd() * 0.2 }); });
+        });
+        add(T.type2 + NEWS[1].length * TYPE_GAP + 0.05, "bell", {});
+        add(T.tremor - 0.05, "rumble", { dur: 2.5 });
+        add(T.thud1, "thud", { v: 0.75 });
+        add(T.thud2, "thud", { v: 0.9 });
+        add(T.eyes, "glint", {});
+        add(T.roar, "roar", { dur: 1.0 });
+        add(T.roar + 0.1, "whoosh", { dur: 0.5, p: -0.6, v: 0.8 });
+        for (let i = 0; i < SPIKES.length; i++) add(T.charge + i * 0.1, "tink", { f: hz(76 + i * 2), p: 0.3 - i * 0.04 });
+        add(T.charge, "charge", { dur: T.beam - T.charge });
+        add(T.beam, "beam", { dur: T.beamEnd - T.beam + 0.1 });
+        for (let i = 0; i < 26; i++) add(T.beam + 0.15 + rnd() * (T.beamEnd - T.beam), "crackle", { f: 1500 + rnd() * 3000, p: -0.5 + rnd() * 0.6 });
+        add(T.barOut, "whoosh", { dur: 0.3, p: -0.5, v: 0.4 });
+        add(7.45, "creak", {});
+        add(T.stomp, "thud", { v: 1.25 });
+        add(T.stomp + 0.02, "crumble", { dur: 1.1 });
+        add(T.ribbon, "pop", {});
+        for (const s0 of SHOTS) for (let i = 0; i < 3; i++) add(s0 + i * 0.08, "shot", { p: -0.7 + i * 0.25 });
+        add(T.irisOut, "runout", { dur: 0.7 });
+
+        // Music: a B movie orchestra. Low strings pulse, timpani, and brass stabs.
+        const bars = [38, 39, 34, 33];
+        bars.forEach((root, bar) => {
+          const t0 = bar * 4 * BEAT, step = bar < 2 ? BEAT / 2 : BEAT / 4;
+          for (let k = 0; k < (4 * BEAT) / step - 0.01; k++) {
+            const n = k % 4 === 2 ? root + 12 : root;
+            add(t0 + k * step, "pulse", { f: hz(n), v: [0.45, 0.6, 0.72, 0.85][bar] * (k % 2 ? 0.7 : 1) }, true);
+          }
+        });
+        for (let k = 0; k < 11; k++) add(T.tremor + k * 0.055, "timp", { f: hz(33), v: 0.2 + k * 0.05, dur: 0.3 }, true);
+        [[2.1, 38, 0.9], [3.15, 38, 1], [T.roar, 33, 0.8], [T.charge, 33, 0.5], [T.stomp, 38, 1.2], [8.4, 38, 0.9], [8.925, 33, 0.6], [9.45, 38, 0.5]]
+          .forEach(([t, m, v]) => add(t, "timp", { f: hz(m), v, dur: 1.4 }, true));
+        for (let k = 0; k < 18; k++) add(6.35 + k * 0.055, "timp", { f: hz(33), v: 0.15 + k * 0.03, dur: 0.3 }, true);
+        add(2.625, "brass", { notes: [38, 50, 53], dur: 0.16, v: 0.8 }, true);
+        add(2.8875, "brass", { notes: [38, 50, 53], dur: 0.16, v: 0.85 }, true);
+        add(3.15, "brass", { notes: [38, 50, 53, 57], dur: 0.7, v: 1 }, true);
+        add(T.charge, "brass", { notes: [34, 46, 50, 53], dur: 0.9, v: 0.8, swell: true }, true);
+        add(T.beam, "brass", { notes: [33, 45, 49, 52, 57], dur: 1.35, v: 0.85, swell: true }, true);
+        add(T.stomp, "brass", { notes: [38, 50, 53, 57], dur: 0.35, v: 1 }, true);
+        add(8.2, "brass", { notes: [45, 57], dur: 0.16, v: 0.85 }, true);
+        add(8.4, "brass", { notes: [38, 50, 53, 57, 62], dur: 1.3, v: 1 }, true);
+        add(8.4, "trem", { notes: [50, 57, 62, 65], dur: 1.5 }, true);
+        return list.sort((a, b) => a.t - b.t);
+      }
+      let events = plan();
+
+      function makeGraph() {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -14;
+        comp.knee.value = 8;
+        comp.ratio.value = 4;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.2;
+        master = ctx.createGain();
+        master.gain.value = LEVEL;
+        master.connect(comp).connect(ctx.destination);
+        // A big hall reverb, like a studio sound stage.
+        const len = Math.floor(ctx.sampleRate * 2.2);
+        impulse = ctx.createBuffer(2, len, ctx.sampleRate);
+        for (let ch = 0; ch < 2; ch++) {
+          const d = impulse.getChannelData(ch);
+          for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+        }
+        noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+        const nd = noiseBuf.getChannelData(0);
+        for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+      }
+
+      function openSession() {
+        const t = ctx.currentTime;
+        session = ctx.createGain();
+        session.gain.setValueAtTime(0, t);
+        session.gain.linearRampToValueAtTime(1, t + 0.05);
+        session.connect(master);
+        fxBus = ctx.createGain();
+        fxBus.connect(session);
+        musicBus = ctx.createGain();
+        musicBus.gain.value = wantMusic ? MUSIC : 0;
+        musicBus.connect(session);
+        const verb = ctx.createConvolver();
+        verb.buffer = impulse;
+        const tone = ctx.createBiquadFilter();
+        tone.type = "lowpass";
+        tone.frequency.value = 3500;
+        const verbOut = ctx.createGain();
+        verbOut.gain.value = 0.35;
+        verbSend = ctx.createGain();
+        verbSend.connect(verb).connect(tone).connect(verbOut).connect(session);
+        send(musicBus, 0.5);
+      }
+      function closeSession() {
+        const old = session, t = ctx.currentTime;
+        session = null;
+        old.gain.cancelScheduledValues(t);
+        old.gain.setValueAtTime(old.gain.value, t);
+        old.gain.linearRampToValueAtTime(0, t + 0.15);
+        setTimeout(() => old.disconnect(), 250);
+      }
+
+      function amp(when, peak, attack, decay, out) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, when);
+        g.gain.exponentialRampToValueAtTime(peak, when + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay);
+        g.connect(out);
+        return g;
+      }
+      function osc(type, freq, when, dur) {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.setValueAtTime(freq, when);
+        o.start(when);
+        o.stop(when + dur + 0.05);
+        return o;
+      }
+      function noise(when, dur) {
+        const s = ctx.createBufferSource();
+        s.buffer = noiseBuf;
+        s.loop = true;
+        s.start(when, Math.random() * 1.5);
+        s.stop(when + dur + 0.05);
+        return s;
+      }
+      function filter(type, freq, q = 0.7) {
+        const f = ctx.createBiquadFilter();
+        f.type = type;
+        f.frequency.value = freq;
+        f.Q.value = q;
+        return f;
+      }
+      function pan(value, out) {
+        const p = ctx.createStereoPanner();
+        p.pan.value = value;
+        p.connect(out);
+        return p;
+      }
+      function send(node, amount) {
+        const g = ctx.createGain();
+        g.gain.value = amount;
+        node.connect(g).connect(verbSend);
+      }
+      function shape(when, points, out) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, when);
+        for (const [dt, v] of points) g.gain.linearRampToValueAtTime(v, when + dt);
+        g.connect(out);
+        return g;
+      }
+      function drive(amount) {
+        const ws = ctx.createWaveShaper(), n = 1024, curve = new Float32Array(n);
+        for (let i = 0; i < n; i++) curve[i] = Math.tanh(((i / (n - 1)) * 2 - 1) * amount);
+        ws.curve = curve;
+        return ws;
+      }
+
+      const voices = {
+        projector(when, e) {
+          // Film running through the gate: a soft sprocket flutter and a motor hum.
+          const d = e.dur;
+          const g = shape(when, [[0.03, 0.05], [d - 0.03, 0.05], [d, 0]], pan(0.35, fxBus));
+          const flutter = ctx.createGain();
+          flutter.gain.value = 0.5;
+          const lfo = osc("square", 24, when, d);
+          const depth = ctx.createGain();
+          depth.gain.value = 0.5;
+          lfo.connect(depth).connect(flutter.gain);
+          noise(when, d).connect(filter("bandpass", 2600, 1.2)).connect(flutter).connect(g);
+          osc("sine", 120, when, d).connect(amp(when, 0.25, 0.02, d, g));
+        },
+        type(when, e) {
+          // Wire service typewriter.
+          const g = amp(when, 0.12, 0.001, 0.03, pan(e.p, fxBus));
+          noise(when, 0.03).connect(filter("bandpass", e.f, 2)).connect(g);
+          osc("square", 180, when, 0.012).connect(amp(when, 0.05, 0.001, 0.012, g));
+        },
+        bell(when) {
+          const out = pan(-0.4, fxBus);
+          const g = amp(when, 0.14, 0.002, 1, out);
+          osc("sine", 2200, when, 1.1).connect(g);
+          osc("sine", 5300, when, 0.4).connect(amp(when, 0.04, 0.002, 0.3, out));
+          send(g, 0.3);
+        },
+        whoosh(when, e) {
+          const d = e.dur;
+          const p = ctx.createStereoPanner();
+          p.pan.setValueAtTime(e.p, when);
+          p.pan.linearRampToValueAtTime(-e.p, when + d);
+          p.connect(fxBus);
+          const g = shape(when, [[d * 0.4, 0.25 * e.v], [d, 0]], p);
+          const bp = filter("bandpass", 500, 1.2);
+          bp.frequency.setValueAtTime(400, when);
+          bp.frequency.exponentialRampToValueAtTime(2500, when + d * 0.5);
+          bp.frequency.exponentialRampToValueAtTime(700, when + d);
+          noise(when, d).connect(bp).connect(g);
+        },
+        rumble(when, e) {
+          // Deep ground rumble that builds as something huge moves underneath.
+          const d = e.dur;
+          const g = shape(when, [[d * 0.6, 0.5], [d * 0.85, 0.55], [d, 0]], fxBus);
+          noise(when, d).connect(filter("lowpass", 110, 1)).connect(g);
+          const sub = osc("sine", 36, when, d);
+          sub.frequency.linearRampToValueAtTime(44, when + d);
+          sub.connect(amp(when, 0.35, d * 0.6, d * 0.4, g));
+          const rattle = ctx.createGain();
+          rattle.gain.value = 0.2;
+          const lfo = osc("sine", 9, when, d);
+          const depth = ctx.createGain();
+          depth.gain.value = 0.15;
+          lfo.connect(depth).connect(rattle.gain);
+          noise(when, d).connect(filter("bandpass", 1800, 3)).connect(rattle).connect(shape(when, [[d * 0.5, 0.25], [d, 0]], fxBus));
+        },
+        thud(when, e) {
+          // A huge rubber foot landing on a model city.
+          const v = e.v;
+          const g = amp(when, 0.9 * v, 0.004, 0.9, fxBus);
+          const o = osc("sine", 70, when, 1);
+          o.frequency.exponentialRampToValueAtTime(28, when + 0.6);
+          o.connect(drive(2)).connect(g);
+          noise(when, 0.4).connect(filter("lowpass", 260)).connect(amp(when, 0.8 * v, 0.003, 0.35, fxBus));
+          noise(when, 0.15).connect(filter("bandpass", 2400, 1)).connect(amp(when, 0.15 * v, 0.002, 0.12, fxBus));
+          send(g, 0.5);
+        },
+        glint(when) {
+          // The eyes open: an eerie high shimmer.
+          const out = pan(-0.2, fxBus);
+          [79, 86].forEach((m, k) => {
+            const o = osc("sine", hz(m), when + k * 0.06, 0.9);
+            const vib = osc("sine", 7, when, 0.95);
+            const dp = ctx.createGain();
+            dp.gain.value = hz(m) * 0.01;
+            vib.connect(dp).connect(o.frequency);
+            const g = amp(when + k * 0.06, 0.06, 0.08, 0.8, out);
+            o.connect(g);
+            send(g, 0.8);
+          });
+        },
+        roar(when, e) {
+          // Monster roar: a growling, distorted voice with a screech on top, all synthesized.
+          const d = e.dur;
+          const out = pan(-0.1, fxBus);
+          const g = shape(when, [[0.08, 0.5], [0.5, 0.45], [0.85, 0.32], [d, 0]], out);
+          const pre = ctx.createGain();
+          pre.gain.value = 0.6;
+          const growl = ctx.createGain();
+          growl.gain.value = 0.6;
+          const lfo = osc("sine", 27, when, d);
+          const depth = ctx.createGain();
+          depth.gain.value = 0.4;
+          lfo.connect(depth).connect(growl.gain);
+          [1, 1.015, 0.5].forEach((m) => {
+            const o = osc("sawtooth", 72 * m, when, d);
+            o.frequency.linearRampToValueAtTime(96 * m, when + 0.3);
+            o.frequency.linearRampToValueAtTime(58 * m, when + d);
+            o.connect(pre);
+          });
+          noise(when, d).connect(filter("bandpass", 900, 0.8)).connect(pre);
+          const shaped = drive(3);
+          pre.connect(growl).connect(shaped);
+          const f1 = filter("bandpass", 620, 3), f2 = filter("bandpass", 1250, 4), lp = filter("lowpass", 2600);
+          shaped.connect(f1).connect(g);
+          shaped.connect(f2).connect(g);
+          shaped.connect(lp).connect(amp(when, 0.25, 0.05, d, g));
+          // Screech.
+          const sc = osc("sawtooth", 540, when + 0.05, d);
+          sc.frequency.linearRampToValueAtTime(610, when + 0.35);
+          sc.frequency.linearRampToValueAtTime(360, when + d);
+          const vib = osc("sine", 7.5, when, d);
+          const vd = ctx.createGain();
+          vd.gain.value = 18;
+          vib.connect(vd).connect(sc.frequency);
+          sc.connect(filter("bandpass", 1500, 2)).connect(shape(when + 0.05, [[0.12, 0.2], [0.6, 0.16], [d - 0.05, 0]], out));
+          send(g, 0.6);
+        },
+        tink(when, e) {
+          // Each back spike lights up with a crystal ping.
+          const g = amp(when, 0.08, 0.002, 0.35, pan(e.p, fxBus));
+          osc("sine", e.f, when, 0.4).connect(g);
+          osc("triangle", e.f * 2.01, when, 0.2).connect(amp(when, 0.03, 0.002, 0.15, g));
+          send(g, 0.6);
+        },
+        charge(when, e) {
+          // Power building up, faster and higher.
+          const d = e.dur;
+          const g = shape(when, [[d * 0.9, 0.18], [d, 0.05]], fxBus);
+          const trem = ctx.createGain();
+          trem.gain.value = 0.6;
+          const lfo = osc("sine", 6, when, d);
+          lfo.frequency.exponentialRampToValueAtTime(34, when + d);
+          const dp = ctx.createGain();
+          dp.gain.value = 0.4;
+          lfo.connect(dp).connect(trem.gain);
+          const o = osc("sine", 180, when, d);
+          o.frequency.exponentialRampToValueAtTime(1500, when + d);
+          const o2 = osc("triangle", 360, when, d);
+          o2.frequency.exponentialRampToValueAtTime(3000, when + d);
+          o.connect(trem);
+          o2.connect(amp(when, 0.3, d * 0.9, 0.1, trem));
+          trem.connect(g);
+          send(g, 0.4);
+        },
+        beam(when, e) {
+          // The beam: a thick electric buzz with a hiss on top.
+          const d = e.dur;
+          const g = shape(when, [[0.03, 0.4], [d - 0.1, 0.34], [d, 0]], fxBus);
+          const buzz = ctx.createGain();
+          buzz.gain.value = 0.7;
+          const lfo = osc("square", 60, when, d);
+          const dp = ctx.createGain();
+          dp.gain.value = 0.3;
+          lfo.connect(dp).connect(buzz.gain);
+          const bp = filter("bandpass", 700, 1.5);
+          bp.frequency.setValueAtTime(600, when);
+          bp.frequency.linearRampToValueAtTime(1400, when + d);
+          osc("sawtooth", 110, when, d).connect(buzz);
+          osc("square", 55.5, when, d).connect(buzz);
+          buzz.connect(drive(2.5)).connect(bp).connect(g);
+          noise(when, d).connect(filter("highpass", 3500)).connect(amp(when, 0.25, 0.02, d, g));
+          const zap = osc("sawtooth", 1800, when, 0.25);
+          zap.frequency.exponentialRampToValueAtTime(200, when + 0.25);
+          zap.connect(filter("lowpass", 3000)).connect(amp(when, 0.25, 0.002, 0.24, fxBus));
+          send(g, 0.35);
+        },
+        crackle(when, e) {
+          noise(when, 0.02).connect(filter("bandpass", e.f, 2)).connect(amp(when, 0.18, 0.001, 0.015, pan(e.p, fxBus)));
+        },
+        shot(when, e) {
+          // A toy tank's tiny cannon.
+          const out = pan(e.p, fxBus);
+          noise(when, 0.12).connect(filter("bandpass", 900, 1)).connect(amp(when, 0.22, 0.002, 0.1, out));
+          const o = osc("sine", 160, when, 0.12);
+          o.frequency.exponentialRampToValueAtTime(60, when + 0.1);
+          o.connect(amp(when, 0.25, 0.002, 0.1, out));
+        },
+        creak(when) {
+          const o = osc("sawtooth", 90, when, 0.25);
+          o.frequency.linearRampToValueAtTime(130, when + 0.25);
+          o.connect(filter("bandpass", 700, 6)).connect(amp(when, 0.12, 0.05, 0.2, fxBus));
+        },
+        crumble(when, e) {
+          // A model building collapsing: lots of little chunks, then settling dust.
+          const d = e.dur;
+          let s = 19;
+          const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+          for (let k = 0; k < 34; k++) {
+            const t = when + Math.pow(r(), 1.6) * d;
+            const g = amp(t, 0.12 + r() * 0.12, 0.001, 0.04 + r() * 0.08, pan(0.1 + (r() - 0.5) * 0.8, fxBus));
+            noise(t, 0.15).connect(filter("bandpass", 700 + r() * 2600, 2)).connect(g);
+          }
+          noise(when, d).connect(filter("lowpass", 500)).connect(shape(when, [[0.05, 0.35], [d, 0]], fxBus));
+        },
+        pop(when) {
+          const g = amp(when, 0.2, 0.002, 0.2, fxBus);
+          const o = osc("sine", 500, when, 0.2);
+          o.frequency.exponentialRampToValueAtTime(1100, when + 0.08);
+          o.connect(g);
+          noise(when, 0.4).connect(filter("highpass", 6000)).connect(amp(when + 0.05, 0.06, 0.02, 0.35, fxBus));
+        },
+        runout(when, e) {
+          // The reel running out: the flutter speeds up and fades.
+          const d = e.dur;
+          const g = shape(when, [[0.1, 0.12], [d, 0]], fxBus);
+          const fl = ctx.createGain();
+          fl.gain.value = 0.5;
+          const lfo = osc("square", 18, when, d);
+          lfo.frequency.linearRampToValueAtTime(8, when + d);
+          const dp = ctx.createGain();
+          dp.gain.value = 0.5;
+          lfo.connect(dp).connect(fl.gain);
+          noise(when, d).connect(filter("bandpass", 1500, 1)).connect(fl).connect(g);
+        },
+        pulse(when, e) {
+          // Low strings, played short and hard.
+          const g = amp(when, 0.22 * e.v, 0.008, 0.16, musicBus);
+          const lp = filter("lowpass", 1200, 0.8);
+          lp.connect(g);
+          osc("sawtooth", e.f, when, 0.2).connect(lp);
+          osc("sawtooth", e.f * 1.006, when, 0.2).connect(lp);
+        },
+        timp(when, e) {
+          const g = amp(when, 0.5 * e.v, 0.004, e.dur, musicBus);
+          const o = osc("sine", e.f * 1.04, when, e.dur);
+          o.frequency.exponentialRampToValueAtTime(e.f, when + 0.12);
+          o.connect(g);
+          osc("triangle", e.f * 1.5, when, 0.4).connect(amp(when, 0.12 * e.v, 0.004, 0.3, g));
+          noise(when, 0.06).connect(filter("lowpass", 900)).connect(amp(when, 0.3 * e.v, 0.002, 0.05, g));
+        },
+        brass(when, e) {
+          // Brass section: bright saw tones whose filter opens on each attack.
+          const d = e.dur, att = e.swell ? d * 0.75 : 0.03;
+          const out = ctx.createGain();
+          out.gain.setValueAtTime(0.0001, when);
+          out.gain.exponentialRampToValueAtTime(0.16 * e.v, when + att);
+          out.gain.setValueAtTime(0.16 * e.v, when + d);
+          out.gain.exponentialRampToValueAtTime(0.0001, when + d + 0.25);
+          out.connect(musicBus);
+          const lp = filter("lowpass", 400, 1.5);
+          lp.frequency.setValueAtTime(400, when);
+          lp.frequency.linearRampToValueAtTime(2600, when + Math.max(0.05, att));
+          lp.frequency.linearRampToValueAtTime(1500, when + d + 0.2);
+          lp.connect(out);
+          for (const m of e.notes) {
+            for (const det of [1, 1.004]) {
+              const o = osc("sawtooth", hz(m) * det, when, d + 0.3);
+              o.connect(lp);
+            }
+          }
+        },
+        trem(when, e) {
+          // Tremolo strings under the final chord.
+          const d = e.dur;
+          const g = shape(when, [[0.1, 0.1], [d * 0.7, 0.08], [d, 0]], musicBus);
+          const tr = ctx.createGain();
+          tr.gain.value = 0.6;
+          const lfo = osc("sine", 13, when, d);
+          const dp = ctx.createGain();
+          dp.gain.value = 0.4;
+          lfo.connect(dp).connect(tr.gain);
+          const lp = filter("lowpass", 2400);
+          for (const m of e.notes) osc("sawtooth", hz(m), when, d).connect(lp);
+          lp.connect(tr).connect(g);
+        },
+      };
+
+      // Look-ahead scheduler: every 25 ms, schedule sounds due in the next 100 ms.
+      function tick() {
+        const now = playing && ctx.state === "running" && !document.hidden && !reduce.matches ? clock() : null;
+        if (now === null) { anchor = null; return; }
+        const loopLen = loopLength();
+        const at = ctx.currentTime;
+        if (anchor) {
+          const err = now - (anchor.tl + (at - anchor.audio));
+          if (Math.abs(err) > 0.08) anchor = null;
+          else anchor.tl += err * 0.05;
+        }
+        if (!anchor) {
+          anchor = { tl: now, audio: at };
+          doneUpTo = now;
+        }
+        const cur = anchor.tl + (at - anchor.audio);
+        const from = Math.max(doneUpTo, cur - 0.05);
+        const to = cur + 0.1;
+        if (to <= from) return;
+        for (let k = Math.floor(from / loopLen); k <= Math.floor(to / loopLen); k++) {
+          for (const e of events) {
+            const t = k * loopLen + e.t;
+            if (t < from || t >= to) continue;
+            if (e.music && !wantMusic) continue;
+            voices[e.type](Math.max(at, anchor.audio + (t - anchor.tl)), e);
+          }
+        }
+        doneUpTo = to;
+      }
+
+      function update() {
+        const on = wantOn && !reduce.matches;
+        if (on) {
+          if (!ctx) makeGraph();
+          clearTimeout(sleepTimer);
+          if (ctx.state !== "running") ctx.resume().catch(() => {});
+          if (!playing) {
+            playing = true;
+            anchor = null;
+            openSession();
+            clearInterval(timer);
+            timer = setInterval(tick, 25);
+          }
+          const t = ctx.currentTime;
+          musicBus.gain.cancelScheduledValues(t);
+          musicBus.gain.setTargetAtTime(wantMusic ? MUSIC : 0, t, 0.03);
+        } else if (playing) {
+          playing = false;
+          clearInterval(timer);
+          closeSession();
+          sleepTimer = setTimeout(() => ctx.suspend(), 200);
+        }
+      }
+      reduce.addEventListener("change", update);
+
+      const unlock = () => { if (playing && ctx && ctx.state !== "running") ctx.resume().catch(() => {}); };
+      addEventListener("pointerdown", unlock);
+      addEventListener("keydown", unlock);
+
+      addEventListener("message", (event) => {
+        if (event.origin !== location.origin) return;
+        const data = event.data;
+        if (!data || data.type !== "motionprompt-sound") return;
+        if (typeof data.on === "boolean") wantOn = data.on;
+        if (typeof data.music === "boolean") wantMusic = data.music;
+        update();
+      });
+
+      const fromUrl = params.get("sound");
+      if (fromUrl === "1" || fromUrl === "effects") {
+        wantOn = true;
+        wantMusic = fromUrl === "1";
+        update();
+      }
+      return { replan() { events = plan(); } };
+    })();
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(build, 150);
+    });
+
+    // Wait briefly for the fonts so text is measured in the right face.
+    Promise.race([
+      Promise.all([document.fonts.load("400 1em Anton"), document.fonts.load('400 1em "Special Elite"')]),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(build);
+  </script>
+</body>
+</html>

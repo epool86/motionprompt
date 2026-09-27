@@ -1,0 +1,25 @@
+Make my video in this style: Infographic.
+
+Look and motion
+- A clean, modern infographic poster, like the helpful explainer posts people save and share. The poster is bigger than the screen, and the camera glides across it one section at a time.
+- Turn my message into short sections: a bold title card, a few numbered steps, one "did you know" fact, and a before and after comparison. Leave out any section that does not fit my topic.
+- Start on the title card: a solid colour block with a small label pill, my headline and a simple flat illustration of my topic.
+- Give each step a number badge, a flat rounded icon on a soft tile and a short label with one line of detail. Join the steps with dotted arrows that draw themselves dot by dot.
+- Show a fact as a big number with small person icons, for example 7 of 10 people light up in colour one by one.
+- Compare before and after in two cards: a red cross for the old way and a tick for the new way, each with a short line and a big value.
+- As the camera reaches each section, its parts pop in with a soft springy bounce. At the end, pull back to show the whole poster, then slide in my logo and a "Save this post" button.
+- Flat shapes only: rounded corners, thin dotted guide lines, plenty of white space, no 3D and no photos. Keep every line of text short. Only use facts I give you and never invent numbers.
+
+Type and colour
+- A bold, friendly rounded sans serif font (like Plus Jakarta Sans), extra bold for titles and numbers, regular for small notes.
+- Use my brand colours if I give them. Otherwise use a white poster #ffffff on a soft blue grey page #e7edf7, navy text #14213d, blue #2563eb as the main colour, amber #ffb627 for badges and highlights, and red #ef5350 only for the cross.
+
+Sound
+- Effects: a soft bubbly pop for each tile, icon and badge as it lands (a little higher for each step), a tiny felt pen dab for every dot of the dotted arrows, a bright two note tick for each check mark, a warm bell when the big number lands, a rising marimba note as each person icon fills in, a friendly low "nope" for the cross, a light airy whoosh for each camera glide, and a long soft swell as the camera pulls back to show the whole poster.
+- Music: a light, happy corporate bed, about 120 bpm in a bright major key: soft marimba arpeggios, a warm plucked bass, a gentle kick, soft claps and a shaker. Keep it well under the effects and let it loop cleanly with the video.
+- Make every sound with code, so there is no copyrighted audio, and mix it into the MP4.
+
+Output
+- Size: {size}
+- Length: about {duration}
+- Build it as an HTML animation (for example with SVG and GSAP, with a camera that moves over one large poster) and render it to MP4 frame by frame so the motion is smooth. Give me the final MP4.

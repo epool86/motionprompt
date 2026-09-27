@@ -1,5 +1,40 @@
 [
   {
+    "slug": "kaiju-attack",
+    "name": "Kaiju attack",
+    "summary": "A retro monster movie: a giant rubber suit monster rises over a model city and burns your headline into the sky.",
+    "library": "Canvas",
+    "tags": ["promo", "retro", "text"]
+  },
+  {
+    "slug": "infographic",
+    "name": "Infographic",
+    "summary": "A flat explainer poster: the camera glides from numbered steps to a people stat and a before and after.",
+    "library": "GSAP",
+    "tags": ["explainer", "data", "social"]
+  },
+  {
+    "slug": "radial-infographic",
+    "name": "Radial infographic",
+    "summary": "A rainbow cycle wheel snaps together blade by blade as each numbered point lights up around your logo.",
+    "library": "GSAP",
+    "tags": ["explainer", "brand", "data"]
+  },
+  {
+    "slug": "slide-deck",
+    "name": "Slide deck",
+    "summary": "Presentation slides spread on a tilted table, with the camera gliding from slide to slide as each one comes alive.",
+    "library": "GSAP",
+    "tags": ["brand", "explainer", "product"]
+  },
+  {
+    "slug": "flat-illustration",
+    "name": "Flat illustration",
+    "summary": "A flat vector team scene on bright blue: a presenter at a flip chart, charts that draw themselves and a bold title.",
+    "library": "GSAP",
+    "tags": ["explainer", "brand", "promo"]
+  },
+  {
     "slug": "isometric-diorama",
     "name": "Isometric diorama",
     "summary": "A cute 3D diorama where objects pop onto a round stage as the camera orbits.",

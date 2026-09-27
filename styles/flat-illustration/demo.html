@@ -1,0 +1,966 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flat illustration demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/oswald@5.3.0/300.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/oswald@5.3.0/700.css">
+  <style>
+    /* Colours can be set from the URL: ?text=...&bg=1565d8&ink=ffffff&accent=ff5c93&accent2=0d2152 */
+    :root {
+      --bg: #1565d8;
+      --ink: #ffffff;
+      --accent: #ff5c93;
+      --accent2: #0d2152;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    svg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .title { font-family: "Oswald", "Arial Narrow", sans-serif; font-weight: 700; fill: var(--ink); }
+    .sub { font-family: "Oswald", "Arial Narrow", sans-serif; font-weight: 300; fill: var(--ink); }
+  </style>
+</head>
+<body>
+  <svg id="stage" role="img" xmlns="http://www.w3.org/2000/svg"></svg>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const root = document.documentElement;
+    const hex = { bg: "1565d8", ink: "ffffff", accent: "ff5c93", accent2: "0d2152" };
+    for (const key of Object.keys(hex)) {
+      const value = params.get(key);
+      if (/^[0-9a-f]{6}$/i.test(value ?? "")) hex[key] = value.toLowerCase();
+      root.style.setProperty(`--${key}`, `#${hex[key]}`);
+    }
+    const text = (params.get("text") || "5 tips for better meetings").trim().slice(0, 60).toUpperCase();
+    const subtitle = "SIMPLE IDEAS YOUR WHOLE TEAM WILL LOVE";
+
+    // Mix two colours (hex without #), k = 0 gives a, k = 1 gives b.
+    function mix(a, b, k) {
+      const ca = [0, 2, 4].map((i) => parseInt(a.slice(i, i + 2), 16));
+      const cb = [0, 2, 4].map((i) => parseInt(b.slice(i, i + 2), 16));
+      return "#" + ca.map((v, i) => Math.round(v + (cb[i] - v) * k).toString(16).padStart(2, "0")).join("");
+    }
+    // The flat palette: a few blues from the background, plus navy, white, skin and hair.
+    const C = {
+      bg: `#${hex.bg}`,
+      ink: `#${hex.ink}`,
+      accent: `#${hex.accent}`,
+      navy: `#${hex.accent2}`,
+      board: mix(hex.bg, "ffffff", 0.62),
+      boardDark: mix(hex.bg, "ffffff", 0.4),
+      deep: mix(hex.bg, "000000", 0.3),
+      shadow: mix(hex.bg, "000000", 0.24),
+      shirt: "#ffffff",
+      shirtShade: "#dfe7f4",
+      trousers: "#3b4254",
+      hair: "#1c1d2b",
+      bulb: "#ffc83d",
+      face: "#2a2230",
+    };
+    const SKIN = [
+      { base: "#f6c9a7", shade: "#e7b08c" },
+      { base: "#c98a63", shade: "#b27550" },
+      { base: "#8a5537", shade: "#744429" },
+    ];
+
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.getElementById("stage");
+    svg.setAttribute("aria-label", `A flat illustration of a team meeting: ${text}`);
+
+    function el(name, attrs, parent) {
+      const node = document.createElementNS(NS, name);
+      for (const k in attrs) node.setAttribute(k, attrs[k]);
+      if (parent) parent.append(node);
+      return node;
+    }
+    const group = (parent, attrs = {}) => el("g", attrs, parent);
+    const shape = (parent, d, fill, extra = {}) => el("path", { d, fill, ...extra }, parent);
+    const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+
+    // An arm or leg in two parts that bend at the elbow. Rounded ends hide the joint.
+    function limb(parent, x, y, upper, fore, width, sleeve, skin, hand = true) {
+      const sh = group(parent);
+      el("line", { x1: 0, y1: 0, x2: 0, y2: upper, stroke: sleeve, "stroke-width": width, "stroke-linecap": "round" }, sh);
+      const low = group(sh);
+      if (hand) {
+        el("ellipse", { cx: 0, cy: fore + width * 0.28, rx: width * 0.36, ry: width * 0.46, fill: skin }, low);
+      }
+      el("line", { x1: 0, y1: 0, x2: 0, y2: fore - width * 0.2, stroke: sleeve, "stroke-width": width * 0.92, "stroke-linecap": "round" }, low);
+      return { sh, low, x, y, upper, fore, width };
+    }
+    function pose(L, a, b) {
+      L.sh.setAttribute("transform", `translate(${L.x} ${L.y}) rotate(${a.toFixed(2)})`);
+      L.low.setAttribute("transform", `translate(0 ${L.upper}) rotate(${b.toFixed(2)})`);
+    }
+
+    // A four point sparkle.
+    const sparkle = (r) => `M0 ${-r}Q0 0 ${r} 0Q0 0 0 ${r}Q0 0 ${-r} 0Q0 0 0 ${-r}Z`;
+
+    // The presenter: standing, facing left toward the board. Feet at 0, about 440 tall.
+    function presenter(parent) {
+      const skin = SKIN[0];
+      const root = group(parent);
+      const hairBack = group(root);
+      const back = limb(root, 30, -346, 96, 86, 24, C.shirtShade, skin.shade);
+      // Trousers and shoes
+      shape(root, "M-36 -228 L36 -228 L34 -120 L30 -10 L9 -10 L2 -150 L-2 -150 L-9 -10 L-30 -10 L-34 -120 Z", C.trousers);
+      shape(root, "M-31 -12 L-8 -12 Q-6 0 -10 2 L-40 2 Q-44 -6 -31 -12 Z", C.navy);
+      shape(root, "M8 -12 L31 -12 Q37 -6 32 2 L6 2 Q4 -6 8 -12 Z", C.navy);
+      // Shirt, tucked in at the waist
+      shape(root, "M-40 -356 C-47 -350 -48 -336 -46 -318 L-37 -226 L37 -226 L46 -318 C48 -336 47 -350 40 -356 C20 -366 -20 -366 -40 -356 Z", C.shirt);
+      shape(root, "M20 -360 C34 -356 44 -350 46 -318 L37 -226 L18 -226 C26 -270 28 -320 20 -360 Z", C.shirtShade);
+      shape(root, "M-37 -234 L37 -234 L37 -224 L-37 -224 Z", C.navy);
+      const head = group(root);
+      el("rect", { x: -8, y: -30, width: 16, height: 34, rx: 6, fill: skin.shade }, head);
+      shape(head, "M-10 -6 L0 14 L10 -6 Z", skin.base);
+      shape(head, "M-14 -8 L0 14 L-3 -6 Z M14 -8 L0 14 L3 -6 Z", C.shirtShade);
+      el("ellipse", { cx: -3, cy: -52, rx: 23, ry: 28, fill: skin.base }, head);
+      el("ellipse", { cx: 17, cy: -50, rx: 5, ry: 7, fill: skin.shade }, head);
+      const eyes = [
+        el("ellipse", { cx: -16, cy: -54, rx: 2.4, ry: 2.6, fill: C.face }, head),
+        el("ellipse", { cx: -3, cy: -54, rx: 2.4, ry: 2.6, fill: C.face }, head),
+      ];
+      shape(head, "M-15 -40 Q-10 -35 -5 -40", "none", { stroke: C.face, "stroke-width": 2.2, "stroke-linecap": "round" });
+      // Long hair: the back part falls over the shoulder, the front part is a side swept fringe.
+      shape(hairBack, "M-18 -76 C4 -96 40 -86 32 -46 C30 -12 36 30 46 56 C28 64 10 58 2 48 C14 20 16 -14 10 -40 Z", C.hair);
+      shape(head, "M-27 -48 C-32 -86 14 -96 27 -62 C31 -52 30 -40 26 -30 C22 -46 16 -58 4 -64 C-6 -58 -16 -60 -27 -48 Z", C.hair);
+      const front = limb(root, -34, -346, 96, 86, 24, C.shirt, skin.base);
+      // The marker sits in the pointing hand.
+      const marker = group(front.low);
+      el("rect", { x: -4, y: 90, width: 8, height: 34, rx: 3, fill: C.accent }, marker);
+      el("rect", { x: -4, y: 116, width: 8, height: 9, rx: 2, fill: C.navy }, marker);
+      return { root, head, hairBack, back, front, eyes };
+    }
+
+    // A person on an office chair, side view, facing right. Mirror the group to face left.
+    function sitter(parent, o) {
+      const skin = SKIN[o.skin];
+      const root = group(parent);
+      // Chair
+      el("ellipse", { cx: -6, cy: -6, rx: 58, ry: 9, fill: o.chair }, root);
+      el("rect", { x: -12, y: -130, width: 12, height: 124, rx: 5, fill: o.chair }, root);
+      el("rect", { x: -88, y: -330, width: 36, height: 200, rx: 18, fill: o.chair, transform: "rotate(-5 -70 -130)" }, root);
+      const back = limb(root, -10, -266, 74, 70, 26, o.shirtShade, skin.shade);
+      // Legs: thigh forward on the seat, shin down to the floor
+      el("rect", { x: 40, y: -168, width: 36, height: 158, rx: 17, fill: o.trousers }, root);
+      el("rect", { x: -46, y: -178, width: 118, height: 38, rx: 19, fill: o.trousers }, root);
+      shape(root, "M40 -20 L88 -20 Q100 -18 98 -2 L40 -2 Z", C.hair);
+      el("rect", { x: -70, y: -146, width: 132, height: 26, rx: 13, fill: o.chair }, root);
+      // Body
+      shape(root, "M-52 -160 L14 -160 C20 -206 20 -250 10 -280 C-2 -300 -40 -302 -50 -280 C-58 -250 -58 -204 -52 -160 Z", o.shirt);
+      shape(root, "M-2 -296 C10 -290 18 -280 18 -250 C18 -210 14 -180 14 -160 L-6 -160 C4 -200 6 -250 -2 -296 Z", o.shirtShade);
+      const head = group(root);
+      el("rect", { x: -8, y: -30, width: 16, height: 34, rx: 6, fill: skin.shade }, head);
+      el("circle", { cx: 2, cy: -54, r: 26, fill: skin.base }, head);
+      el("ellipse", { cx: -12, cy: -52, rx: 5, ry: 7, fill: skin.shade }, head);
+      const eyes = [el("ellipse", { cx: 17, cy: -57, rx: 2.4, ry: 2.6, fill: C.face }, head)];
+      shape(head, "M12 -42 Q17 -38 22 -42", "none", { stroke: C.face, "stroke-width": 2.2, "stroke-linecap": "round" });
+      if (o.hair === "bun") {
+        el("circle", { cx: -18, cy: -86, r: 15, fill: C.hair }, head);
+        shape(head, "M-24 -48 C-30 -86 16 -94 28 -64 C18 -72 4 -70 -2 -62 C-8 -52 -8 -38 -16 -30 C-22 -34 -24 -40 -24 -48 Z", C.hair);
+      } else {
+        shape(head, "M-26 -46 C-34 -92 26 -98 30 -62 C20 -70 8 -72 2 -66 C-4 -54 -8 -40 -18 -30 C-24 -34 -26 -40 -26 -46 Z", C.hair);
+        [[-20, -74, 11], [-6, -84, 12], [10, -84, 11], [22, -72, 9]].forEach(([cx, cy, r]) => el("circle", { cx, cy, r, fill: C.hair }, head));
+      }
+      if (o.glasses) {
+        el("rect", { x: 11, y: -63, width: 17, height: 12, rx: 4, fill: "none", stroke: C.face, "stroke-width": 2.6 }, head);
+        el("line", { x1: 11, y1: -58, x2: -6, y2: -56, stroke: C.face, "stroke-width": 2.4 }, head);
+      }
+      const front = limb(root, -18, -262, 74, 70, 26, o.shirt, skin.base);
+      return { root, head, back, front, eyes };
+    }
+
+    // The flip chart on an easel. Feet at 0.
+    function easel(parent) {
+      const root = group(parent);
+      el("line", { x1: 0, y1: -430, x2: 0, y2: -4, stroke: C.deep, "stroke-width": 9, "stroke-linecap": "round" }, root);
+      el("line", { x1: -8, y1: -436, x2: -118, y2: -2, stroke: C.navy, "stroke-width": 11, "stroke-linecap": "round" }, root);
+      el("line", { x1: 8, y1: -436, x2: 118, y2: -2, stroke: C.navy, "stroke-width": 11, "stroke-linecap": "round" }, root);
+      el("rect", { x: -6, y: -474, width: 12, height: 50, rx: 5, fill: C.navy }, root);
+      const board = group(root);
+      el("rect", { x: -164, y: -412, width: 328, height: 256, rx: 6, fill: C.boardDark }, board);
+
+      // Page 2 (under page 1): a checklist.
+      const page2 = group(board);
+      el("rect", { x: -160, y: -408, width: 320, height: 248, rx: 4, fill: C.board }, page2);
+      el("rect", { x: -120, y: -376, width: 150, height: 16, rx: 8, fill: C.navy }, page2);
+      const ticks = [], rows = [];
+      [-318, -266, -214].forEach((y, i) => {
+        const row = group(page2);
+        el("rect", { x: -122, y: y - 16, width: 32, height: 32, rx: 8, fill: "#ffffff" }, row);
+        el("rect", { x: -74, y: y - 7, width: [190, 150, 172][i], height: 14, rx: 7, fill: C.bg }, row);
+        ticks.push(shape(row, `M-116 ${y} L-106 ${y + 10} L-86 ${y - 14}`, "none", { stroke: C.accent, "stroke-width": 7, "stroke-linecap": "round", "stroke-linejoin": "round" }));
+        rows.push(row);
+      });
+
+      // Page 1: a pie chart with a slice that pops out, text lines and a wave chart.
+      const page1 = group(board);
+      el("rect", { x: -160, y: -408, width: 320, height: 248, rx: 4, fill: C.board }, page1);
+      const pieClip = el("clipPath", { id: "fi-page1" }, page1);
+      el("rect", { x: -160, y: -408, width: 320, height: 248, rx: 4 }, pieClip);
+      const inner = group(page1, { "clip-path": "url(#fi-page1)" });
+      const R = 62, cx = -62, cy = -310, gapFrom = -70, gapTo = -12;
+      const circ = Math.PI * R;
+      const pie = el("circle", {
+        cx, cy, r: R / 2, fill: "none", stroke: C.bg, "stroke-width": R,
+        transform: `rotate(${gapTo} ${cx} ${cy})`, "stroke-dasharray": `0 ${circ + 2}`,
+      }, inner);
+      const a0 = (gapFrom * Math.PI) / 180, a1 = (gapTo * Math.PI) / 180;
+      const slice = shape(inner, `M${cx} ${cy} L${cx + R * Math.cos(a0)} ${cy + R * Math.sin(a0)} A${R} ${R} 0 0 1 ${cx + R * Math.cos(a1)} ${cy + R * Math.sin(a1)} Z`, C.navy);
+      const mid = (((gapFrom + gapTo) / 2) * Math.PI) / 180;
+      const lines = [[-346, 96], [-320, 72], [-294, 86]].map(([y, w]) => el("rect", { x: 32, y, width: w, height: 12, rx: 6, fill: "#ffffff" }, inner));
+      const wave = shape(inner, "M-164 -156 L-164 -196 C-124 -238 -92 -176 -52 -206 C-12 -236 18 -196 52 -222 C88 -250 118 -206 164 -234 L164 -156 Z", C.bg);
+      const wave2 = shape(inner, "M-164 -156 L-164 -178 C-120 -206 -84 -164 -40 -184 C4 -204 34 -172 74 -190 C112 -208 136 -184 164 -196 L164 -156 Z", C.deep, { opacity: 0.55 });
+
+      el("rect", { x: -172, y: -424, width: 344, height: 20, rx: 8, fill: C.navy }, root);
+      el("rect", { x: -150, y: -160, width: 300, height: 12, rx: 6, fill: C.navy }, root);
+      return { root, page1, page2, pie, circ, slice, sliceDir: [Math.cos(mid), Math.sin(mid)], lines, wave, wave2, ticks, rows, top: -408 };
+    }
+
+    // A speech bubble with a lightbulb: the idea moment.
+    function bubble(parent) {
+      const root = group(parent);
+      shape(root, "M-58 -52 Q-58 -70 -40 -70 L40 -70 Q58 -70 58 -52 L58 12 Q58 30 40 30 L-8 30 L-30 52 L-26 30 L-40 30 Q-58 30 -58 12 Z", "#ffffff");
+      const glow = el("circle", { cx: 0, cy: -26, r: 30, fill: C.bulb, opacity: 0.25 }, root);
+      el("circle", { cx: 0, cy: -28, r: 17, fill: C.bulb }, root);
+      el("rect", { x: -8, y: -14, width: 16, height: 14, rx: 3, fill: C.trousers }, root);
+      const rays = group(root);
+      [-150, -120, -90, -60, -30].forEach((deg) => {
+        const r = (deg * Math.PI) / 180;
+        el("line", { x1: Math.cos(r) * 26, y1: -28 + Math.sin(r) * 26, x2: Math.cos(r) * 36, y2: -28 + Math.sin(r) * 36, stroke: C.bulb, "stroke-width": 4, "stroke-linecap": "round" }, rays);
+      });
+      return { root, glow, rays };
+    }
+
+    // Layouts, picked by the shape of the window. Units are scene units, scaled to fit.
+    // Each actor has a place on the floor: x, y (floor offset), scale and facing.
+    const layouts = {
+      wide: {
+        w: 1600, h: 900, title: { top: 64, size: 104, max: 1360, lines: 2 },
+        scene: { x: 250, y: 830, s: 1.02 },
+        easel: [470, 0, 1], pres: [720, 0, 1], sitA: [165, 34, 1.08], sitB: [945, 46, 1.16],
+      },
+      square: {
+        w: 1000, h: 1000, title: { top: 60, size: 92, max: 900, lines: 3 },
+        scene: { x: -22, y: 948, s: 0.97 },
+        easel: [470, 0, 1], pres: [720, 0, 1], sitA: [165, 34, 1.08], sitB: [945, 46, 1.16],
+      },
+      tall: {
+        w: 900, h: 1600, title: { top: 170, size: 118, max: 800, lines: 4 },
+        scene: { x: 0, y: 1300, s: 1 },
+        easel: [370, 0, 1], pres: [625, 0, 1], sitA: [150, 150, 1.26], sitB: [775, 170, 1.3],
+      },
+    };
+
+    // Wrap the title into lines that fit, shrinking the size if it needs too many lines.
+    function wrapTitle(parent, T) {
+      const words = text.split(/\s+/);
+      const probe = el("text", { class: "title" }, parent);
+      let size = T.size;
+      for (let tries = 0; tries < 12; tries++) {
+        probe.setAttribute("font-size", size);
+        const measure = (s) => { probe.textContent = s; return probe.getComputedTextLength(); };
+        const space = size * 0.24;
+        const widths = words.map(measure);
+        const wrap = (limit) => {
+          const lines = [];
+          let line = [], w = 0;
+          words.forEach((word, i) => {
+            const add = (line.length ? space : 0) + widths[i];
+            if (line.length && w + add > limit) { lines.push({ words: line, w }); line = []; w = 0; }
+            w += (line.length ? space : 0) + widths[i];
+            line.push({ word, w: widths[i] });
+          });
+          if (line.length) lines.push({ words: line, w });
+          return lines;
+        };
+        let lines = wrap(T.max);
+        const widest = Math.max(...lines.map((l) => l.w));
+        if (lines.length <= T.lines && widest <= T.max) {
+          // Balance the lines: narrow the limit while the line count stays the same.
+          for (let limit = widest * 0.97; limit > 0; limit *= 0.97) {
+            const tighter = wrap(limit);
+            if (tighter.length > lines.length || Math.max(...tighter.map((l) => l.w)) > limit) break;
+            lines = tighter;
+          }
+          probe.remove();
+          return { size, space, lines };
+        }
+        size *= 0.9;
+      }
+      probe.remove();
+      return wrapTitle(parent, { ...T, size: T.size * 0.5, lines: 99 });
+    }
+
+    const LOOP = 11; // seconds: 24 beats at about 131 bpm
+    const B = LOOP / 24;
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    let tl = null, R = null;
+    const S = {};
+
+    function build() {
+      const keep = tl ? tl.time() : 0;
+      if (tl) tl.kill();
+      svg.replaceChildren();
+
+      const W = innerWidth, H = innerHeight, aspect = W / H;
+      const L = aspect >= 1.3 ? layouts.wide : aspect <= 0.85 ? layouts.tall : layouts.square;
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+
+      // Decorative bars in the corners, in window units.
+      const u = Math.min(W, H) / 100;
+      const decor = group(svg);
+      const bars = [
+        { x: 0, y: H - 11 * u, w: 24 * u, side: -1, d: 0 },
+        { x: 0, y: H - 7 * u, w: 15 * u, side: -1, d: 0.08 },
+        { x: W, y: H - 13 * u, w: 17 * u, side: 1, d: 0.04 },
+        { x: W, y: H - 9 * u, w: 29 * u, side: 1, d: 0.12 },
+        { x: W, y: 9 * u, w: 11 * u, side: 1, d: 0.16 },
+      ].map((b) => ({ ...b, node: el("rect", { y: b.y, width: b.w + 3 * u, height: 2.8 * u, rx: 1.4 * u, fill: C.deep }, decor) }));
+
+      const s = Math.min(W / L.w, H / L.h);
+      const content = group(svg, { transform: `translate(${(W - L.w * s) / 2} ${(H - L.h * s) / 2}) scale(${s})` });
+
+      // Title and subtitle. Each word rises out of its own line clip.
+      const titleG = group(content);
+      const T = wrapTitle(titleG, L.title);
+      const lh = T.size * 1.08;
+      const cx = L.w / 2;
+      const words = [];
+      T.lines.forEach((line, li) => {
+        const base = L.title.top + T.size * 0.92 + li * lh;
+        const id = `fi-line-${li}`;
+        const clip = el("clipPath", { id }, titleG);
+        el("rect", { x: 0, y: base - T.size * 1.02, width: L.w, height: T.size * 1.22 }, clip);
+        const lineG = group(titleG, { "clip-path": `url(#${id})` });
+        let x = cx - line.w / 2;
+        line.words.forEach((w) => {
+          const node = el("text", { class: "title", x, y: base, "font-size": T.size }, lineG);
+          node.textContent = w.word;
+          words.push({ node, h: T.size * 1.4 });
+          x += w.w + T.space;
+        });
+      });
+      const lastBase = L.title.top + T.size * 0.92 + (T.lines.length - 1) * lh;
+      let subSize = T.size * 0.36;
+      const sub = el("text", { class: "sub", x: cx, y: lastBase + subSize * 2.1, "font-size": subSize, "text-anchor": "middle", "letter-spacing": subSize * 0.08 }, titleG);
+      sub.textContent = subtitle;
+      const sw = sub.getComputedTextLength();
+      if (sw > L.title.max) {
+        subSize *= L.title.max / sw;
+        sub.setAttribute("font-size", subSize);
+        sub.setAttribute("letter-spacing", subSize * 0.08);
+      }
+
+      // The scene: easel, presenter and two people on chairs, each on the same floor.
+      // It reaches about 500 units above the floor; shrink it (around its centre) if a
+      // long title leaves less room than that.
+      const room = L.scene.y - (lastBase + subSize * 2.1 + subSize * 1.6);
+      const fit = Math.min(L.scene.s, room / 500);
+      const mid = L === layouts.tall ? 470 : 550;
+      L.place = { x: L.scene.x + mid * (L.scene.s - fit), y: L.scene.y, s: fit };
+      const scene = group(content);
+      const sceneIn = group(scene);
+      const shadows = group(sceneIn);
+      const place = (spot) => ({ x: spot[0], y: spot[1], s: spot[2] });
+      const spots = { easel: place(L.easel), pres: place(L.pres), sitA: place(L.sitA), sitB: place(L.sitB) };
+      const shadow = (spot, rx) => el("ellipse", { cx: spot.x, cy: spot.y + 2, rx: rx * spot.s, ry: 12 * spot.s, fill: C.shadow, opacity: 0.45 }, shadows);
+      const shadowNodes = { easel: shadow(spots.easel, 150), pres: shadow(spots.pres, 60), sitA: shadow(spots.sitA, 90), sitB: shadow(spots.sitB, 90) };
+      const sparkG = group(sceneIn);
+      const E = easel(sceneIn);
+      const P = presenter(sceneIn);
+      const A = sitter(sceneIn, { skin: 1, shirt: C.shirt, shirtShade: C.shirtShade, trousers: C.navy, chair: C.trousers, hair: "bun", glasses: true });
+      const Bp = sitter(sceneIn, { skin: 2, shirt: C.navy, shirtShade: mix(hex.accent2, "000000", 0.3), trousers: C.hair, chair: C.trousers, hair: "short", glasses: false });
+      const bub = bubble(sceneIn);
+      const sparks = [[-170, -380, 26], [-205, -318, 14], [175, -470, 18], [-120, -470, 12], [205, -250, 12]].map(([x, y, r]) => ({
+        x: spots.easel.x + x, y: y, r, node: shape(sparkG, sparkle(r), "#ffffff"),
+      }));
+
+      R = { W, H, u, L, s, bars, words, sub, titleG, scene, sceneIn, spots, shadowNodes, E, P, A, B: Bp, bub, sparks };
+
+      // Timeline: every moving value lives in S and is drawn by render().
+      const start = {
+        decor: 0, sub: 0, easel: 0, pres: 0, sitA: 0, sitB: 0, pie: 0, lines: 0, slice: 0, wave: 0,
+        spark: 0, flip: 0, c0: 0, c1: 0, c2: 0, bubble: 0, outro: 0, nodA: 0, nodB: 0,
+        presA: 12, presB: -10, presBackA: -22, presBackB: 118, sitAa: -32, sitAb: -58, sitBa: -32, sitBb: -56,
+      };
+      words.forEach((_, i) => (start[`w${i}`] = 0));
+      Object.assign(S, start);
+      tl = gsap.timeline({ repeat: -1, onUpdate: render });
+      tl.set(S, { ...start }, 0);
+      const A2 = (key, from, to, at, dur, ease = "power2.out") =>
+        tl.fromTo(S, { [key]: from }, { [key]: to, duration: dur, ease, immediateRender: false }, at);
+
+      A2("decor", 0, 1, 0.05, 0.7, "power3.out");
+      words.forEach((_, i) => A2(`w${i}`, 0, 1, B + i * 0.1, 0.55, "power3.out"));
+      A2("sub", 0, 1, 2 * B + words.length * 0.06, 0.6);
+      A2("easel", 0, 1, 3 * B, 0.6, "back.out(1.6)");
+      A2("pres", 0, 1, 4 * B, 0.6, "back.out(1.6)");
+      A2("sitA", 0, 1, 4.5 * B, 0.6, "back.out(1.6)");
+      A2("sitB", 0, 1, 5 * B, 0.6, "back.out(1.6)");
+      A2("pie", 0, 1, 6 * B, 0.6, "power2.inOut");
+      A2("lines", 0, 1, 6.5 * B, 0.5);
+      A2("presA", 12, 124, 7 * B, 0.45, "back.out(1.4)");
+      A2("presB", -10, -22, 7 * B, 0.45, "back.out(1.4)");
+      A2("slice", 0, 1, 8 * B, 0.45, "back.out(2.2)");
+      A2("wave", 0, 1, 9 * B, 0.7, "power3.out");
+      A2("spark", 0, 1, 10 * B, 0.9, "none");
+      A2("sitAa", -32, -58, 11 * B, 0.4, "back.out(1.5)");
+      A2("sitAb", -58, -118, 11 * B, 0.4, "back.out(1.5)");
+      A2("nodA", 0, 1, 11.2 * B, 0.6, "sine.inOut");
+      A2("flip", 0, 1, 12 * B, 0.45, "power2.in");
+      [0, 1, 2].forEach((i) => A2(`c${i}`, 0, 1, (13 + i) * B, 0.25, "power2.out"));
+      A2("sitAa", -58, -32, 15.5 * B, 0.5, "power2.inOut");
+      A2("sitAb", -118, -58, 15.5 * B, 0.5, "power2.inOut");
+      A2("bubble", 0, 1, 16 * B, 0.5, "back.out(1.8)");
+      A2("presA", 124, 38, 17 * B, 0.55, "power2.inOut");
+      A2("presB", -22, 62, 17 * B, 0.55, "power2.inOut");
+      A2("nodB", 0, 1, 17.5 * B, 0.7, "sine.inOut");
+      A2("sitBa", -32, -40, 18 * B, 0.4, "power2.out");
+      A2("sitBb", -56, -100, 18 * B, 0.4, "power2.out");
+      A2("outro", 0, 1, 21.5 * B, 0.7, "power2.in");
+      tl.addLabel("hold", 19.5 * B).set({}, {}, LOOP);
+
+      if (reduce.matches) tl.pause(tl.labels.hold);
+      else tl.time(keep % LOOP);
+      render();
+      sound.replan();
+    }
+
+    function render() {
+      if (!R || !tl) return;
+      const t = tl.time();
+      const { bars, words, sub, spots, E, P, A, B: Bp, bub, sparks, u } = R;
+      const out = S.outro;
+
+      bars.forEach((b) => {
+        const k = clamp((S.decor - b.d) / (1 - b.d)) * (1 - clamp(out * 1.4 - 0.2));
+        const x = b.side < 0 ? -b.w - 3 * u + k * (b.w + 1.5 * u) : b.x + 3 * u - k * (b.w + 1.5 * u) - 3 * u;
+        b.node.setAttribute("x", x.toFixed(1));
+      });
+
+      words.forEach((w, i) => {
+        const k = S[`w${i}`];
+        w.node.setAttribute("transform", `translate(0 ${((1 - k) * w.h - out * w.h * 1.1).toFixed(1)})`);
+      });
+      sub.setAttribute("opacity", (S.sub * (1 - out)).toFixed(3));
+      sub.setAttribute("transform", `translate(0 ${((1 - S.sub) * 24).toFixed(1)})`);
+
+      const L = R.L;
+      R.scene.setAttribute("transform", `translate(${L.place.x} ${L.place.y + out * 90}) scale(${L.place.s})`);
+      R.scene.setAttribute("opacity", (1 - out).toFixed(3));
+
+      // Pop an actor up from its feet, with a small overshoot from the ease.
+      const pop = (node, spot, p, flip = false) => {
+        node.setAttribute("transform", `translate(${spot.x} ${spot.y}) scale(${(flip ? -1 : 1) * spot.s * p} ${spot.s * p})`);
+        node.setAttribute("opacity", p > 0.002 ? 1 : 0);
+      };
+      pop(E.root, spots.easel, S.easel);
+      pop(P.root, spots.pres, S.pres);
+      pop(A.root, spots.sitA, S.sitA);
+      pop(Bp.root, spots.sitB, S.sitB, true);
+      R.shadowNodes.easel.setAttribute("opacity", 0.45 * clamp(S.easel));
+      R.shadowNodes.pres.setAttribute("opacity", 0.45 * clamp(S.pres));
+      R.shadowNodes.sitA.setAttribute("opacity", 0.45 * clamp(S.sitA));
+      R.shadowNodes.sitB.setAttribute("opacity", 0.45 * clamp(S.sitB));
+
+      // Board, page 1: pie sweeps round, the slice pops out, lines grow, the wave rises.
+      const sweep = E.circ * (1 - 58 / 360) * S.pie;
+      E.pie.setAttribute("stroke-dasharray", `${sweep.toFixed(2)} ${E.circ + 2}`);
+      E.slice.setAttribute("opacity", S.pie >= 0.999 ? 1 : 0);
+      E.slice.setAttribute("transform", `translate(${(E.sliceDir[0] * 18 * S.slice).toFixed(2)} ${(E.sliceDir[1] * 18 * S.slice).toFixed(2)})`);
+      E.lines.forEach((ln, i) => {
+        const k = clamp(S.lines * 1.6 - i * 0.3);
+        ln.setAttribute("transform", `translate(32 0) scale(${k.toFixed(3)} 1) translate(-32 0)`);
+      });
+      E.wave.setAttribute("transform", `translate(0 -156) scale(1 ${S.wave.toFixed(3)}) translate(0 156)`);
+      E.wave2.setAttribute("transform", `translate(0 -156) scale(1 ${clamp(S.wave * 1.2 - 0.2).toFixed(3)}) translate(0 156)`);
+      // The page flips up over the top bar.
+      const fk = Math.cos((S.flip * Math.PI) / 2);
+      E.page1.setAttribute("transform", `translate(0 ${E.top}) scale(1 ${fk.toFixed(3)}) translate(0 ${-E.top})`);
+      E.page1.setAttribute("opacity", S.flip >= 0.999 ? 0 : 1);
+      E.ticks.forEach((tk, i) => {
+        const len = 44;
+        tk.setAttribute("stroke-dasharray", `${len} ${len + 10}`);
+        tk.setAttribute("stroke-dashoffset", ((1 - S[`c${i}`]) * (len + 1)).toFixed(2));
+        tk.setAttribute("opacity", S[`c${i}`] > 0.01 ? 1 : 0);
+      });
+
+      // Arms, heads and blinks. Idle motion runs from the timeline clock, so every loop matches.
+      pose(P.front, S.presA, S.presB);
+      pose(P.back, S.presBackA, S.presBackB);
+      pose(A.front, S.sitAa, S.sitAb);
+      pose(A.back, -26, -62);
+      pose(Bp.front, S.sitBa, S.sitBb);
+      pose(Bp.back, -26, -62);
+      const blink = (offset) => {
+        const k = (t + offset) % 3.7;
+        return k < 0.14 ? 0.15 : 1;
+      };
+      const breathe = (ph) => Math.sin(t * 2.1 + ph) * 1.4;
+      const nod = (k) => Math.sin(k * Math.PI * 2) * 5 * (k > 0 && k < 1 ? 1 : 0);
+      const headT = (node, x, y, ang) => node.setAttribute("transform", `translate(${x} ${(y + 0).toFixed(2)}) rotate(${ang.toFixed(2)})`);
+      const pb = breathe(0);
+      headT(P.head, 0, -360 + pb, -3 + Math.sin(t * 1.3) * 2 + (S.presA > 60 ? -4 : 3));
+      P.hairBack.setAttribute("transform", `translate(0 ${(-360 + pb).toFixed(2)}) rotate(${(-3 + Math.sin(t * 1.3) * 2 + (S.presA > 60 ? -4 : 3)).toFixed(2)})`);
+      headT(A.head, -16, -290 + breathe(1.2), nod(S.nodA) + Math.sin(t * 1.1 + 1) * 1.5);
+      headT(Bp.head, -16, -290 + breathe(2.3), nod(S.nodB) + Math.sin(t * 0.9 + 2) * 1.5);
+      P.eyes.forEach((e) => e.setAttribute("ry", 2.6 * blink(0)));
+      A.eyes.forEach((e) => e.setAttribute("ry", 2.6 * blink(1.3)));
+      Bp.eyes.forEach((e) => e.setAttribute("ry", 2.6 * blink(2.4)));
+
+      // Sparkles pop in one after another, then twinkle.
+      sparks.forEach((sp, i) => {
+        const k = clamp(S.spark * 2.2 - i * 0.28);
+        const pk = k <= 0 ? 0 : k < 1 ? Math.sin(k * Math.PI * 0.75) / Math.sin(Math.PI * 0.75) * (k < 0.66 ? 1 : 1) : 1;
+        const tw = k >= 1 ? 0.8 + 0.2 * Math.sin(t * 4 + i * 1.7) : 1;
+        sp.node.setAttribute("transform", `translate(${sp.x} ${sp.y}) rotate(${((1 - k) * 90).toFixed(1)}) scale(${(pk * tw).toFixed(3)})`);
+      });
+
+      // The idea bubble above the first sitter.
+      const a = spots.sitA;
+      const bk = S.bubble;
+      const bx = a.x + 70 * a.s, by = a.y - 410 * a.s;
+      bub.root.setAttribute("transform", `translate(${bx} ${by + (1 - bk) * 30}) scale(${(bk * a.s * 0.95).toFixed(3)})`);
+      bub.root.setAttribute("opacity", bk > 0.01 ? 1 : 0);
+      const glow = 0.22 + 0.12 * Math.sin(t * 6);
+      bub.glow.setAttribute("opacity", glow.toFixed(3));
+      bub.rays.setAttribute("opacity", (0.75 + 0.25 * Math.sin(t * 6)).toFixed(3));
+    }
+
+    reduce.addEventListener("change", () => {
+      if (!tl) return;
+      if (reduce.matches) tl.pause(tl.labels.hold);
+      else tl.play();
+      render();
+    });
+
+    // For testing and frame rendering: jump to an exact time.
+    window.seekDemo = (t) => { if (!tl) return; tl.pause(); tl.totalTime(t); render(); };
+
+    // Sound: every sound is made with the Web Audio API. It is off until the
+    // parent page (or ?sound=1 / ?sound=effects) turns it on, and it follows the
+    // GSAP timeline clock. Effects are timed to the same beats as the motion.
+    const sound = (() => {
+      const LEVEL = 1.05, MUSIC = 0.16;
+      const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+      const clock = () => (tl && !tl.paused() ? tl.totalTime() : null);
+      const loopLength = () => tl.duration();
+      // Six bars: C  G  Am  F  C  G, so the last bar leads back into the first.
+      const CHORDS = [[60, 64, 67, 72], [59, 62, 67, 71], [57, 60, 64, 69], [57, 60, 65, 69], [60, 64, 67, 72], [59, 62, 67, 74]];
+      const ROOTS = [36, 43, 45, 41, 36, 43];
+      let ctx = null, master, impulse, noiseBuf, session = null, fxBus, musicBus, verbSend;
+      let wantOn = false, wantMusic = true, playing = false;
+      let timer = 0, sleepTimer = 0, anchor = null, doneUpTo = 0;
+
+      function plan() {
+        const list = [];
+        const add = (t, type, extra = {}, music = false) => list.push({ t, type, music, ...extra });
+        const words = R ? R.words.length : 4;
+        add(0.05, "swoosh", { dur: 0.5, p: -0.4, v: 0.5 });
+        add(0.12, "swoosh", { dur: 0.5, p: 0.4, v: 0.5 });
+        for (let i = 0; i < words; i++) add(B + i * 0.1 + 0.05, "tap", { f: 700 + i * 60, p: (i / Math.max(1, words - 1) - 0.5) * 0.6 });
+        add(2 * B + words * 0.06, "swoosh", { dur: 0.6, p: 0, v: 0.35 });
+        add(3 * B + 0.08, "pop", { f: 330, p: 0 });
+        add(4 * B + 0.08, "pop", { f: 440, p: 0.3 });
+        add(4.5 * B + 0.08, "pop", { f: 392, p: -0.45 });
+        add(5 * B + 0.08, "pop", { f: 494, p: 0.5 });
+        add(6 * B, "sweep", { dur: 0.6, p: -0.15 });
+        [0, 1, 2].forEach((i) => add(6.5 * B + i * 0.1, "blip", { f: hz(84 + i * 3), p: 0.1 }));
+        add(7 * B + 0.3, "squeak", { dur: 0.32, p: -0.1 });
+        add(8 * B + 0.05, "pop", { f: 620, p: -0.15, bright: true });
+        add(9 * B, "rise", { dur: 0.7, p: 0 });
+        [0, 1, 2, 3, 4].forEach((i) => add(10 * B + i * 0.18, "chime", { f: hz([88, 91, 95, 96, 100][i]), p: [-0.5, -0.6, 0.5, -0.2, 0.6][i] }));
+        add(11 * B + 0.05, "tap", { f: 520, p: -0.5 });
+        add(12 * B, "flip", { dur: 0.45 });
+        [0, 1, 2].forEach((i) => add((13 + i) * B + 0.02, "tick", { f: hz([79, 83, 86][i]), p: -0.1 }));
+        add(16 * B + 0.05, "ding", { p: -0.4 });
+        add(21.5 * B, "swoosh", { dur: 0.7, p: 0, v: 0.6, down: true });
+
+        // Music: light corporate pop. Soft kick, claps, shaker, plucked bass and a plucky arpeggio.
+        const arp = [0, 1, 2, 3, 2, 1, 2, 3];
+        CHORDS.forEach((notes, bar) => {
+          const t0 = bar * 4 * B;
+          for (let b = 0; b < 4; b++) {
+            add(t0 + b * B, "kick", { v: b % 2 ? 0.55 : 0.8 }, true);
+            if (b % 2) add(t0 + b * B, "clap", {}, true);
+            for (let q = 0; q < 2; q++) add(t0 + (b + q / 2) * B, "shaker", { v: q ? 0.8 : 0.35 }, true);
+            add(t0 + (b + 0.5) * B, "bass", { f: hz(ROOTS[bar]), dur: B * 0.4 }, true);
+          }
+          arp.forEach((k, i) => add(t0 + (i / 2) * B, "pluck", { f: hz(notes[k] + 12), v: i % 2 ? 0.7 : 1 }, true));
+          add(t0, "pad", { notes, dur: 4 * B }, true);
+        });
+        return list.sort((a, b) => a.t - b.t);
+      }
+      let events = plan();
+
+      function makeGraph() {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -14;
+        comp.knee.value = 8;
+        comp.ratio.value = 4;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.2;
+        master = ctx.createGain();
+        master.gain.value = LEVEL;
+        master.connect(comp).connect(ctx.destination);
+        const len = Math.floor(ctx.sampleRate * 1.6);
+        impulse = ctx.createBuffer(2, len, ctx.sampleRate);
+        for (let ch = 0; ch < 2; ch++) {
+          const d = impulse.getChannelData(ch);
+          for (let s = 0; s < len; s++) d[s] = (Math.random() * 2 - 1) * Math.pow(1 - s / len, 3.2);
+        }
+        noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+        const nd = noiseBuf.getChannelData(0);
+        for (let s = 0; s < nd.length; s++) nd[s] = Math.random() * 2 - 1;
+      }
+
+      // Each time sound is turned on it gets fresh buses, so sounds queued before a
+      // stop can never leak out later.
+      function openSession() {
+        const t = ctx.currentTime;
+        session = ctx.createGain();
+        session.gain.setValueAtTime(0, t);
+        session.gain.linearRampToValueAtTime(1, t + 0.05);
+        session.connect(master);
+        fxBus = ctx.createGain();
+        fxBus.connect(session);
+        musicBus = ctx.createGain();
+        musicBus.gain.value = wantMusic ? MUSIC : 0;
+        musicBus.connect(session);
+        const verb = ctx.createConvolver();
+        verb.buffer = impulse;
+        const tone = filter("lowpass", 5000);
+        const verbOut = ctx.createGain();
+        verbOut.gain.value = 0.28;
+        verbSend = ctx.createGain();
+        verbSend.connect(verb).connect(tone).connect(verbOut).connect(session);
+      }
+      function closeSession() {
+        const old = session, t = ctx.currentTime;
+        session = null;
+        old.gain.cancelScheduledValues(t);
+        old.gain.setValueAtTime(old.gain.value, t);
+        old.gain.linearRampToValueAtTime(0, t + 0.15);
+        setTimeout(() => old.disconnect(), 250);
+      }
+
+      function amp(when, peak, attack, decay, out) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, when);
+        g.gain.exponentialRampToValueAtTime(peak, when + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay);
+        g.connect(out);
+        return g;
+      }
+      function osc(type, freq, when, dur) {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.setValueAtTime(freq, when);
+        o.start(when);
+        o.stop(when + dur + 0.05);
+        return o;
+      }
+      function noise(when, dur) {
+        const s = ctx.createBufferSource();
+        s.buffer = noiseBuf;
+        s.loop = true;
+        s.start(when, Math.random() * 1.5);
+        s.stop(when + dur + 0.05);
+        return s;
+      }
+      function filter(type, freq, q = 0.7) {
+        const f = ctx.createBiquadFilter();
+        f.type = type;
+        f.frequency.value = freq;
+        f.Q.value = q;
+        return f;
+      }
+      function pan(value, out) {
+        const p = ctx.createStereoPanner();
+        p.pan.value = value;
+        p.connect(out);
+        return p;
+      }
+      function send(node, amount) {
+        const g = ctx.createGain();
+        g.gain.value = amount;
+        node.connect(g).connect(verbSend);
+      }
+      function envelope(when, points, out) {
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, when);
+        for (const [dt, v] of points) g.gain.linearRampToValueAtTime(v, when + dt);
+        g.connect(out);
+        return g;
+      }
+
+      const voices = {
+        swoosh(when, e) {
+          // Air whoosh as things slide in (or out, sweeping down).
+          const d = e.dur;
+          const g = envelope(when, [[d * 0.6, 0.22 * e.v], [d, 0]], pan(e.p, fxBus));
+          const bp = filter("bandpass", e.down ? 2600 : 500, 1.1);
+          bp.frequency.setValueAtTime(e.down ? 2600 : 500, when);
+          bp.frequency.exponentialRampToValueAtTime(e.down ? 400 : 2800, when + d);
+          noise(when, d).connect(bp).connect(g);
+          send(g, 0.3);
+        },
+        tap(when, e) {
+          // A soft, rounded tap for each title word.
+          const g = amp(when, 0.14, 0.003, 0.09, pan(e.p, fxBus));
+          const o = osc("sine", e.f * 1.5, when, 0.1);
+          o.frequency.exponentialRampToValueAtTime(e.f, when + 0.05);
+          o.connect(g);
+        },
+        pop(when, e) {
+          // Bubbly pop as each piece of the scene springs up.
+          const out = pan(e.p, fxBus);
+          const g = amp(when, e.bright ? 0.3 : 0.26, 0.003, 0.16, out);
+          const o = osc("sine", e.f * 2.2, when, 0.18);
+          o.frequency.exponentialRampToValueAtTime(e.f, when + 0.07);
+          o.connect(g);
+          noise(when, 0.02).connect(filter("bandpass", 3000, 1)).connect(amp(when, 0.08, 0.001, 0.02, out));
+          send(g, 0.25);
+        },
+        sweep(when, e) {
+          // The pie chart drawing round: a smooth rising tone with a soft hiss.
+          const d = e.dur;
+          const out = pan(e.p, fxBus);
+          const g = envelope(when, [[0.05, 0.08], [d * 0.8, 0.1], [d, 0]], out);
+          const o = osc("triangle", 330, when, d);
+          o.frequency.exponentialRampToValueAtTime(880, when + d);
+          o.connect(filter("lowpass", 2400)).connect(g);
+          noise(when, d).connect(filter("bandpass", 3000, 2)).connect(envelope(when, [[d * 0.5, 0.06], [d, 0]], out));
+        },
+        blip(when, e) {
+          const g = amp(when, 0.08, 0.002, 0.08, pan(e.p, fxBus));
+          osc("sine", e.f, when, 0.1).connect(g);
+        },
+        squeak(when, e) {
+          // Marker on the flip chart: felt hiss with a little squeak.
+          const d = e.dur;
+          const out = pan(e.p, fxBus);
+          const g = envelope(when, [[0.02, 0.14], [d * 0.6, 0.15], [d, 0]], out);
+          noise(when, d).connect(filter("highpass", 600)).connect(filter("bandpass", 2300, 1.3)).connect(g);
+          const o = osc("sine", 2300, when, d);
+          o.frequency.linearRampToValueAtTime(2550, when + d * 0.6);
+          o.frequency.linearRampToValueAtTime(2250, when + d);
+          o.connect(filter("bandpass", 2400, 3)).connect(envelope(when, [[d * 0.25, 0.05], [d * 0.7, 0.04], [d, 0]], out));
+        },
+        rise(when, e) {
+          // The wave chart rising: a soft upward swell.
+          const d = e.dur;
+          const g = envelope(when, [[d * 0.3, 0.12], [d, 0]], pan(e.p, fxBus));
+          const o = osc("sine", 220, when, d);
+          o.frequency.exponentialRampToValueAtTime(660, when + d * 0.8);
+          o.connect(g);
+          const o2 = osc("sine", 330, when, d);
+          o2.frequency.exponentialRampToValueAtTime(990, when + d * 0.8);
+          o2.connect(amp(when, 0.05, 0.1, d, g));
+          send(g, 0.4);
+        },
+        chime(when, e) {
+          // A sparkle: a bright glassy ping with a shimmer.
+          const out = pan(e.p, fxBus);
+          const g = amp(when, 0.08, 0.002, 0.7, out);
+          osc("sine", e.f, when, 0.8).connect(g);
+          osc("sine", e.f * 2.01, when, 0.4).connect(amp(when, 0.03, 0.002, 0.3, out));
+          send(g, 0.8);
+        },
+        flip(when, e) {
+          // A flip chart page: a papery flutter, then a soft slap as it lands.
+          const d = e.dur;
+          const g = envelope(when, [[d * 0.3, 0.2], [d, 0.12], [d + 0.05, 0]], pan(0, fxBus));
+          const flutter = ctx.createGain();
+          flutter.gain.value = 0.6;
+          const lfo = osc("square", 26, when, d);
+          const depth = ctx.createGain();
+          depth.gain.value = 0.4;
+          lfo.connect(depth).connect(flutter.gain);
+          const bp = filter("bandpass", 1800, 0.8);
+          bp.frequency.setValueAtTime(1200, when);
+          bp.frequency.linearRampToValueAtTime(2600, when + d);
+          noise(when, d).connect(bp).connect(flutter).connect(g);
+          noise(when + d, 0.08).connect(filter("lowpass", 900)).connect(amp(when + d, 0.3, 0.003, 0.08, fxBus));
+        },
+        tick(when, e) {
+          // A bright little check.
+          const g = amp(when, 0.14, 0.002, 0.2, pan(e.p, fxBus));
+          osc("triangle", e.f, when, 0.22).connect(g);
+          osc("sine", e.f * 2, when, 0.1).connect(amp(when, 0.05, 0.001, 0.06, g));
+          send(g, 0.4);
+        },
+        ding(when, e) {
+          // The idea: a soft bell with a little sparkle on top.
+          const out = pan(e.p, fxBus);
+          const g = amp(when, 0.24, 0.003, 1.3, out);
+          osc("sine", hz(84), when, 1.4).connect(g);
+          osc("sine", hz(91), when + 0.07, 1.1).connect(amp(when + 0.07, 0.1, 0.004, 1, out));
+          [100, 103, 108].forEach((m, k) => {
+            const t = when + 0.12 + k * 0.06;
+            osc("sine", hz(m), t, 0.3).connect(amp(t, 0.025, 0.002, 0.25, out));
+          });
+          send(g, 0.6);
+        },
+        kick(when, e) {
+          const g = amp(when, 0.5 * e.v, 0.002, 0.22, musicBus);
+          const o = osc("sine", 130, when, 0.25);
+          o.frequency.exponentialRampToValueAtTime(45, when + 0.12);
+          o.connect(g);
+        },
+        clap(when) {
+          const g = ctx.createGain();
+          g.connect(musicBus);
+          const bp = filter("bandpass", 1400, 1.2);
+          bp.connect(g);
+          [0, 0.011, 0.022].forEach((dt, k) => noise(when + dt, 0.12).connect(amp(when + dt, k === 2 ? 0.2 : 0.12, 0.002, k === 2 ? 0.1 : 0.012, bp)));
+          send(g, 0.6);
+        },
+        shaker(when, e) {
+          noise(when, 0.06).connect(filter("highpass", 6500)).connect(amp(when, 0.09 * e.v, 0.006, 0.04, musicBus));
+        },
+        bass(when, e) {
+          const g = amp(when, 0.34, 0.005, e.dur, musicBus);
+          const lp = filter("lowpass", 700, 2);
+          lp.frequency.setValueAtTime(900, when);
+          lp.frequency.exponentialRampToValueAtTime(220, when + e.dur);
+          lp.connect(g);
+          osc("sawtooth", e.f, when, e.dur).connect(lp);
+          osc("sine", e.f / 2, when, e.dur).connect(amp(when, 0.5, 0.005, e.dur, g));
+        },
+        pluck(when, e) {
+          // A bright synth pluck for the arpeggio.
+          const g = amp(when, 0.12 * e.v, 0.003, 0.22, musicBus);
+          const lp = filter("lowpass", 3200, 3);
+          lp.frequency.setValueAtTime(3600, when);
+          lp.frequency.exponentialRampToValueAtTime(700, when + 0.2);
+          lp.connect(g);
+          osc("square", e.f, when, 0.25).connect(lp);
+          send(g, 0.35);
+        },
+        pad(when, e) {
+          // A quiet, warm chord under everything.
+          const d = e.dur;
+          const g = envelope(when, [[0.25, 0.05], [d - 0.1, 0.045], [d + 0.05, 0]], musicBus);
+          const lp = filter("lowpass", 1200);
+          lp.connect(g);
+          e.notes.forEach((m) => {
+            osc("sawtooth", hz(m - 12), when, d + 0.1).connect(lp);
+            const o = osc("sawtooth", hz(m - 12) * 1.004, when, d + 0.1);
+            o.connect(lp);
+          });
+        },
+      };
+
+      // Look-ahead scheduler: every 25 ms, schedule sounds due in the next 100 ms.
+      // Animation time is mapped to audio time by an anchor that is re-set after any jump
+      // (a pause, a hidden tab, a restart), so missed sounds never pile up.
+      function tick() {
+        const now = playing && ctx.state === "running" && !document.hidden && !reduce.matches ? clock() : null;
+        if (now === null) { anchor = null; return; }
+        const loopLen = loopLength();
+        const at = ctx.currentTime;
+        if (anchor) {
+          const err = now - (anchor.tl + (at - anchor.audio));
+          if (Math.abs(err) > 0.08) anchor = null;
+          else anchor.tl += err * 0.05;
+        }
+        if (!anchor) {
+          anchor = { tl: now, audio: at };
+          doneUpTo = now;
+        }
+        const cur = anchor.tl + (at - anchor.audio);
+        const from = Math.max(doneUpTo, cur - 0.05);
+        const to = cur + 0.1;
+        if (to <= from) return;
+        for (let k = Math.floor(from / loopLen); k <= Math.floor(to / loopLen); k++) {
+          for (const e of events) {
+            const t = k * loopLen + e.t;
+            if (t < from || t >= to) continue;
+            if (e.music && !wantMusic) continue;
+            voices[e.type](Math.max(at, anchor.audio + (t - anchor.tl)), e);
+          }
+        }
+        doneUpTo = to;
+      }
+
+      function update() {
+        const on = wantOn && !reduce.matches;
+        if (on) {
+          if (!ctx) makeGraph();
+          clearTimeout(sleepTimer);
+          if (ctx.state !== "running") ctx.resume().catch(() => {});
+          if (!playing) {
+            playing = true;
+            anchor = null;
+            openSession();
+            clearInterval(timer);
+            timer = setInterval(tick, 25);
+          }
+          const t = ctx.currentTime;
+          musicBus.gain.cancelScheduledValues(t);
+          musicBus.gain.setTargetAtTime(wantMusic ? MUSIC : 0, t, 0.03);
+        } else if (playing) {
+          playing = false;
+          clearInterval(timer);
+          closeSession();
+          sleepTimer = setTimeout(() => ctx.suspend(), 200);
+        }
+      }
+      reduce.addEventListener("change", update);
+
+      // Browsers may block audio until the first click or key press.
+      const unlock = () => { if (playing && ctx && ctx.state !== "running") ctx.resume().catch(() => {}); };
+      addEventListener("pointerdown", unlock);
+      addEventListener("keydown", unlock);
+
+      addEventListener("message", (event) => {
+        if (event.origin !== location.origin) return;
+        const data = event.data;
+        if (!data || data.type !== "motionprompt-sound") return;
+        if (typeof data.on === "boolean") wantOn = data.on;
+        if (typeof data.music === "boolean") wantMusic = data.music;
+        update();
+      });
+
+      const fromUrl = params.get("sound");
+      if (fromUrl === "1" || fromUrl === "effects") {
+        wantOn = true;
+        wantMusic = fromUrl === "1";
+        update();
+      }
+      return { replan() { events = plan(); } };
+    })();
+
+    let resizeTimer;
+    addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(build, 150);
+    });
+
+    // Wait briefly for the fonts so the title is measured in the right face.
+    Promise.race([
+      Promise.all([document.fonts.load("700 1em Oswald"), document.fonts.load("300 1em Oswald")]),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).finally(build);
+  </script>
+</body>
+</html>
