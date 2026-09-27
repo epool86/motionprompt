@@ -561,10 +561,36 @@
 
     const scenes = [beach, hills, city, room];
 
+    // Real photos, one per caption. Each has a focus point (0 to 1 across and down) that the
+    // crop keeps near the middle of the frame, so the palm, the house, the towers and the bed
+    // stay in view in any frame shape. A photo that fails to load falls back to its drawing.
+    const PHOTOS = [
+      { src: "img/coastal.webp", fx: 0.36, fy: 0.47 },
+      { src: "img/golden.webp", fx: 0.46, fy: 0.4 },
+      { src: "img/city.webp", fx: 0.46, fy: 0.5 },
+      { src: "img/stay.webp", fx: 0.56, fy: 0.55 },
+    ];
+    const images = [];
+    const photosReady = Promise.all(PHOTOS.map((p, i) => {
+      const img = new Image();
+      img.src = p.src;
+      return Promise.race([
+        img.decode().then(() => { images[i] = img; }),
+        new Promise((resolve) => setTimeout(resolve, 3000)),
+      ]).catch(() => {});
+    }));
+
     // Draw one photo, then add a soft vignette like a real lens.
     function paint(canvas, scene, index, px) {
       canvas.width = canvas.height = px;
       const g = canvas.getContext("2d");
+      if (images[index]) {
+        g.imageSmoothingQuality = "high";
+        g.drawImage(images[index], 0, 0, px, px);
+        g.setTransform(px, 0, 0, px, 0, 0);
+        glow(g, 0.5, 0.5, 0.75, [[0.55, "rgb(0 0 0 / 0)"], [1, "rgb(0 0 0 / 0.35)"]]);
+        return;
+      }
       g.setTransform(px, 0, 0, px, 0, 0);
       scene(g, px, rng(11 + index * 101));
       g.setTransform(px, 0, 0, px, 0, 0);
@@ -629,7 +655,12 @@
     function layout() {
       const W = innerWidth, H = innerHeight, m = Math.min(W, H);
       const side = Math.max(W, H) * 1.02;
-      photos.forEach((p) => Object.assign(p.style, { width: `${side}px`, height: `${side}px`, margin: `${-side / 2}px 0 0 ${-side / 2}px` }));
+      // Move each square so its focus point sits near the middle, without uncovering an edge.
+      const place = (frame, f) => Math.min(0, Math.max(frame - side, frame / 2 - f * side)) - frame / 2;
+      photos.forEach((p, i) => {
+        const f = images[i] ? PHOTOS[i] : { fx: 0.5, fy: 0.5 };
+        Object.assign(p.style, { width: `${side}px`, height: `${side}px`, margin: `${place(H, f.fy)}px 0 0 ${place(W, f.fx)}px` });
+      });
       root.style.setProperty("--pad", `${Math.max(10, m * 0.07)}px`);
       root.style.setProperty("--big", `${Math.min(W * 0.115, H * 0.1)}px`);
       root.style.setProperty("--small", `${Math.max(6, Math.min(W * 0.028, H * 0.024))}px`);
@@ -728,6 +759,8 @@
       const apply = () => (reduce.matches ? tl.pause(1.6) : tl.play());
       apply();
       reduce.addEventListener("change", apply);
+      // For frame by frame capture: jump to an exact time and hold there.
+      window.seekDemo = (t) => { tl.pause(); tl.totalTime(t); };
       sound.attach({ length: tl.duration(), D, T, time: () => tl.totalTime(), running: () => !tl.paused() });
     }
 
@@ -1132,10 +1165,14 @@
       return { attach };
     })();
 
-    // Wait briefly for the fonts so captions do not jump.
-    Promise.race([
-      Promise.all([document.fonts.load('700 1em "Playfair Display"'), document.fonts.load('600 1em "Inter"')]),
-      new Promise((resolve) => setTimeout(resolve, 1500)),
+    // Wait briefly for the fonts so captions do not jump, and for the photos so the first
+    // frame already shows them.
+    Promise.all([
+      Promise.race([
+        Promise.all([document.fonts.load('700 1em "Playfair Display"'), document.fonts.load('600 1em "Inter"')]),
+        new Promise((resolve) => setTimeout(resolve, 1500)),
+      ]).catch(() => {}),
+      photosReady,
     ]).finally(build);
   </script>
 </body>

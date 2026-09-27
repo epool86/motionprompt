@@ -690,6 +690,21 @@
     const layers = {};
     let figs = [], drops = [];
 
+    // Real photos for the two looks and the fabric close-up. Each spot falls back to its drawing if a photo fails.
+    // Points are fractions of the photo: where the model stands, and the flowers the fabric callouts point at.
+    const PHOTOS = {
+      look1: { src: "img/look1.webp", img: null, head: 0.12, feet: 0.935, cx: 0.49 },
+      look2: { src: "img/look2.webp", img: null, head: 0.125, feet: 0.93, cx: 0.49 },
+      fabric: { src: "img/fabric.webp", img: null, main: [0.63, 0.64, 0.2], other: [0.3, 0.8] },
+    };
+    function loadPhotos() {
+      return Promise.all(Object.values(PHOTOS).map((ph) => {
+        const img = new Image();
+        img.src = ph.src;
+        return Promise.race([img.decode().then(() => { ph.img = img; }), new Promise((r) => setTimeout(r, 3000))]).catch(() => {});
+      }));
+    }
+
     function buildCaches() {
       const tileU = U;
       // Tiles
@@ -760,6 +775,7 @@
 
       // Look backdrops: calm batik walls with an arch behind the figure.
       const archW = L.figH * 0.52, archTop = L.figTop - L.figH * 0.05, archBot = L.feetY + L.figH * 0.005;
+      Object.assign(L, { archW, archTop, archBot });
       const lookBg = (k) => makeLayer(W, H, (g) => {
         g.fillStyle = k ? C.deep : C.cream;
         g.fillRect(0, 0, W, H);
@@ -811,7 +827,15 @@
 
       // Fabric close-up: one big hand drawn composition.
       const { FW, FH } = LY.fab;
-      layers.fabric = makeLayer(FW, FH, (g) => {
+      const fab = PHOTOS.fabric;
+      if (fab.img) {
+        const iw = fab.img.naturalWidth, ih = fab.img.naturalHeight, sc = Math.max(FW / iw, FH / ih);
+        const ox = (FW - iw * sc) / 2, oy = (FH - ih * sc) / 2;
+        const at = (fx, fy) => [ox + fx * iw * sc, oy + fy * ih * sc];
+        layers.fabric = makeLayer(FW, FH, (g) => g.drawImage(fab.img, ox, oy, iw * sc, ih * sc));
+        LY.fab.main = [...at(fab.main[0], fab.main[1]), fab.main[2] * iw * sc];
+        LY.fab.others = [at(...fab.other)];
+      } else layers.fabric = makeLayer(FW, FH, (g) => {
         g.fillStyle = tilePattern(g, T.fabBg, 1, 0, 0);
         g.fillRect(0, 0, FW, FH);
         const m = Math.min(FW, FH), lw = m * 0.006, land = FW > FH * 1.1;
@@ -1075,9 +1099,36 @@
     }
 
     function sceneLook(k, s) {
-      const L = LY.look, fig = figs[k];
+      const L = LY.look, fig = figs[k], ph = PHOTOS[k ? "look2" : "look1"];
       drawLayer(layers.look[k], 1.035 - 0.035 * ease.o2(seg(s, -0.5, 3.5)));
       const a = ease.o3(seg(s, -0.5, 0.8));
+      if (ph.img) {
+        // The model stands in the arch: feet on the floor line, head in the dome.
+        const iw = ph.img.naturalWidth, ih = ph.img.naturalHeight;
+        const h = (L.figH * 0.95) / (ph.feet - ph.head), w = h * (iw / ih);
+        const inset = Math.max(1, L.figH * 0.006);
+        const arch = archPath(L.figX, L.archTop + inset, L.archW - inset * 2, L.archBot);
+        ctx.save();
+        ctx.clip(arch);
+        const push = (1 + (1 - a) * 0.05) * (1 + 0.03 * ease.io2(seg(s, 0, 3.5)));
+        ctx.translate(L.figX, L.feetY + (1 - a) * L.figH * 0.05);
+        ctx.scale(push, push);
+        ctx.drawImage(ph.img, -ph.cx * w, -ph.feet * h - L.figH * 0.01, w, h);
+        ctx.restore();
+        // A soft inner shade along the arch edge, so the photo sits in it like a window.
+        ctx.save();
+        ctx.clip(arch);
+        ctx.strokeStyle = k ? "rgba(0,30,20,0.28)" : "rgba(60,20,10,0.2)";
+        ctx.lineWidth = L.figH * 0.05;
+        ctx.filter = `blur(${Math.max(1, L.figH * 0.015)}px)`;
+        ctx.stroke(arch);
+        ctx.restore();
+        ctx.strokeStyle = k ? rgba(C.gold, 0.9) : rgba(C.wax, 0.95);
+        ctx.lineWidth = Math.max(1, L.figH * 0.006);
+        ctx.stroke(archPath(L.figX, L.archTop, L.archW, L.archBot));
+        drawLabel(LOOKS[k].label, s, L.lab, k === 1);
+        return;
+      }
       const sway = Math.sin(s * 1.4 + k) * 0.007;
       ctx.save();
       ctx.translate(L.figX, L.feetY + (1 - a) * L.figH * 0.05);
@@ -1720,6 +1771,11 @@
       reduce.addEventListener("change", apply);
       apply();
       sound.attach(tl);
+      window.seekDemo = (t) => {
+        tl.pause();
+        tl.time(((t % LOOP) + LOOP) % LOOP);
+        render(tl.time());
+      };
       let resizeTimer = 0;
       addEventListener("resize", () => {
         clearTimeout(resizeTimer);
@@ -2281,14 +2337,17 @@
       return { attach };
     })();
 
-    // Wait briefly for the fonts so text is measured in the right face.
-    Promise.race([
-      Promise.all([
-        document.fonts.load('italic 400 1em "Playfair Display"'),
-        document.fonts.load('700 1em "Playfair Display"'),
-        document.fonts.load("500 1em Jost"),
+    // Wait briefly for the fonts (so text is measured in the right face) and the photos.
+    Promise.all([
+      Promise.race([
+        Promise.all([
+          document.fonts.load('italic 400 1em "Playfair Display"'),
+          document.fonts.load('700 1em "Playfair Display"'),
+          document.fonts.load("500 1em Jost"),
+        ]),
+        new Promise((resolve) => setTimeout(resolve, 1500)),
       ]),
-      new Promise((resolve) => setTimeout(resolve, 1500)),
+      loadPhotos(),
     ]).finally(start);
   </script>
 </body>
